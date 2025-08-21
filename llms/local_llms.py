@@ -32,11 +32,11 @@ class LocalLLMs:
         try:
             response = requests.get(self.base_url, timeout=5)
             response.raise_for_status()
-            print("Kết nối đến máy chủ Ollama thành công.")
+            print("Connected to Ollama API server successfully.")
             self.client = requests.Session()
             self._pull_ollama_model(model_version)
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Không thể kết nối đến máy chủ Ollama tại {self.base_url}. Vui lòng đảm bảo Ollama đang chạy. Lỗi: {e}")
+            raise ConnectionError(f"Error connecting to Ollama API server: {e}")
 
     def _pull_ollama_model(self, model_version: str):
         """Pull model from Ollama if not exist."""
@@ -49,15 +49,15 @@ class LocalLLMs:
 
             # 2. If the model does not exist, pull it
             if not model_exists:
-                print(f"Model '{model_version}' chưa tồn tại. Bắt đầu tải...")
+                print(f"Model '{model_version}' not found. Pulling...")
                 pull_data = {"name": model_version}
                 pull_response = self.client.post(f"{self.base_url}/api/pull", json=pull_data)
                 pull_response.raise_for_status()
-                print(f"Tải model '{model_version}' thành công.")
+                print(f"Model '{model_version}' pulled successfully.")
             else:
-                print(f"Model '{model_version}' đã có sẵn.")
+                print(f"Model '{model_version}' already exists.")
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Lỗi khi giao tiếp với API của Ollama. Lỗi: {e}")
+            raise ConnectionError(f"Error connecting to Ollama API server: {e}")
 
     def _initialize_vllm_model(self, model_version: str):
         """Initialize the vLLM model with the specified name and parameters."""
@@ -69,14 +69,14 @@ class LocalLLMs:
 
             if matched_model:
                 self.max_tokens = matched_model.get("max_model_len", 4096)
-                print(f"Model '{self.model_version}' đã được tìm thấy với max_tokens: {self.max_tokens}.")
+                print(f"Model '{self.model_version}' found with max_tokens: {self.max_tokens}.")
             else:
-                print(f"Không tìm thấy model '{self.model_version}' trong danh sách model của vLLM. Dùng giá trị mặc định 4096.")
+                print(f"Model '{self.model_version}' not found in vLLM model list. Using default value 4096.")
 
-            print("Kết nối đến vLLM server thành công.")
+            print("Connected to vLLM API server successfully.")
             self.client = requests.Session()
         except requests.exceptions.RequestException as e:
-            raise ConnectionError(f"Không thể kết nối đến vLLM tại {self.base_url}. Lỗi: {e}")
+            raise ConnectionError(f"Error connecting to vLLM API server: {e}")
     
     def _initialize_huggingface_model(self, model_version: str):
         """Initialize the Huggingface model with the specified name and parameters"""
