@@ -1,5 +1,5 @@
-from llms.local_llms import LocalLLMs
-from llms.online_llms import OnLineLLMs
+from .local_llms import LocalLLMs
+from .online_llms import OnLineLLMs
 from typing import List, Dict
 
 class LLMs:

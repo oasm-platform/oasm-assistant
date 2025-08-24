@@ -1,0 +1,3 @@
+"""
+Validate system outputs
+"""
