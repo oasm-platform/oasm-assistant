@@ -1,0 +1,3 @@
+"""
+Fact checking & validation
+"""
