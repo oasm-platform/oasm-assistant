@@ -1,0 +1,3 @@
+"""
+Collective decision making
+"""
