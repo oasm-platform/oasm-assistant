@@ -1,0 +1,3 @@
+"""
+Load initial knowledge base
+"""
