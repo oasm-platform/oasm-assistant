@@ -1,0 +1,3 @@
+"""
+Vulnerability data models
+"""
