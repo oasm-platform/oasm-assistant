@@ -1,0 +1,3 @@
+"""
+High-level strategic planning
+"""
