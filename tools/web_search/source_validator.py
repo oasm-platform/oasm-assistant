@@ -1,0 +1,3 @@
+"""
+Validate information sources
+"""

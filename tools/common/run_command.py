@@ -1,3 +1,7 @@
+"""
+Run a command and capture its output
+"""
+
 import subprocess
 
 class RunCommand:
