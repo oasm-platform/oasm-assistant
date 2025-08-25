@@ -1,5 +1,5 @@
-from .embeddings import Embedding
+from .embeddings import Embeddings
 
 __all__ = [
-    "Embedding",
+    "Embeddings",
 ]

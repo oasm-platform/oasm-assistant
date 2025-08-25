@@ -4,16 +4,16 @@ from typing import List
 """
 Usage example:
 
-from .embeddings import Embedding
+from .embeddings import Embeddings
 
 # Create an OpenAI embedding instance
-embedding = Embedding.create_embedding('openai', api_key='your_api_key')
+embedding = Embeddings.create_embedding('openai', api_key='your_api_key')
 
 # Get list of available providers
-providers = Embedding.get_available_providers()
+providers = Embeddings.get_available_providers()
 """
 
-class Embedding:
+class Embeddings:
     """Embedding usage pattern factory class"""
     
     _providers = {
