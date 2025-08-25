@@ -1,5 +1,4 @@
 from pydantic.v1 import BaseModel, Field, validator
-from typing import Any, Optional
 
 class EmbeddingConfig(BaseModel):
     name: str = Field(..., description="The name of the SentenceTransformer model")

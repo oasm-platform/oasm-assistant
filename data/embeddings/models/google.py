@@ -1,10 +1,9 @@
 ##https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings
 
 
-from embeddings import APIBaseEmbedding
+from base_model import APIBaseEmbedding
 import os
-import openai
-from typing import Any, List, Optional
+from typing import List
 from dotenv import load_dotenv
 load_dotenv()
 
