@@ -1,8 +1,30 @@
 from typing import List, Dict, Optional
 from providers import *
 
-class ProviderFactory:
-    """Factory class for creating LLM providers."""
+"""
+Usage Example:
+# Online provider
+llm = LLMs(
+    type="online",
+    model_name="openai", 
+    model_version="gpt-4",
+    api_key="your-api-key"
+)
+
+# Offline provider  
+llm = LLMs(
+    type="offline",
+    engine="ollama",
+    model_version="llama2:7b",
+    base_url="http://localhost:11434"
+)
+
+# Generate content
+response = llm.generate_content([{"role": "user", "content": "Hello"}])
+"""
+
+class LLMs:
+    """Simplified LLM interface class with built-in provider factory."""
     
     # Registry of available providers
     ONLINE_PROVIDERS = {
@@ -20,63 +42,6 @@ class ProviderFactory:
         "huggingface": HuggingFaceProvider,
         "onnx": ONNXProvider,
     }
-    
-    @classmethod
-    def create_online_provider(cls, model_name: str, api_key: str, model_version: str, 
-                             base_url: Optional[str] = None, **kwargs) -> OnlineProvider:
-        """Create an online provider instance."""
-        model_name = model_name.lower()
-        
-        if model_name not in cls.ONLINE_PROVIDERS:
-            available_providers = ", ".join(cls.ONLINE_PROVIDERS.keys())
-            raise ValueError(f"Unsupported online provider: {model_name}. Available: {available_providers}")
-        
-        provider_class = cls.ONLINE_PROVIDERS[model_name]
-        
-        # Handle special cases that require additional parameters
-        if model_name == "together":
-            if not base_url:
-                raise ValueError("base_url is required for Together AI provider")
-            return provider_class(api_key, model_version, base_url, **kwargs)
-        else:
-            return provider_class(api_key, model_version, **kwargs)
-    
-    @classmethod
-    def create_offline_provider(cls, engine: str, model_version: str, 
-                              base_url: Optional[str] = None, model_path: Optional[str] = None, 
-                              tokenizer_path: Optional[str] = None, **kwargs) -> OfflineProvider:
-        """Create an offline provider instance."""
-        engine = engine.lower()
-        
-        if engine not in cls.OFFLINE_PROVIDERS:
-            available_providers = ", ".join(cls.OFFLINE_PROVIDERS.keys())
-            raise ValueError(f"Unsupported offline provider: {engine}. Available: {available_providers}")
-        
-        provider_class = cls.OFFLINE_PROVIDERS[engine]
-        
-        # Handle special cases that require additional parameters
-        if engine in ["ollama", "vllm"]:
-            if not base_url:
-                raise ValueError(f"base_url is required for {engine} provider")
-            return provider_class(model_version, base_url, **kwargs)
-        elif engine == "onnx":
-            if not model_path:
-                raise ValueError("model_path is required for ONNX provider")
-            return provider_class(model_version, model_path, tokenizer_path, **kwargs)
-        else:  # huggingface
-            return provider_class(model_version, **kwargs)
-    
-    @classmethod
-    def get_available_providers(cls) -> Dict[str, List[str]]:
-        """Get list of all available providers."""
-        return {
-            "online": list(cls.ONLINE_PROVIDERS.keys()),
-            "offline": list(cls.OFFLINE_PROVIDERS.keys())
-        }
-
-
-class LLMs:
-    """Main LLM interface class using Factory pattern and OOP principles."""
     
     def __init__(self, type: str, model_version: str, model_name: Optional[str] = None, 
                  engine: Optional[str] = None, api_key: Optional[str] = None, 
@@ -107,19 +72,54 @@ class LLMs:
                         **kwargs) -> BaseProvider:
         """Create appropriate provider based on type."""
         if self.type == "online":
-            if not model_name:
-                raise ValueError("model_name is required for online providers")
-            return ProviderFactory.create_online_provider(
-                model_name, api_key, self.model_version, base_url, **kwargs
-            )
+            return self._create_online_provider(model_name, api_key, base_url, **kwargs)
         elif self.type == "offline":
-            if not engine:
-                raise ValueError("engine is required for offline providers")
-            return ProviderFactory.create_offline_provider(
-                engine, self.model_version, base_url, model_path, tokenizer_path, **kwargs
-            )
+            return self._create_offline_provider(engine, base_url, model_path, tokenizer_path, **kwargs)
         else:
             raise ValueError(f"Unsupported LLM type: {self.type}. Use 'online' or 'offline'")
+    
+    def _create_online_provider(self, model_name: str, api_key: str, base_url: Optional[str], **kwargs) -> OnlineProvider:
+        """Create an online provider instance."""
+        if not model_name:
+            raise ValueError("model_name is required for online providers")
+        
+        model_name = model_name.lower()
+        if model_name not in self.ONLINE_PROVIDERS:
+            available = ", ".join(self.ONLINE_PROVIDERS.keys())
+            raise ValueError(f"Unsupported online provider: {model_name}. Available: {available}")
+        
+        provider_class = self.ONLINE_PROVIDERS[model_name]
+        
+        if model_name == "together":
+            if not base_url:
+                raise ValueError("base_url is required for Together AI provider")
+            return provider_class(api_key, self.model_version, base_url, **kwargs)
+        else:
+            return provider_class(api_key, self.model_version, **kwargs)
+    
+    def _create_offline_provider(self, engine: str, base_url: Optional[str], 
+                               model_path: Optional[str], tokenizer_path: Optional[str], **kwargs) -> OfflineProvider:
+        """Create an offline provider instance."""
+        if not engine:
+            raise ValueError("engine is required for offline providers")
+        
+        engine = engine.lower()
+        if engine not in self.OFFLINE_PROVIDERS:
+            available = ", ".join(self.OFFLINE_PROVIDERS.keys())
+            raise ValueError(f"Unsupported offline provider: {engine}. Available: {available}")
+        
+        provider_class = self.OFFLINE_PROVIDERS[engine]
+        
+        if engine in ["ollama", "vllm"]:
+            if not base_url:
+                raise ValueError(f"base_url is required for {engine} provider")
+            return provider_class(self.model_version, base_url, **kwargs)
+        elif engine == "onnx":
+            if not model_path:
+                raise ValueError("model_path is required for ONNX provider")
+            return provider_class(self.model_version, model_path, tokenizer_path, **kwargs)
+        else:  # huggingface
+            return provider_class(self.model_version, **kwargs)
     
     def generate_content(self, prompt: List[Dict[str, str]]) -> str:
         """Generate content using the initialized LLM provider.
@@ -155,10 +155,13 @@ class LLMs:
             else:
                 print(f"Warning: Parameter '{key}' not supported by {self.provider.__class__.__name__}")
     
-    @staticmethod
-    def get_available_providers() -> Dict[str, List[str]]:
+    @classmethod
+    def get_available_providers(cls) -> Dict[str, List[str]]:
         """Get list of all available providers."""
-        return ProviderFactory.get_available_providers()
+        return {
+            "online": list(cls.ONLINE_PROVIDERS.keys()),
+            "offline": list(cls.OFFLINE_PROVIDERS.keys())
+        }
     
     def __str__(self) -> str:
         return f"LLMs(type='{self.type}', provider={self.provider})"
