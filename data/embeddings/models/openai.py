@@ -1,7 +1,6 @@
 import os
-from typing import Optional, Union, List
-from pydantic.v1 import BaseModel, Field, PrivateAttr
-from embeddings import APIBaseEmbedding
+from typing import List
+from base_model import APIBaseEmbedding
 import openai
 from dotenv import load_dotenv
 load_dotenv()

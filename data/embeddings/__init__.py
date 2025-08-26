@@ -1,5 +1,5 @@
-from embeddings.base import BaseEmbedding, APIBaseEmbedding, EmbeddingConfig
-from embeddings.sentence_transformer import SentenceTransformerEmbedding
-from embeddings.openai import OpenAIEmbedding
-from embeddings.google import GoogleEmbedding
-from embeddings.mistral import MistralEmbedding
+from .embeddings import Embeddings
+
+__all__ = [
+    "Embeddings",
+]

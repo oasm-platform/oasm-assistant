@@ -1,7 +1,6 @@
 import os
-from typing import Optional, Union, List
-from mistralai.client import MistralClient
-from embeddings import APIBaseEmbedding
+from typing import List
+from base_model import APIBaseEmbedding
 
 class MistralEmbedding(APIBaseEmbedding):
     def __init__(
