@@ -1,3 +1,0 @@
-"""
-Global settings & environment variables
-"""
