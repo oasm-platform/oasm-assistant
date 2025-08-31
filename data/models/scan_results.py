@@ -1,3 +1,0 @@
-"""
-Scan result data models
-"""
