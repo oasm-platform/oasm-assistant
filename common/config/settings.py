@@ -18,6 +18,7 @@ class PostgresSettings(BaseSettings):
 class ChromaSettings(BaseSettings):
     host: str = Field("localhost", alias="CHROMA_HOST")
     port: int = Field(8000, alias="CHROMA_PORT")
+    persist_directory: str = Field("./chroma_data", alias="CHROMA_PERSIST_DIRECTORY")
 
 
 class AppSettings(BaseSettings):
