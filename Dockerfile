@@ -1,56 +1,68 @@
-FROM python:3.11-slim
+# Build stage
+FROM python:3.11-slim as builder
 
-# Set working directory
 WORKDIR /app
 
+# Install uv
+RUN pip install uv && \
+    uv pip install --system
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_NO_WARN_SCRIPT_LOCATION=0 \
+    PATH="/root/.cargo/bin:${PATH}"
+
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    wget \
-    nmap \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Nuclei
-RUN wget -q https://github.com/projectdiscovery/nuclei/releases/latest/download/nuclei_3.1.0_linux_amd64.zip \
-    && unzip nuclei_3.1.0_linux_amd64.zip \
-    && mv nuclei /usr/local/bin/ \
-    && rm nuclei_3.1.0_linux_amd64.zip
-
-# Install Subfinder
-RUN wget -q https://github.com/projectdiscovery/subfinder/releases/latest/download/subfinder_2.6.3_linux_amd64.zip \
-    && unzip subfinder_2.6.3_linux_amd64.zip \
-    && mv subfinder /usr/local/bin/ \
-    && rm subfinder_2.6.3_linux_amd64.zip
-
-# Install httpx
-RUN wget -q https://github.com/projectdiscovery/httpx/releases/latest/download/httpx_1.3.7_linux_amd64.zip \
-    && unzip httpx_1.3.7_linux_amd64.zip \
-    && mv httpx /usr/local/bin/ \
-    && rm httpx_1.3.7_linux_amd64.zip
-
-# Copy requirements and install Python dependencies
+# Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Python dependencies using uv
+RUN uv pip install --no-cache -r requirements.txt --target /deps
+
+# Runtime stage
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install --no-cache-dir uv && \
+    uv pip install --system
+
+# Create a non-root user
+RUN adduser --disabled-password --gecos "" appuser && \
+    chown -R appuser:appuser /app
+
+# Copy Python dependencies from builder
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
 
 # Copy application code
-COPY . .
+COPY --chown=appuser:appuser . .
 
-# Create necessary directories
-RUN mkdir -p data/nuclei_templates data/documents logs
+# Switch to non-root user
+USER appuser
 
-# Clone nuclei templates
-RUN git clone https://github.com/projectdiscovery/nuclei-templates.git data/nuclei_templates
+# Environment variables
+ENV PYTHONPATH=/app \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_HOST=0.0.0.0 \
+    APP_PORT=8000 \
+    UV_NO_WARN_SCRIPT_LOCATION=0
 
-# Set permissions
-RUN chmod +x /usr/local/bin/nuclei /usr/local/bin/subfinder /usr/local/bin/httpx
+# Expose the port the app runs on
+EXPOSE $APP_PORT
 
-# Expose port
-EXPOSE 8000
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Run application
-CMD ["python", "main.py"]
+# Command to run the application
+CMD ["uvicorn", "interfaces.api.main:app", "--reload", "--host", "${APP_HOST}", "--port", "${APP_PORT}"]
