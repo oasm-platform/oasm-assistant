@@ -1,3 +1,0 @@
-"""
-Parse tool outputs
-"""

@@ -1,3 +1,0 @@
-"""
-Abstract tool interface
-"""
