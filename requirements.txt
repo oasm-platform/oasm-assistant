@@ -29,3 +29,6 @@ chromadb
 # Document Processing
 pypdf
 python-docx
+
+# LangGraph for agent workflow
+langgraph
