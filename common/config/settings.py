@@ -11,7 +11,7 @@ class PostgresSettings(BaseSettings):
 
     @property
     def url(self) -> str:
-        """Tạo connection URL cho SQLAlchemy hoặc psycopg2"""
+        """Create connection URL"""
         return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
 
 
