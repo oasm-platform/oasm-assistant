@@ -1,5 +1,5 @@
 from .postgres_database import PostgresDatabase
-from common.config.settings import settings
+from common.config import settings
 
 pg = PostgresDatabase(settings.postgres.url)
 

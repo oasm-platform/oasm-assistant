@@ -7,7 +7,7 @@ python-dotenv
 
 # Database
 asyncpg
-sqlmodel
+sqlalchemy
 alembic
 psycopg2-binary
 
