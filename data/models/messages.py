@@ -7,11 +7,11 @@ from .base import BaseEntity
 class Message(BaseEntity):
     __tablename__ = "messages"
 
-    sessionId = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"))
+    session_id = Column("sessionId", UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"))
 
-    senderType = Column(String(10), nullable=False)
-    content = Column(Text, nullable=False)
-    metadata = Column(JSON)
+    sender_type = Column("senderType", String(10), nullable=False)
+    content = Column("content", Text, nullable=False)
+    metadata = Column("metadata", JSON)
 
     __table_args__ = (
         CheckConstraint("senderType IN ('user', 'AI', 'system')", name="chk_sender_type"),

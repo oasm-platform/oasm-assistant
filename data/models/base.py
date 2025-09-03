@@ -9,10 +9,11 @@ class BaseEntity(Base):
     __abstract__ = True
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    createdAt = Column(TIMESTAMP(timezone=True), 
+    created_at = Column("createdAt", TIMESTAMP(timezone=True), 
         nullable=False, 
         server_default=func.now())
-    updatedAt = Column(
+    updated_at = Column(
+        "updatedAt",
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
