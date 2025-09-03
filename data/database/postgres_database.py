@@ -1,10 +1,10 @@
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from contextlib import contextmanager
 
-from sqlalchemy import create_engine, select, text
-from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 
 class PostgresDatabase:
@@ -34,20 +34,26 @@ class PostgresDatabase:
             retries: Number of retry attempts
             retry_delay: Delay between retries in seconds
         """
-        self.engine = create_engine(
-            url,
-            echo=echo,
-            pool_size=pool_size,
-            max_overflow=max_overflow,
-            pool_timeout=pool_timeout,
-            pool_recycle=pool_recycle,
-        )
         
-        # Create session factory instead of single session
-        self.SessionFactory = sessionmaker(bind=self.engine)
-        
-        self.retries = retries
-        self.retry_delay = retry_delay
+        try:
+            self.engine = create_engine(
+                url,
+                echo=echo,
+                pool_size=pool_size,
+                max_overflow=max_overflow,
+                pool_timeout=pool_timeout,
+                pool_recycle=pool_recycle,
+            )
+            
+            # Create session factory
+            self.SessionFactory = sessionmaker(bind=self.engine)
+            
+            self.retries = retries
+            self.retry_delay = retry_delay
+            
+        except Exception as e:
+            print(f"Failed to initialize database connection: {e}")
+            raise
 
     @contextmanager
     def get_session(self):
@@ -58,21 +64,23 @@ class PostgresDatabase:
             session.commit()
         except Exception as e:
             session.rollback()
-            raise e
+            raise
         finally:
             session.close()
 
     def _run_with_retry(self, func, *args, **kwargs):
         """Execute function with retry logic for operational errors"""
         last_exception = None
+        
         for attempt in range(1, self.retries + 1):
             try:
                 return func(*args, **kwargs)
-            except OperationalError as e:
+            except (OperationalError, SQLAlchemyError) as e:
                 last_exception = e
                 if attempt < self.retries:
-                    time.sleep(self.retry_delay)
+                    time.sleep(self.retry_delay * attempt)  # Exponential backoff
                 else:
+                    print(f"Failed to execute function after {self.retries} attempts: {last_exception}")
                     raise last_exception
 
     def select_all(
@@ -89,15 +97,25 @@ class PostgresDatabase:
             
         Returns:
             List of dictionaries representing rows
+            
+        Raises:
+            SQLAlchemyError: If query execution fails
         """
         def _exec():
             with self.get_session() as session:
                 result = session.execute(text(raw_sql), params or {})
-                # Convert to list of dictionaries
-                columns = result.keys()
-                return [dict(zip(columns, row)) for row in result.fetchall()]
+                # Convert to list of dictionaries with better column handling
+                if result.returns_rows:
+                    columns = result.keys()
+                    rows = result.fetchall()
+                    return [dict(zip(columns, row)) for row in rows]
+                return []
         
-        return self._run_with_retry(_exec)
+        try:
+            return self._run_with_retry(_exec)
+        except Exception as e:
+            print(f"Failed to execute select_all: {e}")
+            raise
 
     def select_one(
         self, 
@@ -113,17 +131,24 @@ class PostgresDatabase:
             
         Returns:
             Dictionary representing the row, or None if not found
+            
+        Raises:
+            SQLAlchemyError: If query execution fails
         """
         def _exec():
             with self.get_session() as session:
                 result = session.execute(text(raw_sql), params or {})
                 row = result.fetchone()
-                if row:
+                if row and result.returns_rows:
                     columns = result.keys()
                     return dict(zip(columns, row))
                 return None
         
-        return self._run_with_retry(_exec)
+        try:
+            return self._run_with_retry(_exec)
+        except Exception as e:
+            print(f"Failed to execute select_one: {e}")
+            raise
 
     def select_scalar(
         self, 
@@ -139,13 +164,20 @@ class PostgresDatabase:
             
         Returns:
             Single scalar value
+            
+        Raises:
+            SQLAlchemyError: If query execution fails
         """
         def _exec():
             with self.get_session() as session:
                 result = session.execute(text(raw_sql), params or {})
                 return result.scalar()
         
-        return self._run_with_retry(_exec)
+        try:
+            return self._run_with_retry(_exec)
+        except Exception as e:
+            print(f"Failed to execute select_scalar: {e}")
+            raise
 
     def execute_commit(
         self, 
@@ -161,13 +193,21 @@ class PostgresDatabase:
             
         Returns:
             Number of affected rows
+            
+        Raises:
+            SQLAlchemyError: If query execution fails
         """
         def _exec():
             with self.get_session() as session:
                 result = session.execute(text(sql), params or {})
-                return result.rowcount
+                affected_rows = result.rowcount
+                return affected_rows
         
-        return self._run_with_retry(_exec)
+        try:
+            return self._run_with_retry(_exec)
+        except Exception as e:
+            print(f"Failed to execute execute_commit: {e}")
+            raise
 
     def execute_many(
         self, 
@@ -183,20 +223,26 @@ class PostgresDatabase:
             
         Returns:
             Total number of affected rows
+            
+        Raises:
+            SQLAlchemyError: If query execution fails
         """
         def _exec():
-            total_affected = 0
             with self.get_session() as session:
-                for params in params_list:
-                    result = session.execute(text(sql), params)
-                    total_affected += result.rowcount
-            return total_affected
+                # Use executemany for better performance
+                result = session.execute(text(sql), params_list)
+                affected_rows = result.rowcount
+                return affected_rows
         
-        return self._run_with_retry(_exec)
+        try:
+            return self._run_with_retry(_exec)
+        except Exception as e:
+            print(f"Failed to execute execute_many: {e}")
+            raise
 
     def execute_transaction(
         self, 
-        queries_and_params: List[tuple]
+        queries_and_params: List[Tuple[str, Optional[Dict[str, Any]]]]
     ) -> bool:
         """
         Execute multiple queries in a single transaction
@@ -209,22 +255,77 @@ class PostgresDatabase:
         """
         def _exec():
             with self.get_session() as session:
+                total_affected = 0
                 for query, params in queries_and_params:
-                    session.execute(text(query), params or {})
+                    result = session.execute(text(query), params or {})
+                    total_affected += result.rowcount
+                
                 return True
         
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            return False
+            print(f"Failed to execute execute_transaction: {e}")
+            raise
 
-    def test_connection(self) -> bool:
-        """Test database connection"""
+    def execute_raw(
+        self,
+        sql: str,
+        params: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """
+        Execute any raw SQL and return the result object
+        
+        Args:
+            sql: Raw SQL query string
+            params: Query parameters dictionary
+            
+        Returns:
+            Raw result object from SQLAlchemy
+            
+        Raises:
+            SQLAlchemyError: If query execution fails
+        """
+        def _exec():
+            with self.get_session() as session:
+                return session.execute(text(sql), params or {})
+        
+        try:
+            return self._run_with_retry(_exec)
+        except Exception as e:
+            print(f"Failed to execute execute_raw: {e}")
+            raise
+
+    async def health_check(self) -> bool:
+        """
+        Check database health
+        
+        Returns:
+            True if database is healthy, False otherwise
+        """
         try:
             result = self.select_scalar("SELECT 1")
-            return result == 1
+            is_healthy = result == 1
+            return is_healthy
         except Exception as e:
+            print(f"Failed to execute health_check: {e}")
             return False
+
+    def get_connection_info(self) -> Dict[str, Any]:
+        """
+        Get information about current connection pool
+        
+        Returns:
+            Dictionary with connection pool statistics
+        """
+        pool = self.engine.pool
+        return {
+            "pool_size": pool.size(),
+            "checked_in": pool.checkedin(),
+            "checked_out": pool.checkedout(),
+            "overflow": pool.overflow(),
+            "invalid": pool.invalid(),
+        }
 
     def close(self):
         """Close all connections and dispose engine"""
