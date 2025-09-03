@@ -138,28 +138,31 @@ class ChromaDatabase:
             raise
     
     def add_documents(self, 
-                     collection_name: str,
-                     documents: List[str],
-                     ids: Optional[List[str]] = None,
-                     metadatas: Optional[List[Dict[str, Any]]] = None,
-                     embeddings: Optional[List[List[float]]] = None) -> None:
+                 collection_name: str,
+                 documents: List[str],
+                 ids: Optional[List[str]] = None,
+                 metadatas: Optional[List[Dict[str, Any]]] = None,
+                 embeddings: Optional[List[List[float]]] = None) -> None:
         """
-        Add documents to a collection
-        
-        Args:
-            collection_name: Name of the collection
-            documents: List of document texts
-            ids: Optional list of document IDs
-            metadatas: Optional list of metadata dictionaries
-            embeddings: Optional list of embeddings
+        Add documents to a collection with improved validation
         """
         try:
             collection = self.get_collection(collection_name)
-            
+        
             # Generate IDs if not provided
             if ids is None:
                 ids = [str(uuid.uuid4()) for _ in range(len(documents))]
-            
+        
+            # Validate lengths
+            if len(ids) != len(documents):
+                raise ValueError("Length of ids must match length of documents")
+        
+            if metadatas and len(metadatas) != len(documents):
+                raise ValueError("Length of metadatas must match length of documents")
+        
+            if embeddings and len(embeddings) != len(documents):
+                raise ValueError("Length of embeddings must match length of documents")
+        
             # Add documents to collection
             collection.add(
                 documents=documents,
@@ -296,6 +299,15 @@ class ChromaDatabase:
     
     def close(self) -> None:
         """Close the database connection"""
-        # For HTTP client, there's no explicit close method
-        # For persistent client, data is automatically persisted
-        print("ChromaDB connection closed")
+        self.collections.clear()
+        self.client = None
+
+    async def health_check(self) -> bool:
+        """Check the health of the database"""
+        try:
+            # Test connection by listing collections
+            self.client.list_collections()
+            return True
+        except Exception as e:
+            print(f"Health check failed: {e}")
+            return False
