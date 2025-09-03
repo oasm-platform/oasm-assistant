@@ -1,0 +1,20 @@
+from sqlalchemy import UUID, ForeignKey, String, Column, Text, JSON, CheckConstraint
+
+from sqlalchemy.orm import relationship
+from .base import BaseEntity
+
+
+class Message(BaseEntity):
+    __tablename__ = "messages"
+
+    sessionId = Column(UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"))
+
+    senderType = Column(String(10), nullable=False)
+    content = Column(Text, nullable=False)
+    metadata = Column(JSON)
+
+    __table_args__ = (
+        CheckConstraint("senderType IN ('user', 'AI', 'system')", name="chk_sender_type"),
+    )
+
+    session = relationship("ChatSession", back_populates="messages")
