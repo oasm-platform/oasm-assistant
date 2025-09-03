@@ -6,9 +6,8 @@ from .base import BaseEntity
 
 class ChatSession(BaseEntity):
     __tablename__ = "chat_sessions"
-
-    user_id = Column("userId", UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
     title = Column("title", String(255))
+    workspace_member_id = Column("workspaceMemberId", UUID(as_uuid=True), ForeignKey("workspace_members.id", ondelete="CASCADE"))
 
-    user = relationship("User", back_populates="chat_sessions")
+    workspace_member = relationship("WorkspaceMembers", back_populates="chat_sessions")
     messages = relationship("Message", back_populates="session", cascade="all, delete")
