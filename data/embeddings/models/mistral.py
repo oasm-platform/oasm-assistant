@@ -1,6 +1,6 @@
 import os
 from typing import List
-from base_model import APIBaseEmbedding
+from .base_model import APIBaseEmbedding
 
 class MistralEmbedding(APIBaseEmbedding):
     def __init__(

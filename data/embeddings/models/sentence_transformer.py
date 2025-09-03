@@ -1,4 +1,4 @@
-from base_model import BaseEmbedding, EmbeddingConfig
+from .base_model import BaseEmbedding, EmbeddingConfig
 from sentence_transformers import SentenceTransformer
 
 class SentenceTransformerEmbedding(BaseEmbedding):
