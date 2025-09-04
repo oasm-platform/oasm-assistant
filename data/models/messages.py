@@ -7,7 +7,7 @@ from .base import BaseEntity
 class Message(BaseEntity):
     __tablename__ = "messages"
 
-    session_id = Column("sessionId", UUID(as_uuid=True), ForeignKey("chat_sessions.id", ondelete="CASCADE"))
+    conversation_id = Column("conversationId", UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"))
 
     sender_type = Column("senderType", String(10), nullable=False)
     content = Column("content", Text, nullable=False)
@@ -17,4 +17,4 @@ class Message(BaseEntity):
         CheckConstraint("senderType IN ('user', 'AI', 'system')", name="chk_sender_type"),
     )
 
-    session = relationship("ChatSession", back_populates="messages")
+    conversation = relationship("Conversation", back_populates="messages")

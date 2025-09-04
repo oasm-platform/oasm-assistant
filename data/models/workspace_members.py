@@ -13,4 +13,4 @@ class WorkspaceMembers(BaseEntity):
     # Relationships
     workspace = relationship("Workspace", back_populates="workspace_members")
     user = relationship("User", back_populates="workspace_members")
-    chat_sessions = relationship("ChatSession", back_populates="workspace_member", cascade="all, delete")
+    conversations = relationship("Conversation", back_populates="workspace_member", cascade="all, delete")
