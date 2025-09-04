@@ -49,8 +49,8 @@ class ChromaDatabase:
                         anonymized_telemetry=False
                     )
                 )
-        
             self.is_initialized = True
+
         
         except Exception as e:
             logger.error(f"Error initializing ChromaDB client: {e}")
