@@ -1,12 +1,13 @@
 import sys
 import asyncio
-import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+from interfaces.api.schemas import *
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent.parent
@@ -16,7 +17,7 @@ from data.database import pg, chroma
 from interfaces.api.routes import router
 from common.exceptions import CustomException, http_exception_handler
 
-logger = logging.getLogger(__name__)
+from common.logger import logger
 
 
 @asynccontextmanager

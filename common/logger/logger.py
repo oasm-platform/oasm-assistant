@@ -20,3 +20,5 @@ def setup_logging():
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("watchfiles").setLevel(logging.ERROR)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+    return logging.getLogger()
