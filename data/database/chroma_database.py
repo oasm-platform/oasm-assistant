@@ -7,8 +7,7 @@ from typing import List, Dict, Any, Optional, Union
 import uuid
 from chromadb.api.models.Collection import Collection
 
-import logging
-logger = logging.getLogger(__name__)
+from common.logger import logger
 
 class ChromaDatabase:
     """Class to handle ChromaDB operations for OASM Assistant"""
