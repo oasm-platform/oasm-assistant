@@ -3,7 +3,7 @@ from common.config import settings
 from .chroma_database import ChromaDatabase
 
 pg = PostgresDatabase(settings.postgres.url)
-chroma = ChromaDatabase(host=settings.chroma.host, port=settings.chroma.port, persist_directory=settings.chroma.persist_directory)
+chroma = ChromaDatabase(host=settings.chroma.host, port=settings.chroma.port)
 
 __doc__ = "Postgres database connection"
 

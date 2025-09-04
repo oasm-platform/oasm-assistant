@@ -7,6 +7,8 @@ from typing import List, Dict, Any, Optional, Union
 import uuid
 from chromadb.api.models.Collection import Collection
 
+import logging
+logger = logging.getLogger(__name__)
 
 class ChromaDatabase:
     """Class to handle ChromaDB operations for OASM Assistant"""
@@ -48,9 +50,12 @@ class ChromaDatabase:
                         anonymized_telemetry=False
                     )
                 )
-            print(f"Connected to ChromaDB at {self.host}:{self.port}")
+        
+            self.is_initialized = True
+        
         except Exception as e:
-            print(f"Error initializing ChromaDB client: {e}")
+            logger.error(f"Error initializing ChromaDB client: {e}")
+            self.is_initialized = False
             raise
     
     def create_collection(self, name: str, 
@@ -83,7 +88,7 @@ class ChromaDatabase:
             self.collections[name] = collection
             return collection
         except Exception as e:
-            print(f"Error creating collection '{name}': {e}")
+            logger.error(f"Error creating collection '{name}': {e}")
             raise
     
     def get_collection(self, name: str) -> Collection:
@@ -104,7 +109,7 @@ class ChromaDatabase:
             self.collections[name] = collection
             return collection
         except Exception as e:
-            print(f"Error getting collection '{name}': {e}")
+            logger.error(f"Error getting collection '{name}': {e}")
             raise
     
     def delete_collection(self, name: str) -> None:
@@ -118,9 +123,9 @@ class ChromaDatabase:
             self.client.delete_collection(name=name)
             if name in self.collections:
                 del self.collections[name]
-            print(f"Collection '{name}' deleted successfully")
+            logger.info(f"Collection '{name}' deleted successfully")
         except Exception as e:
-            print(f"Error deleting collection '{name}': {e}")
+            logger.error(f"Error deleting collection '{name}': {e}")
             raise
     
     def list_collections(self) -> List[str]:
@@ -134,7 +139,7 @@ class ChromaDatabase:
             collections = self.client.list_collections()
             return [collection.name for collection in collections]
         except Exception as e:
-            print(f"Error listing collections: {e}")
+            logger.error(f"Error listing collections: {e}")
             raise
     
     def add_documents(self, 
@@ -171,7 +176,7 @@ class ChromaDatabase:
                 embeddings=embeddings
             )
         except Exception as e:
-            print(f"Error adding documents to collection '{collection_name}': {e}")
+            logger.error(f"Error adding documents to collection '{collection_name}': {e}")
             raise
     
     def query_collection(self, 
@@ -210,7 +215,7 @@ class ChromaDatabase:
             
             return results
         except Exception as e:
-            print(f"Error querying collection '{collection_name}': {e}")
+            logger.error(f"Error querying collection '{collection_name}': {e}")
             raise
     
     def update_documents(self,
@@ -240,7 +245,7 @@ class ChromaDatabase:
                 embeddings=embeddings
             )
         except Exception as e:
-            print(f"Error updating documents in collection '{collection_name}': {e}")
+            logger.error(f"Error updating documents in collection '{collection_name}': {e}")
             raise
     
     def delete_documents(self,
@@ -267,7 +272,7 @@ class ChromaDatabase:
                 where_document=where_document
             )
         except Exception as e:
-            print(f"Error deleting documents from collection '{collection_name}': {e}")
+            logger.error(f"Error deleting documents from collection '{collection_name}': {e}")
             raise
     
     def get_document_count(self, collection_name: str) -> int:
@@ -284,7 +289,7 @@ class ChromaDatabase:
             collection = self.get_collection(collection_name)
             return collection.count()
         except Exception as e:
-            print(f"Error getting document count for collection '{collection_name}': {e}")
+            logger.error(f"Error getting document count for collection '{collection_name}': {e}")
             raise
     
     def reset_database(self) -> None:
@@ -292,9 +297,9 @@ class ChromaDatabase:
         try:
             self.client.reset()
             self.collections.clear()
-            print("ChromaDB has been reset")
+            logger.info("ChromaDB has been reset")
         except Exception as e:
-            print(f"Error resetting database: {e}")
+            logger.error(f"Error resetting database: {e}")
             raise
     
     def close(self) -> None:
@@ -303,11 +308,29 @@ class ChromaDatabase:
         self.client = None
 
     async def health_check(self) -> bool:
-        """Check the health of the database"""
+        """
+        Check the health of the database with detailed logging
+        """
+        logger.info("Starting ChromaDB health check...")
+        
+        # Check if client is initialized
+        if not self.is_initialized or self.client is None:
+            logger.error("ChromaDB client is not initialized")
+            return False
+        
         try:
-            # Test connection by listing collections
             self.client.list_collections()
+            try:
+                self.client.heartbeat()
+            except AttributeError:
+                logger.info("ChromaDB heartbeat method not available (normal for some versions)")
+            except Exception as e:
+                logger.warning(f"ChromaDB heartbeat failed: {e}")
+            
             return True
+            
         except Exception as e:
-            print(f"Health check failed: {e}")
+            logger.error(f"ChromaDB health check failed: {e}")
+            logger.error(f"Client type: {type(self.client)}")
+            logger.error(f"Host: {self.host}, Port: {self.port}, Persist dir: {self.persist_directory}")
             return False
