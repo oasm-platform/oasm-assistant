@@ -6,8 +6,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
-import logging
-logger = logging.getLogger(__name__)
+from common.logger import logger
 
 class PostgresDatabase:
     """PostgreSQL database connection manager with raw SQL support"""
