@@ -7,14 +7,12 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from interfaces.api.schemas import *
-
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
 from data.database import pg, chroma
-from interfaces.api.routes import router
+from .routes import router
 from common.exceptions import CustomException, http_exception_handler
 
 from common.logger import logger

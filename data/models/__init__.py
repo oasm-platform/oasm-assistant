@@ -1,7 +1,7 @@
-from .chat_session import ChatSession
 from .messages import Message
 from .users import User
 from .workspace import Workspace
 from .workspace_members import WorkspaceMembers
+from .conversations import Conversation
 
-__all__ = ["ChatSession", "Message", "User", "Workspace", "WorkspaceMembers"]
+__all__ = ["Message", "User", "Workspace", "WorkspaceMembers", "Conversation"]
