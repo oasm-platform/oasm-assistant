@@ -14,6 +14,7 @@ sys.path.insert(0, str(project_root))
 
 from data.database import pg, chroma
 from interfaces.api.routes import router
+from common.exceptions import CustomException, http_exception_handler
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(router, prefix="/api/v1")
+    app.add_exception_handler(CustomException, http_exception_handler)
     return app
 
 
