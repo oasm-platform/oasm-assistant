@@ -6,6 +6,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
+import logging
+logger = logging.getLogger(__name__)
 
 class PostgresDatabase:
     """PostgreSQL database connection manager with raw SQL support"""
@@ -52,7 +54,7 @@ class PostgresDatabase:
             self.retry_delay = retry_delay
             
         except Exception as e:
-            print(f"Failed to initialize database connection: {e}")
+            logger.error(f"Failed to initialize database connection: {e}")
             raise
 
     @contextmanager
@@ -80,7 +82,7 @@ class PostgresDatabase:
                 if attempt < self.retries:
                     time.sleep(self.retry_delay * attempt)  # Exponential backoff
                 else:
-                    print(f"Failed to execute function after {self.retries} attempts: {last_exception}")
+                    logger.error(f"Failed to execute function after {self.retries} attempts: {last_exception}")
                     raise last_exception
 
     def select_all(
@@ -114,7 +116,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute select_all: {e}")
+            logger.error(f"Failed to execute select_all: {e}")
             raise
 
     def select_one(
@@ -147,7 +149,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute select_one: {e}")
+            logger.error(f"Failed to execute select_one: {e}")
             raise
 
     def select_scalar(
@@ -176,7 +178,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute select_scalar: {e}")
+            logger.error(f"Failed to execute select_scalar: {e}")
             raise
 
     def execute_commit(
@@ -206,7 +208,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute execute_commit: {e}")
+            logger.error(f"Failed to execute execute_commit: {e}")
             raise
 
     def execute_many(
@@ -237,7 +239,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute execute_many: {e}")
+            logger.error(f"Failed to execute execute_many: {e}")
             raise
 
     def execute_transaction(
@@ -265,7 +267,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute execute_transaction: {e}")
+            logger.error(f"Failed to execute execute_transaction: {e}")
             raise
 
     def execute_raw(
@@ -293,7 +295,7 @@ class PostgresDatabase:
         try:
             return self._run_with_retry(_exec)
         except Exception as e:
-            print(f"Failed to execute execute_raw: {e}")
+            logger.error(f"Failed to execute execute_raw: {e}")
             raise
 
     async def health_check(self) -> bool:
@@ -308,7 +310,7 @@ class PostgresDatabase:
             is_healthy = result == 1
             return is_healthy
         except Exception as e:
-            print(f"Failed to execute health_check: {e}")
+            logger.error(f"Failed to execute health_check: {e}")
             return False
 
     def get_connection_info(self) -> Dict[str, Any]:

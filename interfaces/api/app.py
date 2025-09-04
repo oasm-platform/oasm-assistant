@@ -1,59 +1,91 @@
 import sys
+import asyncio
+import logging
 from pathlib import Path
+from contextlib import asynccontextmanager
+
 import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from data.database import pg, chroma
-
-
 from interfaces.api.routes import router
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    print("Starting up application...")
+    logger.info("Starting up application...")
+    
     try:
-        health_status_pg = await pg.health_check()
-        if not health_status_pg:
+        # Check PostgreSQL connection
+        logger.info("Checking PostgreSQL connection...")
+        if asyncio.iscoroutinefunction(pg.health_check):
+            pg_status = await pg.health_check()
+        else:
+            pg_status = pg.health_check()
+            
+        if not pg_status:
             raise Exception("PostgreSQL health check failed")
-        health_status_chroma = await chroma.health_check()
-        if not health_status_chroma:
+        logger.info("PostgreSQL connection: OK")
+        
+        # Check ChromaDB connection
+        logger.info("Checking ChromaDB connection...")
+        if asyncio.iscoroutinefunction(chroma.health_check):
+            chroma_status = await chroma.health_check()
+        else:
+            chroma_status = chroma.health_check()
+            
+        if not chroma_status:
             raise Exception("ChromaDB health check failed")
-    except Exception as e:  
-        print(f"Error during startup: {e}")
+        logger.info("ChromaDB connection: OK")
+        
+        logger.info("Application startup completed successfully")
+        
+    except Exception as e:
+        logger.error(f"Error during startup: {e}")
         raise
     
     yield
     
-    print("Shutting down application...")
+    # Shutdown
+    logger.info("Shutting down application...")
     try:
-        print("Closing database connections...")
-        await pg.close()
-        await chroma.close()
-        print("Database connections closed")
+        if hasattr(pg, 'close'):
+            if asyncio.iscoroutinefunction(pg.close):
+                await pg.close()
+            else:
+                pg.close()
+                
+        if hasattr(chroma, 'close'):
+            if asyncio.iscoroutinefunction(chroma.close):
+                await chroma.close()
+            else:
+                chroma.close()
+                
+        logger.info("Application shutdown completed")
     except Exception as e:
-        print(f"Error during shutdown: {e}")
+        logger.error(f"Error during shutdown: {e}")
 
 
-def get_application() -> FastAPI:
-
-    # Create FastAPI application
-    application = FastAPI(
+def create_app() -> FastAPI:
+    """Create FastAPI application."""
+    app = FastAPI(
         title="OASM Assistant",
-        description="An AI-powered cybersecurity assistant that leverages advanced agent architectures for threat monitoring, attack prevention, and web security protection.",
+        description="An AI-powered cybersecurity assistant",
         version="1.0.0",
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
     )
 
-    # Add CORS middleware
-    application.add_middleware(
+    app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=True,
@@ -61,12 +93,19 @@ def get_application() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routers
-    application.include_router(router, prefix="/api/v1")
+    app.include_router(router, prefix="/api/v1")
+    return app
 
-    return application
 
-app = get_application()
+# Create application instance
+app = create_app()
+
+
 if __name__ == '__main__':
-    import uvicorn
-    uvicorn.run("interfaces.api.app:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run(
+        "interfaces.api.app:app",
+        host="0.0.0.0",
+        port=8080,
+        reload=True,
+        log_level="info"
+    )
