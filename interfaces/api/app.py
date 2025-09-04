@@ -80,7 +80,7 @@ def create_app() -> FastAPI:
     """Create FastAPI application."""
     app = FastAPI(
         title="OASM Assistant",
-        description="An AI-powered cybersecurity assistant",
+        description="An AI-powered cybersecurity assistant that leverages advanced agent architectures for threat monitoring, attack prevention, and web security protection.",
         version="1.0.0",
         lifespan=lifespan,
         docs_url="/docs",
