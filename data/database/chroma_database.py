@@ -49,8 +49,7 @@ class ChromaDatabase:
                         anonymized_telemetry=False
                     )
                 )
-        
-            self.is_initialized = True
+        self.is_initialized = True
         
         except Exception as e:
             logger.error(f"Error initializing ChromaDB client: {e}")
@@ -138,6 +137,7 @@ class ChromaDatabase:
             collections = self.client.list_collections()
             return [collection.name for collection in collections]
         except Exception as e:
+
             logger.error(f"Error listing collections: {e}")
             raise
     
@@ -333,3 +333,4 @@ class ChromaDatabase:
             logger.error(f"Client type: {type(self.client)}")
             logger.error(f"Host: {self.host}, Port: {self.port}, Persist dir: {self.persist_directory}")
             return False
+
