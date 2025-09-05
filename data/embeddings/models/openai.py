@@ -1,7 +1,7 @@
 import os
 from typing import List
 from .base_model import APIBaseEmbedding
-from openai import OpenAI 
+from llama_index.embeddings.openai import OpenAIEmbedding as LlamaOpenAIEmbedding
 
 class OpenAIEmbedding(APIBaseEmbedding):
     def __init__(
@@ -26,23 +26,21 @@ class OpenAIEmbedding(APIBaseEmbedding):
             raise ValueError("The OpenAI API key must not be 'None'.")
 
         try:
-            self.client = OpenAI(
-                base_url=self.baseUrl, api_key=self.apiKey, organization=self.orgId
+            self.client = LlamaOpenAIEmbedding(
+                api_key=self.apiKey,
+                model=self.name,
+                organization=self.orgId,
+                base_url=self.baseUrl,
             )
         except Exception as e:
             raise ValueError(
-                f"OpenAI API client failed to initialize. Error: {e}"
+                f"LlamaIndex OpenAIEmbedding client failed to initialize. Error: {e}"
             ) from e
-
 
     def encode(self, docs: List[str]) -> List[List[float]]:
         try:
-            resp = self.client.embeddings.create(
-                input=docs,
-                model=self.name,
-                dimensions=self.dimensions,
-            )
-            return [d.embedding for d in resp.data]
+            embeddings = self.client.get_text_embedding(docs)
+            return embeddings
         except Exception as e:
             raise ValueError(f"Failed to get embeddings. Error details: {e}") from e
 
