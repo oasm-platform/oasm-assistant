@@ -1,20 +1,17 @@
-"""
-Enhanced LLM Manager for OASM Assistant with LangChain integration
-Fixed version with compatibility handling
-"""
-from typing import List, Dict, Any
-from datetime import datetime
+from typing import List
+
 from langchain_core.language_models import BaseLanguageModel
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.llms import Ollama
-from langchain_core.messages import HumanMessage
-from common.config.settings import settings
+from langchain_community.chat_models import ChatOllama
 
+from common.config import settings
+
+from common.logger import logger
 
 class LLMManager:
-    """Enhanced LLM manager with LangChain integration for OASM Assistant"""
+    """LLM Manager with LangChain integration"""
 
     def __init__(self):
         self.providers = {}
@@ -42,16 +39,16 @@ class LLMManager:
             self.providers["ollama"] = self._create_ollama_provider
 
             if not self.providers:
-                print("No LLM providers available. Check API keys configuration.")
+                logger.warning("No LLM providers available. Check API keys configuration.")
 
         except Exception as e:
-            print(e)
+            logger.error(f"Error initializing LLM providers: {e}")
             raise
 
     def _create_openai_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
         """Create OpenAI LangChain provider"""
         return ChatOpenAI(
-            api_key=settings.OPENAI_API_KEY,
+            api_key=getattr(settings, 'OPENAI_API_KEY', ''),
             model=model or getattr(settings, 'LLM_MODEL', 'gpt-4'),
             temperature=kwargs.get("temperature", getattr(settings, 'LLM_TEMPERATURE', 0.1)),
             max_tokens=kwargs.get("max_tokens", getattr(settings, 'MAX_TOKENS', 4000)),
@@ -62,13 +59,13 @@ class LLMManager:
     def _create_anthropic_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
         """Create Anthropic LangChain provider with compatibility handling"""
         params = {
-            "api_key": settings.ANTHROPIC_API_KEY,
+            "api_key": getattr(settings, 'ANTHROPIC_API_KEY', ''),
             "model": model or "claude-3-sonnet-20240229",
             "temperature": kwargs.get("temperature", getattr(settings, 'LLM_TEMPERATURE', 0.1)),
         }
 
         max_tokens = kwargs.get("max_tokens", getattr(settings, 'MAX_TOKENS', 4000))
-        # Một số version Anthropic dùng "max_tokens", một số dùng "max_tokens_to_sample"
+        # Handle version differences in Anthropic API
         try:
             return ChatAnthropic(
                 **params,
@@ -87,7 +84,7 @@ class LLMManager:
     def _create_google_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
         """Create Google LangChain provider with compatibility handling"""
         params = {
-            "google_api_key": settings.GOOGLE_API_KEY,
+            "google_api_key": getattr(settings, 'GOOGLE_API_KEY', ''),
             "model": model or "gemini-pro",
             "temperature": kwargs.get("temperature", getattr(settings, 'LLM_TEMPERATURE', 0.1)),
         }
@@ -99,7 +96,7 @@ class LLMManager:
                 max_output_tokens=max_tokens
             )
         except TypeError:
-            # fallback nếu version khác
+            # Fallback for different versions
             return ChatGoogleGenerativeAI(
                 **params,
                 max_tokens=max_tokens
@@ -113,14 +110,14 @@ class LLMManager:
             "base_url": kwargs.get("base_url", "http://localhost:11434"),
         }
 
-        # Một số version Ollama không hỗ trợ timeout
+        # Handle version differences in Ollama API
         if "timeout" in kwargs:
             try:
-                return Ollama(**params, timeout=kwargs["timeout"])
+                return ChatOllama(**params, timeout=kwargs["timeout"])
             except TypeError:
-                return Ollama(**params)
+                return ChatOllama(**params)
         else:
-            return Ollama(**params)
+            return ChatOllama(**params)
 
     def get_llm(self, provider: str = None, model: str = None, **kwargs) -> BaseLanguageModel:
         """Get an LLM instance"""
@@ -145,36 +142,3 @@ class LLMManager:
             available = list(self.providers.keys())
             error_msg = f"Provider '{provider}' not available. Available: {available}"
             raise ValueError(error_msg)
-
-    def test_provider(self, provider: str, model: str = None) -> Dict[str, Any]:
-        """Test a provider with a simple query"""
-        try:
-            llm = self.get_llm(provider, model)
-
-            test_message = [HumanMessage(content="Hello, please respond with 'Test successful'")]
-            start_time = datetime.now()
-
-            response = llm.invoke(test_message)
-            end_time = datetime.now()
-
-            return {
-                "success": True,
-                "provider": provider,
-                "model": model,
-                "response": response.content if hasattr(response, 'content') else str(response),
-                "response_time": (end_time - start_time).total_seconds(),
-                "timestamp": datetime.now().isoformat()
-            }
-
-        except Exception as e:
-            return {
-                "success": False,
-                "provider": provider,
-                "model": model,
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
-
-
-# Global LLM manager instance
-llm_manager = LLMManager()
