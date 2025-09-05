@@ -1,202 +1,362 @@
+from __future__ import annotations
+
 """
 Text chunking strategies
 """
+"""
+Overview :
+- This module provides sentence/paragraph-based greedy chunking with token
+  limits and token-overlap to preserve context across chunks.
+- It is tokenizer-agnostic: if `tiktoken` is available, it uses `cl100k_base`;
+  otherwise it falls back to a whitespace tokenizer (approximation).
+- Bullet-style lines (e.g., '-', '*', '•') are treated as standalone sentences.
 
-from __future__ import annotations
+Design:
+- Tokenizers:
+    * BaseTokenizer (interface)
+    * TiktokenTokenizer (preferred if available)
+    * WhitespaceTokenizer (fallback)
+- Data models:
+    * Chunk: holds text, token count, and sentence index range
+    * SentenceChunkerConfig: configuration (max_tokens, overlap, patterns)
+- Orchestrator:
+    * SentenceChunker: high-level API (`chunk(text) -> List[Chunk]`)
+"""
+
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
-
-# ===== Optional tokenizer (OpenAI) =====
-_TIKTOKEN = None
-try:
-    import tiktoken  # type: ignore
-    _TIKTOKEN = tiktoken.get_encoding("cl100k_base")
-except Exception:
-    _TIKTOKEN = None
+from typing import List, Optional, Sequence, Protocol
 
 
-def _encode_tokens(text: str) -> List[int]:
-    if _TIKTOKEN is not None:
-        return _TIKTOKEN.encode(text)
-    # Fallback: xấp xỉ bằng split theo khoảng trắng
-    # (mỗi "từ" xem như 1 token xấp xỉ)
-    return text.split()
+
+class BaseTokenizer(Protocol):
+    """Minimal tokenizer interface."""
+
+    def encode(self, text: str) -> List[int]:
+        ...
+
+    def count(self, text: str) -> int:
+        ...
 
 
-def _count_tokens(text: str) -> int:
-    return len(_encode_tokens(text))
+class WhitespaceTokenizer:
+    """
+    Approximate tokenizer using whitespace splitting.
+    Useful as a fallback when `tiktoken` is not installed.
+    """
+
+    def encode(self, text: str) -> List[int]:
+        # Represent each whitespace-separated token with a dummy integer.
+        # Only length matters for our use-case.
+        return list(range(len(text.split())))  # cheap & deterministic
+
+    def count(self, text: str) -> int:
+        return len(text.split())
+
+
+class TiktokenTokenizer:
+    """
+    `tiktoken`-backed tokenizer. If `tiktoken` is not available, creation should
+    fall back to `WhitespaceTokenizer` in the chunker constructor.
+    """
+
+    def __init__(self, encoding_name: str = "cl100k_base") -> None:
+        import tiktoken  # type: ignore
+        self._enc = tiktoken.get_encoding(encoding_name)
+
+    def encode(self, text: str) -> List[int]:
+        return self._enc.encode(text)
+
+    def count(self, text: str) -> int:
+        return len(self._enc.encode(text))
+
+
 
 
 def _split_paragraphs(text: str) -> List[str]:
-    # Tách theo 1 dòng trống trở lên
+    """
+    Split text into paragraphs using one-or-more blank lines as separators.
+    """
     return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
 
-# Tách câu đơn giản: kết thúc bằng . ! ? + khoảng trắng + chữ/ số đầu câu.
-# Có xử lý bullet đứng đầu dòng như 1 "câu".
-_SENT_SPLIT = re.compile(r"(?<=[\.\!\?])\s+(?=[A-Z0-9])", re.MULTILINE)
-_BULLET_LINE = re.compile(r"(?m)^\s*[-•\*]\s+")
-
-
-def _split_sentences_keep_bullets(paragraph: str) -> List[str]:
-    lines = paragraph.split("\n")
-    buffer = []
-    acc: List[str] = []
-
-    def flush_buffer():
-        if buffer:
-            acc.append(" ".join(buffer).strip())
-            buffer.clear()
-
-    for ln in lines:
-        if not ln.strip():
-            flush_buffer()
-            continue
-
-        # Bullet line: tách thành 1 câu riêng
-        if _BULLET_LINE.match(ln):
-            flush_buffer()
-            acc.append(_BULLET_LINE.sub("", ln).strip())  # bỏ ký hiệu đầu dòng
-        else:
-            buffer.append(ln.strip())
-
-    flush_buffer()
-
-    # Bây giờ acc là các block đã gộp theo dòng; tiếp tục tách câu trong từng block
-    out: List[str] = []
-    for block in acc:
-        parts = _SENT_SPLIT.split(block.strip())
-        out.extend([p.strip() for p in parts if p.strip()])
-
-    return out
+# ----------------------------- Data Models -----------------------------
 
 
 @dataclass
 class Chunk:
+    """
+    A contiguous chunk of text with token count and sentence index range.
+
+    Attributes:
+        text: The concatenated text of the chunk.
+        n_tokens: The token count of `text` under the configured tokenizer.
+        start_index: Inclusive start sentence index (over the flattened sentence list).
+        end_index: Inclusive end sentence index (over the flattened sentence list).
+    """
     text: str
     n_tokens: int
-    start_index: int  # index câu bắt đầu (flattened)
-    end_index: int    # index câu kết thúc (inclusive)
+    start_index: int
+    end_index: int
+
+
+@dataclass(frozen=True)
+class SentenceChunkerConfig:
+    """
+    Configuration for sentence-based greedy chunking.
+
+    Attributes:
+        max_tokens: Hard cap on tokens per chunk.
+        overlap_tokens: Max tokens to carry over from the tail of the previous
+                        chunk into the next one (to preserve context).
+        sentence_split_regex: Regex to split sentences inside a paragraph.
+            Default heuristic: split on [.?!] + whitespace + [A-Z0-9].
+        bullet_line_regex: Regex to detect bullet-style lines that should be
+            treated as standalone sentences.
+        tiktoken_encoding: Optional name of tiktoken encoding to use.
+    """
+    max_tokens: int = 500
+    overlap_tokens: int = 60
+    sentence_split_regex: str = r"(?<=[\.\!\?])\s+(?=[A-Z0-9])"
+    bullet_line_regex: str = r"(?m)^\s*[-•\*]\s+"
+    tiktoken_encoding: Optional[str] = "cl100k_base"
+
+    def __post_init__(self):
+        if self.max_tokens <= 0:
+            raise ValueError("max_tokens must be > 0")
+        if self.overlap_tokens < 0:
+            raise ValueError("overlap_tokens must be >= 0")
+
+
+# ----------------------------- Chunker -----------------------------
 
 
 class SentenceChunker:
     """
-    Chunk theo câu với greedy packing:
-      - Gom câu vào chunk tới khi chạm max_tokens.
-      - Nếu 1 câu quá dài > max_tokens: cắt nhỏ theo từ.
-      - Dùng overlap theo tokens: giữ lại phần đuôi của chunk trước (theo câu)
-        có tổng token <= overlap_tokens và prepend cho chunk sau.
+    Sentence-based greedy chunker with token overlap.
+
+    Algorithm (high-level):
+      1) Split text into paragraphs (blank-line separated).
+      2) For each paragraph:
+           - Treat bullet lines as standalone sentences.
+           - Merge non-bullet lines and split them into sentences using a
+             lightweight regex (English-centric, adjustable via config).
+      3) Greedily pack sentences into chunks until `max_tokens` is reached.
+      4) If an individual sentence exceeds `max_tokens`, split it by words into
+         sub-sentences, each <= `max_tokens` tokens.
+      5) Apply token-overlap (`overlap_tokens`) by carrying the tail of the
+         previous chunk into the next chunk.
+
+    Notes:
+      - The tokenizer is pluggable; if `tiktoken` is available it will be used,
+        otherwise the fallback whitespace tokenizer is applied.
+      - Sentence indices (`start_index`, `end_index`) refer to the flattened
+        sentence list before any sub-splitting of long sentences.
     """
 
-    def __init__(self,
-                 max_tokens: int = 500,
-                 overlap_tokens: int = 60):
-        assert max_tokens > 0 and overlap_tokens >= 0
-        self.max_tokens = max_tokens
-        self.overlap_tokens = overlap_tokens
+    def __init__(
+        self,
+        config: Optional[SentenceChunkerConfig] = None,
+        tokenizer: Optional[BaseTokenizer] = None,
+    ) -> None:
+        self.config = config or SentenceChunkerConfig()
+
+        # Prefer tiktoken if available; otherwise fallback to whitespace.
+        if tokenizer is not None:
+            self.tok = tokenizer
+        else:
+            self.tok = self._make_default_tokenizer()
+
+        # Pre-compile patterns for speed.
+        self._sent_split_re = re.compile(self.config.sentence_split_regex, re.MULTILINE)
+        self._bullet_line_re = re.compile(self.config.bullet_line_regex, re.MULTILINE)
+
+
+    def chunk(self, text: str) -> List[Chunk]:
+        """
+        Chunk input text into `Chunk` objects based on sentence boundaries,
+        token limits, and configured overlap.
+
+        Args:
+            text: Cleaned text (ideally already preprocessed).
+
+        Returns:
+            List[Chunk]: ordered chunks covering the entire input text.
+        """
+        text = (text or "").strip()
+        if not text:
+            return []
+
+        # Flattened sentence list across all paragraphs.
+        sentences = self._sentences_from_text(text)
+        if not sentences:
+            return []
+
+        chunks: List[Chunk] = []
+        buf: List[str] = []           # sentence buffer for the current chunk
+        buf_tok: int = 0              # token count of current buffer
+        buf_start_idx: int = 0        # where the current chunk started in `sentences`
+        i: int = 0                    # sentence index (over flattened list)
+
+        while i < len(sentences):
+            s = sentences[i]
+            s_tok = self.tok.count(s)
+
+            # Case A: single sentence longer than the budget → split by words
+            if s_tok > self.config.max_tokens:
+                long_pieces = self._split_long_sentence_by_words(s)
+                for j, piece in enumerate(long_pieces):
+                    p_tok = self.tok.count(piece)
+
+                    # Try to append to current chunk if it fits, otherwise flush first
+                    if (buf and buf_tok + p_tok <= self.config.max_tokens) or (not buf and p_tok <= self.config.max_tokens):
+                        if not buf:
+                            buf_start_idx = i  # chunk starts at original sentence i
+                        buf.append(piece)
+                        buf_tok += p_tok
+                    else:
+                        # Flush current chunk
+                        if buf:
+                            chunks.append(
+                                Chunk(" ".join(buf), buf_tok, buf_start_idx, i)
+                            )
+                            # Build overlap tail and start a new buffer
+                            buf = self._build_overlap_tail(buf)
+                            buf_tok = sum(self.tok.count(x) for x in buf)
+                            buf_start_idx = i  # next chunk still corresponds to sentence i
+
+                        # Start with current piece
+                        buf.append(piece)
+                        buf_tok += p_tok
+
+                i += 1
+                continue
+
+            # Case B: normal sentence
+            if buf and (buf_tok + s_tok) <= self.config.max_tokens:
+                # Append to current chunk
+                buf.append(s)
+                buf_tok += s_tok
+                i += 1
+            elif not buf:
+                # Start a new chunk with this sentence
+                buf_start_idx = i
+                buf.append(s)
+                buf_tok += s_tok
+                i += 1
+            else:
+                # Current chunk is full → flush and create overlap
+                chunks.append(Chunk(" ".join(buf), buf_tok, buf_start_idx, i - 1))
+                buf = self._build_overlap_tail(buf)
+                buf_tok = sum(self.tok.count(x) for x in buf)
+                buf_start_idx = i  # next chunk starts at current sentence
+
+        # Flush the last buffer
+        if buf:
+            chunks.append(Chunk(" ".join(buf), buf_tok, buf_start_idx, len(sentences) - 1))
+
+        return chunks
+
+    # ----------------------------- Internals -----------------------------
+
+    def _make_default_tokenizer(self) -> BaseTokenizer:
+        """Try to build a tiktoken tokenizer; fallback to whitespace on failure."""
+        if self.config.tiktoken_encoding:
+            try:
+                return TiktokenTokenizer(self.config.tiktoken_encoding)
+            except Exception:
+                pass
+        return WhitespaceTokenizer()
+
+    def _sentences_from_text(self, text: str) -> List[str]:
+        """
+        Convert raw text into a flat list of sentences, preserving bullets
+        as separate sentences and splitting non-bullet blocks with a regex rule.
+        """
+        paras = _split_paragraphs(text)
+        sentences: List[str] = []
+        for p in paras:
+            sentences.extend(self._split_sentences_keep_bullets(p))
+        return sentences
+
+    def _split_sentences_keep_bullets(self, paragraph: str) -> List[str]:
+        """
+        Within a paragraph:
+          - Treat bullet-style lines as standalone sentences (drop bullet marker).
+          - Merge consecutive non-bullet lines into blocks, then sentence-split.
+        """
+        lines = paragraph.split("\n")
+        buffer: List[str] = []   # current non-bullet block lines
+        blocks: List[str] = []   # accumulated bullet or merged blocks
+
+        def flush_buffer():
+            if buffer:
+                blocks.append(" ".join(buffer).strip())
+                buffer.clear()
+
+        for ln in lines:
+            if not ln.strip():
+                flush_buffer()
+                continue
+
+            if self._bullet_line_re.match(ln):
+                # Bullet → standalone block
+                flush_buffer()
+                blocks.append(self._bullet_line_re.sub("", ln).strip())
+            else:
+                buffer.append(ln.strip())
+
+        flush_buffer()
+
+        # Now split each block into sentences with the configured regex rule.
+        out: List[str] = []
+        for block in blocks:
+            parts = self._sent_split_re.split(block.strip())
+            out.extend([p.strip() for p in parts if p.strip()])
+        return out
 
     def _split_long_sentence_by_words(self, s: str) -> List[str]:
-        """Cắt 1 câu quá dài bằng cách chia theo từ để mỗi mảnh <= max_tokens."""
+        """
+        Split an overlong sentence by words so that each piece fits max_tokens.
+
+        Strategy:
+          - Greedily add words to a piece until adding the next word would exceed
+            `max_tokens`, then start a new piece.
+        """
         words = s.split()
         pieces: List[str] = []
         buf: List[str] = []
+
         for w in words:
             candidate = (" ".join(buf + [w])).strip()
-            if _count_tokens(candidate) <= self.max_tokens or not buf:
+            if not buf or self.tok.count(candidate) <= self.config.max_tokens:
                 buf.append(w)
             else:
                 pieces.append(" ".join(buf))
                 buf = [w]
+
         if buf:
             pieces.append(" ".join(buf))
         return pieces
 
-    def _build_overlap_tail(self, sentences: List[str]) -> List[str]:
-        """Lấy đuôi các câu sao cho tổng tokens <= overlap_tokens."""
+    def _build_overlap_tail(self, sentences: Sequence[str]) -> List[str]:
+        """
+        Build a tail of sentences whose total tokens <= overlap_tokens.
+
+        The chosen tail is appended to the *beginning* of the next chunk to
+        preserve context between adjacent chunks.
+        """
+        if self.config.overlap_tokens == 0:
+            return []
+
         tail: List[str] = []
         total = 0
         for s in reversed(sentences):
-            t = _count_tokens(s)
-            if total + t <= self.overlap_tokens:
+            t = self.tok.count(s)
+            if total + t <= self.config.overlap_tokens:
                 tail.append(s)
                 total += t
             else:
                 break
         tail.reverse()
         return tail
-
-    def chunk(self, text: str) -> List[Chunk]:
-        if not text.strip():
-            return []
-
-        # 1) Tách paragraph -> sentence list (flatten)
-        paragraphs = _split_paragraphs(text)
-        sentences: List[str] = []
-        for p in paragraphs:
-            sentences.extend(_split_sentences_keep_bullets(p))
-
-        chunks: List[Chunk] = []
-        if not sentences:
-            return chunks
-
-        buf: List[str] = []
-        buf_tok = 0
-        buf_start_idx = 0  # index câu trong list sentences khi chunk bắt đầu
-        i = 0
-
-        while i < len(sentences):
-            s = sentences[i]
-            s_tok = _count_tokens(s)
-
-            if s_tok > self.max_tokens:
-                # cắt câu quá dài thành nhiều mảnh
-                long_pieces = self._split_long_sentence_by_words(s)
-                for j, piece in enumerate(long_pieces):
-                    p_tok = _count_tokens(piece)
-                    if buf_tok + p_tok <= self.max_tokens and (buf or j == 0):
-                        # nhét vào chunk hiện tại
-                        if not buf:
-                            buf_start_idx = i  # start tại câu i (mặc dù là mảnh)
-                        buf.append(piece)
-                        buf_tok += p_tok
-                    else:
-                        # flush chunk cũ
-                        if buf:
-                            chunks.append(Chunk(" ".join(buf), buf_tok, buf_start_idx, i))
-                            # overlap
-                            overlap_tail = self._build_overlap_tail(buf)
-                            buf = overlap_tail[:]
-                            buf_tok = sum(_count_tokens(x) for x in buf)
-                            buf_start_idx = i  # vẫn là câu i
-
-                        # bắt đầu chunk mới với piece
-                        buf.append(piece)
-                        buf_tok += p_tok
-                i += 1
-                continue
-
-            # Câu thường
-            if buf_tok + s_tok <= self.max_tokens and buf:
-                buf.append(s)
-                buf_tok += s_tok
-                i += 1
-            elif not buf:
-                # Buffer trống: khởi tạo với s
-                buf_start_idx = i
-                buf.append(s)
-                buf_tok += s_tok
-                i += 1
-            else:
-                # đầy: flush chunk, tạo overlap
-                chunks.append(Chunk(" ".join(buf), buf_tok, buf_start_idx, i - 1))
-                overlap_tail = self._build_overlap_tail(buf)
-                buf = overlap_tail[:]
-                buf_tok = sum(_count_tokens(x) for x in buf)
-                buf_start_idx = i  # chunk mới bắt đầu tại câu hiện tại
-
-        # flush phần cuối
-        if buf:
-            chunks.append(Chunk(" ".join(buf), buf_tok, buf_start_idx, len(sentences) - 1))
-
-        return chunks
