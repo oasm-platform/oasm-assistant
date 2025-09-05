@@ -1,10 +1,7 @@
 import os
 from typing import List
 from .base_model import APIBaseEmbedding
-from openai import OpenAI  # dùng OpenAI client mới
-from dotenv import load_dotenv
-
-load_dotenv()
+from openai import OpenAI 
 
 class OpenAIEmbedding(APIBaseEmbedding):
     def __init__(
@@ -37,7 +34,7 @@ class OpenAIEmbedding(APIBaseEmbedding):
                 f"OpenAI API client failed to initialize. Error: {e}"
             ) from e
 
-    # ---- public API ----
+
     def encode(self, docs: List[str]) -> List[List[float]]:
         try:
             resp = self.client.embeddings.create(
@@ -49,7 +46,6 @@ class OpenAIEmbedding(APIBaseEmbedding):
         except Exception as e:
             raise ValueError(f"Failed to get embeddings. Error details: {e}") from e
 
-    # ---- helpers ----
     @staticmethod
     def _default_dim(model_name: str) -> int:
         """Map model -> default dim nếu user không chỉ định."""
@@ -57,7 +53,6 @@ class OpenAIEmbedding(APIBaseEmbedding):
             return 3072
         if "small" in model_name:
             return 1536
-        # fallback
         return 1536
 
     @property
