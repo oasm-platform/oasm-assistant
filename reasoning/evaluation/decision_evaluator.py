@@ -1,3 +1,0 @@
-"""
-Evaluate decision quality
-"""

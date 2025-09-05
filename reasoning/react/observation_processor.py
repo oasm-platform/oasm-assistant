@@ -1,3 +1,0 @@
-"""
-Process action observations
-"""

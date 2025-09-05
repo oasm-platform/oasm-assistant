@@ -1,3 +1,0 @@
-"""
-Structured knowledge memory
-"""

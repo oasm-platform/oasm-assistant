@@ -1,3 +1,0 @@
-"""
-Skill & procedure memory
-"""

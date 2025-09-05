@@ -1,3 +1,0 @@
-"""
-Current session memory
-"""

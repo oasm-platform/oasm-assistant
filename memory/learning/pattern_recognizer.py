@@ -1,3 +1,0 @@
-"""
-Pattern recognition & learning
-"""

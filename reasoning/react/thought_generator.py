@@ -1,3 +1,0 @@
-"""
-Generate reasoning thoughts
-"""

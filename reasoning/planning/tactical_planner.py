@@ -1,3 +1,0 @@
-"""
-Tactical execution planning
-"""

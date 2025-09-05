@@ -1,3 +1,0 @@
-"""
-Break down complex goals
-"""

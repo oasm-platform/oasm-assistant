@@ -1,3 +1,0 @@
-"""
-ReAct (Reason+Act) implementation
-"""

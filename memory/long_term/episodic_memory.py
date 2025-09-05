@@ -1,3 +1,0 @@
-"""
-Experience-based memory
-"""

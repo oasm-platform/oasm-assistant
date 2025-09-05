@@ -1,3 +1,0 @@
-"""
-Context-aware retrieval
-"""

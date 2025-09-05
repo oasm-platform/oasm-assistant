@@ -1,3 +1,0 @@
-"""
-Process user feedback
-"""

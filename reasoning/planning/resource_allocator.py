@@ -1,3 +1,0 @@
-"""
-Allocate resources optimally
-"""

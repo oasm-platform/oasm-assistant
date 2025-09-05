@@ -1,3 +1,0 @@
-"""
-Chain of Thought reasoning
-"""
