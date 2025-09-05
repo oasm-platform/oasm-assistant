@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 overview:
 - Purpose: Efficiently embed large collections of texts in batches with robust retry,
@@ -30,9 +29,6 @@ from common.logger import logger
 from data.embeddings.embeddings import Embeddings 
 
 
-# ------------------------------------------------------------------------------
-# Configuration
-# ------------------------------------------------------------------------------
 @dataclass(frozen=True)
 class BatchEmbedConfig:
     """
@@ -76,9 +72,6 @@ class BatchEmbedConfig:
             raise ValueError("jsonl_mode must be 'w' or 'a'")
 
 
-# ------------------------------------------------------------------------------
-# Utilities
-# ------------------------------------------------------------------------------
 def _yield_batches(items: Sequence[Any], batch_size: int) -> Iterable[Sequence[Any]]:
     """Chia items thành các lô (batches) kích thước batch_size."""
     for i in range(0, len(items), batch_size):
@@ -118,9 +111,7 @@ class JsonlWriter:
             self._fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
 
-# ------------------------------------------------------------------------------
-# Main Orchestrator
-# ------------------------------------------------------------------------------
+
 class BatchEmbedder:
     """
     Pipeline nhúng văn bản theo lô (batch) với retry/backoff & checkpoint JSONL.
@@ -148,7 +139,6 @@ class BatchEmbedder:
         if self.config.reuse_provider:
             self._provider_instance = self._create_provider_instance()
 
-    # ---------------------- Public API ----------------------
 
     def run(self, texts: Sequence[str]) -> Tuple[List[List[float]], int]:
         """
@@ -178,7 +168,6 @@ class BatchEmbedder:
         logger.info("Completed. Total vectors: %d | dim: %s", len(all_vecs), inferred_dim)
         return all_vecs, inferred_dim
 
-    # ---------------------- Internals ----------------------
 
     def _create_provider_instance(self):
         """
@@ -303,32 +292,3 @@ class BatchEmbedder:
         else:
             for v in vecs:
                 writer.write_record({"vector": [float(x) for x in v]})
-
-
-
-# ------------------------------------------------------------------------------
-# Quick usage demo (remove if integrating into your package)
-# ------------------------------------------------------------------------------
-if __name__ == "__main__":
-    # Ví dụ chạy nhanh
-    sample_texts = [f"Document {i}" for i in range(250)]
-
-    cfg = BatchEmbedConfig(
-        provider="openai",
-        batch_size=64,
-        max_retries=5,
-        backoff_base=1.5,
-        backoff_cap=30.0,
-        out_jsonl="embeddings_checkpoint.jsonl",
-        include_text_in_jsonl=False,   # đổi True nếu muốn lưu cả text
-        jsonl_mode="w",
-        provider_kwargs={
-            # ví dụ: "model": "text-embedding-3-small",
-            # "api_key": "...",
-        },
-        reuse_provider=True,
-    )
-
-    embedder = BatchEmbedder(cfg)
-    vectors, dim = embedder.run(sample_texts)
-    logger.info("Total vectors: %d | dim: %d", len(vectors), dim)
