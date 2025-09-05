@@ -31,10 +31,18 @@ OASM Assistant is a sophisticated multi-agent system designed to enhance cyberse
 
 ### 🔍 Security Tool Integration
 
-- **Vulnerability Scanning**: Nuclei template execution and analysis
-- **Network Discovery**: Nmap, Subfinder, and HTTPx integration
-- **Data Aggregation**: Centralized storage in PostgreSQL database
-- **Automated Reporting**: Comprehensive security assessment reports
+- **Nmap Agent**: Network discovery and security auditing
+- **Subfinder Agent**: Subdomain discovery and enumeration
+- **Nuclei Agent**: Vulnerability scanning with customizable templates
+- **Amass Agent**: In-depth attack surface mapping and external asset discovery
+
+### 🔍 Web Search Capabilities
+
+- **Multi-Engine Search**: Support for DuckDuckGo, Google, Bing, Tavily, and SerpApi
+- **Search Coordination**: Intelligent orchestration across multiple search engines
+- **Result Processing**: Cleaning, deduplication, and formatting of search results
+- **Source Validation**: Credibility checking for search result sources
+- **Knowledge Extraction**: Structured information extraction from search results
 
 ### 🗄️ Data Management
 

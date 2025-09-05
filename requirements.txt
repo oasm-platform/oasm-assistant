@@ -42,3 +42,11 @@ python-json-logger
 # Utilities
 aiohttp
 asyncio
+
+# Web Search
+google-api-python-client
+requests
+beautifulsoup4
+
+# Optional - for advanced search
+html2text
