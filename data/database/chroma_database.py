@@ -10,10 +10,23 @@ from chromadb.api.models.Collection import Collection
 from common.logger import logger
 
 class ChromaDatabase:
+    _instance = None
+    _initialized = False
+    
+    def __new__(cls, host: str = "localhost", port: int = 8000, 
+               persist_directory: Optional[str] = None):
+        if cls._instance is None:
+            cls._instance = super(ChromaDatabase, cls).__new__(cls)
+        return cls._instance
+        
     """Class to handle ChromaDB operations for OASM Assistant"""
     
     def __init__(self, host: str = "localhost", port: int = 8000, 
                  persist_directory: Optional[str] = None):
+        if ChromaDatabase._initialized:
+            return
+            
+        ChromaDatabase._initialized = True
         """
         Initialize ChromaDB client
         
