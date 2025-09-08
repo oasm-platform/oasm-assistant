@@ -1,211 +1,154 @@
 """
-Batch processing pipeline for document embeddings.
+Batch processing pipeline for text embedding with quality assessment.
+Processes text through: metadata extraction -> text preprocessing -> chunking -> embedding -> quality assessment.
 
-This module provides a high-level interface for processing documents through
-multiple stages: metadata extraction, text preprocessing, and text chunking.
+This version uses a simple TF-IDF based embedding approach to avoid external dependencies.
 """
 
-import os
+import numpy as np
+from typing import Dict, List, Tuple, Any, Optional
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Iterator, Tuple
-from dataclasses import dataclass
-from common.logger import logger
+from datetime import datetime
+from collections import defaultdict
+import math
 
-
-from .metadata_extractor import MetadataExtractor
+# Import required modules
 from .text_preprocessor import TextPreprocessor
-from .chunk_processor import SentenceChunker, SentenceChunkerConfig
+from .chunk_processor import SentenceChunker
+from .quality_assessor import EmbeddingQualityAssessor
+from .metadata_extractor import MetadataExtractor
 
-
-@dataclass
-class ProcessedChunk:
-    """Container for a processed text chunk with its metadata."""
-    text: str
-    metadata: Dict[str, Any]
-    chunk_id: str
-    document_id: str
-
-class BatchProcessor:
-    """
-    Main class for processing documents through the pipeline.
+class SimpleEmbedding:
+    """A simple TF-IDF based embedding model for demonstration purposes."""
     
-    The processing pipeline consists of:
-    1. Metadata extraction
-    2. Text preprocessing
-    3. Text chunking
+    def __init__(self, dimension: int = 100):
+        self.dimension = dimension
+        self.vocab = {}
+        self.idf = {}
+        self.vocab_size = 0
+        self.doc_count = 0
+        
+    def fit(self, documents: List[str]):
+        """Fit the model on a list of documents."""
+        # Simple word frequency counting
+        doc_freq = defaultdict(int)
+        
+        for doc in documents:
+            words = doc.lower().split()
+            for word in set(words):  # Count document frequency
+                doc_freq[word] += 1
+                
+        # Build vocabulary
+        self.vocab = {word: idx for idx, word in enumerate(sorted(doc_freq.keys()))}
+        self.vocab_size = len(self.vocab)
+        self.doc_count = len(documents)
+        
+        # Calculate IDF (Inverse Document Frequency)
+        for word, count in doc_freq.items():
+            self.idf[word] = math.log((self.doc_count + 1) / (count + 1)) + 1
+            
+    def embed(self, text: str) -> List[float]:
+        """Create an embedding for a single text."""
+        if not self.vocab:
+            # If not fitted, return random embedding
+            return list(np.random.randn(self.dimension))
+            
+        # Simple TF-IDF embedding
+        word_counts = defaultdict(int)
+        words = text.lower().split()
+        for word in words:
+            word_counts[word] += 1
+            
+        # Create sparse TF-IDF vector
+        embedding = [0.0] * self.dimension
+        for word, count in word_counts.items():
+            if word in self.vocab:
+                idx = self.vocab[word] % self.dimension
+                tf = count / len(words)
+                idf = self.idf.get(word, 1.0)
+                embedding[idx] += tf * idf
+                
+        # Normalize
+        norm = math.sqrt(sum(x*x for x in embedding)) or 1.0
+        return [x / norm for x in embedding]
+
+class TextProcessingPipeline:
+    """
+    End-to-end text processing pipeline for generating and evaluating embeddings.
     """
     
-    def __init__(
-        self,
-        max_chunk_tokens: int = 500,
-        chunk_overlap: int = 50,
-        use_tiktoken: bool = True
-    ):
+    def __init__(self, embedding_dim: int = 100):
         """
-        Initialize the document processor.
+        Initialize the pipeline with default components.
         
         Args:
-            max_chunk_tokens: Maximum number of tokens per chunk
-            chunk_overlap: Number of overlapping tokens between chunks
-            use_tiktoken: Whether to use tiktoken for token counting (more accurate)
+            embedding_dim: Dimension of the embedding vectors (default: 100)
         """
-        self.metadata_extractor = MetadataExtractor()
         self.text_preprocessor = TextPreprocessor()
-        
-        # Configure chunker
-        chunker_config = SentenceChunkerConfig(
-            max_tokens=max_chunk_tokens,
-            overlap_tokens=chunk_overlap,
-            tiktoken_encoding="cl100k_base" if use_tiktoken else None
-        )
-        self.chunker = SentenceChunker(config=chunker_config)
+        self.chunker = SentenceChunker()
+        self.embedding_model = SimpleEmbedding(dimension=embedding_dim)
+        self.quality_assessor = EmbeddingQualityAssessor()
+        self.metadata_extractor = MetadataExtractor()
+        self.is_fitted = False
     
-    def process_file(self, file_path: str) -> List[ProcessedChunk]:
+    def process_text(self, text: str, source_info: Dict[str, Any] = None) -> Dict[str, Any]:
         """
-        Process a single file through the pipeline.
+        Process text through the entire pipeline.
         
         Args:
-            file_path: Path to the file to process
+            text: Input text to process
+            source_info: Optional dictionary with source file information
             
         Returns:
-            List of processed chunks with metadata
+            Dictionary containing processed chunks, embeddings, and quality metrics
         """
-        try:
-            # 1. Extract metadata
-            metadata = self.metadata_extractor.extract_metadata(file_path)
-            document_id = metadata.get('file_name', os.path.basename(file_path))
-            
-            # Read file content (assuming text content for now)
-            with open(file_path, 'r', encoding='utf-8') as f:
-                text = f.read()
-            
-            # 2. Preprocess text
-            clean_text = self.text_preprocessor.preprocess(text)
-            
-            # 3. Chunk text
-            chunks = self.chunker.chunk(clean_text)
-            
-            # 4. Create processed chunks with metadata
-            processed_chunks = []
-            for i, chunk in enumerate(chunks):
-                chunk_metadata = metadata.copy()
-                chunk_metadata.update({
-                    'chunk_id': f"{document_id}_chunk_{i}",
-                    'chunk_index': i,
-                    'total_chunks': len(chunks),
-                    'chunk_tokens': chunk.n_tokens
-                })
-                
-                processed_chunks.append(ProcessedChunk(
-                    text=chunk.text,
-                    metadata=chunk_metadata,
-                    chunk_id=chunk_metadata['chunk_id'],
-                    document_id=document_id
-                ))
-            
-            logger.info(f"Processed {file_path}: {len(processed_chunks)} chunks created")
-            return processed_chunks
-            
-        except Exception as e:
-            logger.error(f"Error processing file {file_path}: {str(e)}")
-            raise
-
-    def process_directory(
-        self,
-        input_dir: str,
-        output_dir: Optional[str] = None,
-        file_extensions: List[str] = None
-    ) -> Iterator[Tuple[str, List[ProcessedChunk]]]:
-        """
-        Process all files in a directory.
+        # 1. Generate metadata
+        metadata = self._generate_metadata(text, source_info)
         
-        Args:
-            input_dir: Directory containing files to process
-            output_dir: Optional directory to save processed chunks
-            file_extensions: List of file extensions to process (e.g., ['.pdf', '.txt'])
-            
-        Yields:
-            Tuples of (file_path, list_of_processed_chunks)
-        """
-        if file_extensions is None:
-            file_extensions = ['.pdf', '.txt', '.md']
+        # 2. Preprocess text
+        preprocessed_text = self.text_preprocessor.preprocess(text)
         
-        input_path = Path(input_dir)
-        output_path = Path(output_dir) if output_dir else None
+        # 3. Chunk text
+        chunks = [chunk.text for chunk in self.chunker.chunk(preprocessed_text)]
         
-        # Create output directory if it doesn't exist
-        if output_path and not output_path.exists():
-            output_path.mkdir(parents=True, exist_ok=True)
+        # 4. Fit the embedding model if not already fitted
+        if not self.is_fitted and chunks:
+            self.embedding_model.fit(chunks)
+            self.is_fitted = True
         
-        # Process each file in the directory
-        for ext in file_extensions:
-            for file_path in input_path.glob(f"*{ext}"):
-                try:
-                    chunks = self.process_file(str(file_path))
-                    if output_path:
-                        self._save_chunks(chunks, output_path)
-                    yield str(file_path), chunks
-                except Exception as e:
-                    logger.error(f"Failed to process {file_path}: {str(e)}")
-                    continue
-
-    def _save_chunks(
-        self,
-        chunks: List[ProcessedChunk],
-        output_dir: Path
-    ) -> None:
-        """
-        Save processed chunks to disk.
+        # 5. Generate embeddings
+        embeddings = [self.embedding_model.embed(chunk) for chunk in chunks]
         
-        Args:
-            chunks: List of processed chunks
-            output_dir: Directory to save chunks
-        """
-        for chunk in chunks:
-            output_file = output_dir / f"{chunk.chunk_id}.json"
-            try:
-                import json
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump({
-                        'text': chunk.text,
-                        'metadata': chunk.metadata
-                    }, f, ensure_ascii=False, indent=2)
-            except Exception as e:
-                logger.error(f"Failed to save chunk {chunk.chunk_id}: {str(e)}")
-
-def main():
-    import argparse
+        # 6. Assess quality if we have multiple chunks
+        quality_metrics = {}
+        if len(embeddings) > 1:
+            quality_metrics = self._assess_quality(embeddings)
+        
+        return {
+            "metadata": metadata,
+            "chunks": chunks,
+            "embeddings": embeddings,
+            "quality_metrics": quality_metrics
+        }
     
-    parser = argparse.ArgumentParser(description='Process documents for embeddings.')
-    parser.add_argument('input', help='Input file or directory')
-    parser.add_argument('--output', help='Output directory (optional)')
-    parser.add_argument('--max-tokens', type=int, default=500,
-                       help='Maximum tokens per chunk')
-    parser.add_argument('--overlap', type=int, default=50,
-                       help='Number of overlapping tokens between chunks')
+    def _generate_metadata(self, text: str, source_info: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Generate metadata for the input text."""
+        metadata = {
+            "processing_timestamp": datetime.utcnow().isoformat(),
+            "text_length": len(text),
+            "word_count": len(text.split()),
+            "source": source_info or {}
+        }
+        return metadata
     
-    args = parser.parse_args()
-    
-    # Initialize processor
-    processor = DocumentProcessor(
-        max_chunk_tokens=args.max_tokens,
-        chunk_overlap=args.overlap
-    )
-    
-    # Process input
-    input_path = Path(args.input)
-    if input_path.is_file():
-        chunks = processor.process_file(args.input)
-        if args.output:
-            output_dir = Path(args.output)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            processor._save_chunks(chunks, output_dir)
-        print(f"Processed {len(chunks)} chunks from {args.input}")
-    elif input_path.is_dir():
-        for file_path, chunks in processor.process_directory(
-            args.input, args.output
-        ):
-            print(f"Processed {len(chunks)} chunks from {file_path}")
-    else:
-        print(f"Error: {args.input} is not a valid file or directory")
-
+    def _assess_quality(self, embeddings: List[List[float]]) -> Dict[str, float]:
+        """Assess the quality of generated embeddings."""
+        if not embeddings:
+            return {}
+            
+        np_embeddings = np.array(embeddings)
+        return {
+            "cosine_similarity": self.quality_assessor.compute_cosine_similarity(np_embeddings),
+            "embedding_variance": self.quality_assessor.compute_embedding_variance(np_embeddings),
+            "avg_nearest_neighbor_dist": self.quality_assessor.compute_nearest_neighbor_distance(np_embeddings)
+        }
