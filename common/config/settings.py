@@ -27,6 +27,12 @@ class AppSettings(BaseSettings):
     port: int = Field(8000, alias="APP_PORT")
 
 
+class LlmSettings(BaseSettings):
+    provider: str = Field("", alias="LLM_PROVIDER")
+    api_key: str = Field("", alias="LLM_API_KEY")
+    model_name: str = Field("", alias="LLM_MODEL_NAME")
+
+
 class WebSearchSettings(BaseSettings):
     # Default search engines
     default_search_engines: List[str] = Field(["duckduckgo"], alias="DEFAULT_SEARCH_ENGINES")
@@ -65,6 +71,7 @@ class Settings(BaseSettings):
     chroma: ChromaSettings = ChromaSettings()
     app: AppSettings = AppSettings()
     web_search: WebSearchSettings = WebSearchSettings()
+    llm: LlmSettings = LlmSettings()
 
     class Config:
         env_file = ".env"
