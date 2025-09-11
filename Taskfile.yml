@@ -1,0 +1,17 @@
+version: "3.8"
+
+tasks:
+  install:
+    cmds:
+      - python -m venv .venv
+      - cmd /c ".venv\\Scripts\\activate.bat"
+      - pip install -r requirements.txt
+
+  proto:
+    cmds:
+      - python -m grpc_tools.protoc -I. --proto_path=. --python_out=. --grpc_python_out=. ./app/protos/*.proto
+
+  dev:
+    cmds:
+      - cmd /c ".venv\\Scripts\\activate.bat"
+      - python -m app.main

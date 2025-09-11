@@ -20,7 +20,13 @@ class DomainClassifier:
             "e-commerce", "news", "blog", "social_media", "education",
             "business", "technology", "health", "entertainment", "sports",
             "finance", "government", "nonprofit", "personal", "forum",
-            "documentation", "portfolio", "landing_page", "adult", "unknown"
+            "documentation", "portfolio", "landing_page", "adult",
+            "travel", "food", "gaming", "music", "art", "photography",
+            "fashion", "automotive", "real_estate", "job_portal", "dating",
+            "streaming", "podcast", "wiki", "search_engine", "cloud_service",
+            "api", "marketplace", "cryptocurrency", "banking", "insurance",
+            "legal", "consulting", "marketing", "design", "startup",
+            "agency", "saas", "tools", "utilities", "weather"
         ]
 
     def _extract_domain_info(self, domain: str) -> Dict[str, str]:
@@ -137,22 +143,22 @@ Focus on the most relevant categories with confidence scores between 0.0 and 1.0
                 else:
                     # Fallback parsing
                     return {
-                        "primary_category": "unknown",
-                        "categories": [{"category": "unknown", "confidence": 0.5}],
+                        "primary_category": "",
+                        "categories": [],
                         "reasoning": "Could not parse LLM response"
                     }
             except json.JSONDecodeError:
                 return {
-                    "primary_category": "unknown", 
-                    "categories": [{"category": "unknown", "confidence": 0.5}],
+                    "primary_category": "", 
+                    "categories": [],
                     "reasoning": "Invalid JSON response from LLM"
                 }
                 
         except Exception as e:
             logger.error(f"LLM classification error: {e}")
             return {
-                "primary_category": "unknown",
-                "categories": [{"category": "unknown", "confidence": 0.3}],
+                "primary_category": "",
+                "categories": [],
                 "reasoning": f"Error during LLM classification: {str(e)}"
             }
 
@@ -192,8 +198,7 @@ Focus on the most relevant categories with confidence scores between 0.0 and 1.0
             
             # Get top categories
             labels = [cat for cat, score in sorted_categories if score >= settings.classification_confidence_threshold]
-            if not labels:
-                labels = [sorted_categories[0][0]] if sorted_categories else ["unknown"]
+            # Return empty array if no categories meet threshold
             
             # Calculate overall confidence
             overall_confidence = max(all_scores.values()) if all_scores else 0.5
@@ -214,9 +219,9 @@ Focus on the most relevant categories with confidence scores between 0.0 and 1.0
             logger.error(f"Domain classification error for {domain}: {e}")
             return {
                 "domain": domain,
-                "labels": ["unknown"],
+                "labels": [],
                 "confidence": 0.0,
-                "category_scores": [{"category": "unknown", "score": 0.0}],
+                "category_scores": [],
                 "content_summary": "",
                 "success": False,
                 "error": str(e)

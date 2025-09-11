@@ -42,13 +42,13 @@ class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
                 context.set_details("Domain is required")
                 return app_pb2.DomainClassifyResponse(
-                    label=["unknown"]
+                    label=[]
                 )
             
             result = self.domain_classifier.classify_domain(domain)
             
             # Build response (only using 'label' field from old proto)
-            labels = result.get("labels", ["unknown"])
+            labels = result.get("labels", [])
             
             response = app_pb2.DomainClassifyResponse(
                 label=labels
@@ -61,7 +61,7 @@ class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
             logger.error(f"Domain classification error for {request.domain}: {e}")
             
             return app_pb2.DomainClassifyResponse(
-                label=["unknown"]
+                label=[]
             )
 
 def serve():
