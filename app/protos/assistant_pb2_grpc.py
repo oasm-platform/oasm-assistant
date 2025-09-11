@@ -2,7 +2,7 @@
 """Client and server classes corresponding to protobuf-defined services."""
 import grpc
 
-from app.protos import app_pb2 as app_dot_protos_dot_app__pb2
+from app.protos import assistant_pb2 as app_dot_protos_dot_assistant__pb2
 
 
 class AppServiceStub(object):
@@ -16,13 +16,13 @@ class AppServiceStub(object):
         """
         self.HealthCheck = channel.unary_unary(
                 '/app.AppService/HealthCheck',
-                request_serializer=app_dot_protos_dot_app__pb2.HealthCheckRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_app__pb2.HealthCheckResponse.FromString,
+                request_serializer=app_dot_protos_dot_assistant__pb2.HealthCheckRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.HealthCheckResponse.FromString,
                 )
         self.DomainClassify = channel.unary_unary(
                 '/app.AppService/DomainClassify',
-                request_serializer=app_dot_protos_dot_app__pb2.DomainClassifyRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_app__pb2.DomainClassifyResponse.FromString,
+                request_serializer=app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.FromString,
                 )
 
 
@@ -46,13 +46,13 @@ def add_AppServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'HealthCheck': grpc.unary_unary_rpc_method_handler(
                     servicer.HealthCheck,
-                    request_deserializer=app_dot_protos_dot_app__pb2.HealthCheckRequest.FromString,
-                    response_serializer=app_dot_protos_dot_app__pb2.HealthCheckResponse.SerializeToString,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.HealthCheckRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.HealthCheckResponse.SerializeToString,
             ),
             'DomainClassify': grpc.unary_unary_rpc_method_handler(
                     servicer.DomainClassify,
-                    request_deserializer=app_dot_protos_dot_app__pb2.DomainClassifyRequest.FromString,
-                    response_serializer=app_dot_protos_dot_app__pb2.DomainClassifyResponse.SerializeToString,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -76,8 +76,8 @@ class AppService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/app.AppService/HealthCheck',
-            app_dot_protos_dot_app__pb2.HealthCheckRequest.SerializeToString,
-            app_dot_protos_dot_app__pb2.HealthCheckResponse.FromString,
+            app_dot_protos_dot_assistant__pb2.HealthCheckRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.HealthCheckResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -93,7 +93,7 @@ class AppService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/app.AppService/DomainClassify',
-            app_dot_protos_dot_app__pb2.DomainClassifyRequest.SerializeToString,
-            app_dot_protos_dot_app__pb2.DomainClassifyResponse.FromString,
+            app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

@@ -3,8 +3,8 @@ from concurrent import futures
 import sys
 import traceback
 
-from .protos import app_pb2
-from .protos import app_pb2_grpc
+from .protos import assistant_pb2
+from .protos import assistant_pb2_grpc
 
 from .services.health_service import HealthService
 from .services.domain_classifier import DomainClassifier
@@ -12,7 +12,7 @@ from common.logger import logger
 from common.config import settings
 
 
-class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
+class AppServiceServicer(assistant_pb2_grpc.AppServiceServicer):
     def __init__(self):
         self.health_service = HealthService()
         self.domain_classifier = DomainClassifier()
@@ -23,13 +23,13 @@ class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
         try:
             health_data = self.health_service.check_health()
             
-            response = app_pb2.HealthCheckResponse(
+            response = assistant_pb2.HealthCheckResponse(
                 message=health_data["message"]
             )
             return response
         except Exception as e:
             logger.error(f"Health check error: {e}")     
-            return app_pb2.HealthCheckResponse(
+            return assistant_pb2.HealthCheckResponse(
                 message="Health check failed"
             )
     
@@ -41,7 +41,7 @@ class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
             if not domain:
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
                 context.set_details("Domain is required")
-                return app_pb2.DomainClassifyResponse(
+                return assistant_pb2.DomainClassifyResponse(
                     label=[]
                 )
             
@@ -50,7 +50,7 @@ class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
             # Build response (only using 'label' field from old proto)
             labels = result.get("labels", [])
             
-            response = app_pb2.DomainClassifyResponse(
+            response = assistant_pb2.DomainClassifyResponse(
                 label=labels
             )
             
@@ -60,7 +60,7 @@ class AppServiceServicer(app_pb2_grpc.AppServiceServicer):
         except Exception as e:
             logger.error(f"Domain classification error for {request.domain}: {e}")
             
-            return app_pb2.DomainClassifyResponse(
+            return assistant_pb2.DomainClassifyResponse(
                 label=[]
             )
 
@@ -81,7 +81,7 @@ def serve():
         )
         
         # Add servicer
-        app_pb2_grpc.add_AppServiceServicer_to_server(AppServiceServicer(), server)
+        assistant_pb2_grpc.add_AppServiceServicer_to_server(AppServiceServicer(), server)
         
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"
