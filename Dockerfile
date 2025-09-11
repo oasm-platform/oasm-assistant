@@ -4,8 +4,7 @@ FROM python:3.11-slim as builder
 WORKDIR /app
 
 # Install uv
-RUN pip install uv && \
-    uv pip install --system
+RUN pip install uv
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -36,9 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install --no-cache-dir uv && \
-    uv pip install --system
+# No need to install uv in runtime stage
 
 # Create a non-root user
 RUN adduser --disabled-password --gecos "" appuser && \
@@ -65,4 +62,4 @@ ENV PYTHONPATH=/app \
 EXPOSE $APP_PORT
 
 # Command to run the application
-CMD ["uvicorn", "interfaces.api.main:app", "--reload", "--host", "${APP_HOST}", "--port", "${APP_PORT}"]
+CMD ["python", "-m", "app.main"]

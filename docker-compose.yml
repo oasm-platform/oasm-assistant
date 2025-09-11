@@ -1,6 +1,6 @@
 services:
   chromadb:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.6.3
     container_name: chromadb
     ports:
       - "8000:8000"
@@ -17,6 +17,24 @@ services:
     networks:
       - oasm-network
 
+  postgresql:
+    image: postgres:16-alpine
+    container_name: postgresql
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - oasm-network
+
   backend:
     build:
       context: .
@@ -27,6 +45,8 @@ services:
     env_file:
       - .env
     depends_on:
+      postgresql:
+        condition: service_healthy
       chromadb:
         condition: service_healthy
     restart: unless-stopped
@@ -39,3 +59,4 @@ networks:
 
 volumes:
   chroma_data:
+  postgres_data:
