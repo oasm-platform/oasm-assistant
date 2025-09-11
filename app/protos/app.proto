@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package app;
+
+service AppService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc DomainClassify(DomainClassifyRequest) returns (DomainClassifyResponse);
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string message = 1;
+}
+
+message DomainClassifyRequest {
+  string domain = 1;
+}
+message DomainClassifyResponse {
+  repeated string label = 1;
+}
