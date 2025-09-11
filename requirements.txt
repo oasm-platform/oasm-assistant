@@ -1,6 +1,9 @@
-# Core Framework
-fastapi
-uvicorn[standard]
+# gRPC
+grpcio==1.60.0
+grpcio-tools==1.60.0
+grpcio-status==1.60.0
+googleapis-common-protos==1.62.0
+
 pydantic
 pydantic-settings
 python-dotenv
@@ -47,6 +50,3 @@ asyncio
 google-api-python-client
 requests
 beautifulsoup4
-
-# Optional - for advanced search
-html2text
