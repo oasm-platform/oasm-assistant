@@ -58,7 +58,12 @@ class SimpleEmbedding:
             
         # Simple TF-IDF embedding
         word_counts = defaultdict(int)
+
         words = text.lower().split()
+        if not words:
+            return [0.0] * self.dimension
+        denom = max(1, len(words))
+
         for word in words:
             word_counts[word] += 1
             
@@ -67,7 +72,7 @@ class SimpleEmbedding:
         for word, count in word_counts.items():
             if word in self.vocab:
                 idx = self.vocab[word] % self.dimension
-                tf = count / len(words)
+                tf = count / denom
                 idf = self.idf.get(word, 1.0)
                 embedding[idx] += tf * idf
                 
