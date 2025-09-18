@@ -28,6 +28,7 @@ Design:
 import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Protocol
+from common.logger import logger
 
 
 
@@ -117,7 +118,7 @@ class SentenceChunkerConfig:
             treated as standalone sentences.
         tiktoken_encoding: Optional name of tiktoken encoding to use.
     """
-    max_tokens: int = 500
+    max_tokens: int = 3000
     overlap_tokens: int = 60
     sentence_split_regex: str = r"(?<=[\.\!\?])\s+(?=[A-Z0-9])"
     bullet_line_regex: str = r"(?m)^\s*[-•\*]\s+"
@@ -128,6 +129,8 @@ class SentenceChunkerConfig:
             raise ValueError("max_tokens must be > 0")
         if self.overlap_tokens < 0:
             raise ValueError("overlap_tokens must be >= 0")
+        if self.overlap_tokens >= self.max_tokens:
+            object.__setattr__(self, "overlap_tokens", max(0, self.max_tokens - 1))
 
 
 # ----------------------------- Chunker -----------------------------
@@ -219,6 +222,10 @@ class SentenceChunker:
                     else:
                         # Flush current chunk
                         if buf:
+                            if buf_tok > self.config.max_tokens:
+                                logger.warning(
+                                    f"[Chunker] Warning: created chunk exceeding max_tokens ({buf_tok} > {self.config.max_tokens})"
+                                )
                             chunks.append(
                                 Chunk(" ".join(buf), buf_tok, buf_start_idx, i)
                             )
@@ -326,10 +333,33 @@ class SentenceChunker:
             `max_tokens`, then start a new piece.
         """
         words = s.split()
+        if not words:
+            return [s]
+        
         pieces: List[str] = []
         buf: List[str] = []
 
         for w in words:
+            w_tok = self.tok.count(w)
+            # If a word exceeds max_tokens -> fallback hard split by character
+            if w_tok > self.config.max_tokens:
+                # flush buffer first
+                if buf:
+                    pieces.append(" ".join(buf)); buf = []
+                # hard-split long words
+                chars = list(w)
+                sub = []
+                for ch in chars:
+                    cand = ("".join(sub) + ch)
+                    if self.tok.count(cand) <= self.config.max_tokens or not sub:
+                        sub.append(ch)
+                    else:
+                        pieces.append("".join(sub))
+                        sub = [ch]
+                if sub:
+                    pieces.append("".join(sub))
+                continue
+
             candidate = (" ".join(buf + [w])).strip()
             if not buf or self.tok.count(candidate) <= self.config.max_tokens:
                 buf.append(w)
