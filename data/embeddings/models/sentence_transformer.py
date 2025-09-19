@@ -2,9 +2,10 @@ from .base_model import BaseEmbedding, EmbeddingConfig
 from sentence_transformers import SentenceTransformer
 
 class SentenceTransformerEmbedding(BaseEmbedding):
-    def __init__(self, config: EmbeddingConfig):
+    def __init__(self, config: EmbeddingConfig, settings=None):  
         super().__init__(config.name)
         self.config = config
+        self.settings = settings  
         self.embedding_model = SentenceTransformer(self.config.name, trust_remote_code=True)
 
     def encode(self, text: str):
