@@ -1,23 +1,33 @@
 import os
 from typing import List
 from .base_model import APIBaseEmbedding
+from mistralai.client import MistralClient
+from common.config.settings import Settings
 
 class MistralEmbedding(APIBaseEmbedding):
     def __init__(
             self,
-            name: str = "mistral-embed",
+            settings: Settings = None,
+            name: str = None,
+            dimensions: int = None,
             apiKey: str = None,
         ):
-        super().__init__(name=name, apiKey=apiKey)
-        self.apiKey = apiKey or os.getenv("MISTRAL_KEY")
+        # Use settings if provided, otherwise create new Settings
+        self.settings = settings or Settings()
+        config = self.settings.mistral
+
+        # Override config with explicit parameters if provided
+        self.name = name or config.model_name
+        self.dimensions = dimensions or config.dimensions
+        self.apiKey = apiKey or config.api_key
+
+        super().__init__(name=self.name, apiKey=self.apiKey)
         
         if not self.apiKey:
             raise ValueError("The Mistral API key must not be 'None'.")
         
         try:
-            self.client = MistralClient(
-                api_key=self.apiKey
-            )
+            self.client = MistralClient(api_key=self.apiKey)
         except Exception as e:
             raise ValueError(
                 f"Mistral API client failed to initialize. Error: {e}"
@@ -35,3 +45,7 @@ class MistralEmbedding(APIBaseEmbedding):
             raise ValueError(
                 f"Failed to get embeddings. Error details: {e}"
             ) from e
+
+    @property
+    def dim(self) -> int:
+        return self.dimensions
