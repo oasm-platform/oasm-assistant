@@ -1,6 +1,3 @@
-"""
-Text chunking strategies
-"""
 from __future__ import annotations
 """
 Text chunking strategies
