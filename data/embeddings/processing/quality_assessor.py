@@ -80,19 +80,3 @@ class EmbeddingQualityAssessor:
             "embedding_variance": self.compute_embedding_variance(embeddings),
             "average_nearest_neighbor_distance": self.compute_nearest_neighbor_distance(embeddings),
         }
-
-
-# Example usage
-if __name__ == "__main__":
-    # Example embeddings (replace with actual embeddings)
-    example_embeddings = np.array([
-        [0.1, 0.2, 0.3],
-        [0.2, 0.1, 0.4],
-        [0.3, 0.3, 0.3],
-    ])
-
-    assessor = EmbeddingQualityAssessor()
-    metrics = assessor.assess(example_embeddings)
-    print("Embedding Quality Metrics:")
-    for metric, value in metrics.items():
-        print(f"{metric}: {value:.4f}")
