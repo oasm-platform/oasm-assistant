@@ -1,11 +1,9 @@
 # test_batch_processor.py
-from data.embeddings.processing.batch_processor import TextProcessingPipeline
+from data.embeddings.processing.batch_processor import BatchProcessor
 
 def main():
-    # Example Vietnamese text
-    sample_text = """
-     VDBshave two core functions: vector storage and vector re
-trieval. The vector storage function relies on techniques such as
+    # Sample text
+    text = """VDBs have two core functions: vector storage and vector retrieval. The vector storage function relies on techniques such as
  quantization, compression, and distributed storage mechanisms
  to improve efficiency and scalability. The retrieval function
  of VDBs relies on specialized indexing techniques, including
@@ -83,44 +81,23 @@ formance of existing open-source vector databases. It also
  researchers can deepen their understanding of the field of
  vectordatabases.Figure 1showstheoverallframeworkofthe
  paper,andwealsoconstructaclassificationsystemofstorage
- andsearchtechnologiesforVDBs, asshowninFigure 2
-
-     """
+ andsearchtechnologiesforVDBs, asshowninFigure 2"""
     
-    # Initialize and run the pipeline
-    pipeline = TextProcessingPipeline(embedding_dim=50)
-    result = pipeline.process_text(
-        sample_text,
-        source_info={"source": "test", "language": "vi"}
+    # Initialize BatchProcessor
+    processor = BatchProcessor(embedding_dim=50)
+    
+    # Process single text
+    result = processor.process_single(
+        text=text,
+        source_info={"source": "test"}
     )
     
-    # Print results (FULL)
-    print("=== Results ===")
-    num_chunks = len(result.get("chunks", []))
-    num_embeds = len(result.get("embeddings", []))
-    print(f"Number of chunks: {num_chunks}")
-    print(f"Embedding dimension: {len(result['embeddings'][0]) if num_embeds else 0}")
-
-    # In toàn bộ chunk + text + embedding
-    print("\n=== All Chunks & Embeddings ===")
-    for i, (chunk, emb) in enumerate(zip(result.get("chunks", []), result.get("embeddings", []))):
-        # Lấy text đã xử lý
-        text = getattr(chunk, "text", chunk)  # chunk có thể là str hoặc object
-        print(f"\n--- Chunk #{i} ---")
-        print("Text:")
-        print(text)
-        print("Embedding:")
-        print(emb)
-
-    # Quality metrics (nếu có)
-    if result.get("quality_metrics"):
-        print("\n=== Quality Metrics ===")
-        for k, v in result["quality_metrics"].items():
-            try:
-                print(f"{k}: {v:.4f}")
-            except Exception:
-                print(f"{k}: {v}")
-
+    # Print results
+    print(f"Metadata: {result.metadata}")
+    print(f"Number of chunks: {len(result.chunks)}")
+    print(f"First chunk: {result.chunks[0]}")
+    print(f"First embedding: {result.embeddings[0][:5]}")  # Print first 5 values of the first embedding
+    print(f"Quality metrics: {result.quality_metrics}")
 
 if __name__ == "__main__":
     main()
