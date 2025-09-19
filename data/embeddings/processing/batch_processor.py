@@ -1,162 +1,226 @@
 """
-Batch embedding processing
-"""
-"""
-Batch processing pipeline for text embedding with quality assessment.
-Processes text through: metadata extraction -> text preprocessing -> chunking -> embedding -> quality assessment.
+Batch Embedding Processing Module
 
-This version uses a simple TF-IDF based embedding approach to avoid external dependencies.
+This module provides a pipeline for processing text documents through multiple stages:
+1. Metadata extraction 
+2. Text preprocessing
+3. Text chunking
+4. Embedding generation
+5. Quality assessment
+
+The pipeline uses a simple TF-IDF based embedding approach for demonstration.
 """
 
-import numpy as np
-from typing import Dict, List, Tuple, Any, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Any, Optional
 from pathlib import Path
 from datetime import datetime
-from collections import defaultdict
+import numpy as np
 import math
+from collections import defaultdict
 
-# Import required modules
 from .text_preprocessor import TextPreprocessor
-from .chunk_processor import SentenceChunker
-from .quality_assessor import EmbeddingQualityAssessor
+from .chunk_processor import SentenceChunker, Chunk
+from .quality_assessor import EmbeddingQualityAssessor 
 from .metadata_extractor import MetadataExtractor
 
-class SimpleEmbedding:
-    """A simple TF-IDF based embedding model for demonstration purposes."""
+@dataclass
+class ProcessingResult:
+    """Container for processing pipeline results"""
+    metadata: Dict[str, Any]
+    chunks: List[str]
+    embeddings: List[List[float]]
+    quality_metrics: Dict[str, float]
+
+class TFIDFEmbedding:
+    """TF-IDF based embedding model"""
     
     def __init__(self, dimension: int = 100):
         self.dimension = dimension
-        self.vocab = {}
-        self.idf = {}
+        self.vocab: Dict[str, int] = {}
+        self.idf: Dict[str, float] = {}
         self.vocab_size = 0
         self.doc_count = 0
         
-    def fit(self, documents: List[str]):
-        """Fit the model on a list of documents."""
-        # Simple word frequency counting
-        doc_freq = defaultdict(int)
+    def fit(self, documents: List[Any]) -> None:
+        """
+        Fit model on document corpus
+
+        Args:
+            documents: List of text documents or Chunk objects
+        """
+        texts = [doc.text if isinstance(doc, Chunk) else doc for doc in documents]
         
+        doc_freq = self._count_document_frequencies(texts)
+        self._build_vocabulary(doc_freq)
+        self._calculate_idf(doc_freq)
+
+    def _count_document_frequencies(self, documents: List[str]) -> Dict[str, int]:
+        """Count word frequencies across documents"""
+        doc_freq = defaultdict(int)
         for doc in documents:
-            words = doc.lower().split()
-            for word in set(words):  # Count document frequency
+            words = set(doc.lower().split())  # Using set for unique words
+            for word in words:
                 doc_freq[word] += 1
-                
-        # Build vocabulary
+        return doc_freq
+
+    def _build_vocabulary(self, doc_freq: Dict[str, int]) -> None:
+        """Build vocabulary from document frequencies"""
         self.vocab = {word: idx for idx, word in enumerate(sorted(doc_freq.keys()))}
         self.vocab_size = len(self.vocab)
-        self.doc_count = len(documents)
-        
-        # Calculate IDF (Inverse Document Frequency)
-        for word, count in doc_freq.items():
-            self.idf[word] = math.log((self.doc_count + 1) / (count + 1)) + 1
-            
-    def embed(self, text: str) -> List[float]:
-        """Create an embedding for a single text."""
-        if not self.vocab:
-            # If not fitted, return random embedding
-            return list(np.random.randn(self.dimension))
-            
-        # Simple TF-IDF embedding
-        word_counts = defaultdict(int)
+        self.doc_count = len(doc_freq)
 
+    def _calculate_idf(self, doc_freq: Dict[str, int]) -> None:
+        """Calculate IDF scores"""
+        self.idf = {
+            word: math.log((self.doc_count + 1) / (count + 1)) + 1
+            for word, count in doc_freq.items()
+        }
+
+    def embed(self, text: str) -> List[float]:
+        """
+        Generate embedding for a text
+        
+        Args:
+            text: Input text
+            
+        Returns:
+            Normalized embedding vector
+        """
+        if not self.vocab:
+            return list(np.random.randn(self.dimension))
+
+        # Calculate TF scores
         words = text.lower().split()
         if not words:
             return [0.0] * self.dimension
-        denom = max(1, len(words))
-
-        for word in words:
-            word_counts[word] += 1
             
-        # Create sparse TF-IDF vector
-        embedding = [0.0] * self.dimension
+        word_counts = self._count_term_frequencies(words)
+        
+        # Generate TF-IDF vector
+        embedding = self._create_tfidf_vector(word_counts, len(words))
+        
+        # Normalize
+        return self._normalize_vector(embedding)
+
+    def _count_term_frequencies(self, words: List[str]) -> Dict[str, int]:
+        """Count word frequencies in text"""
+        frequencies = defaultdict(int)
+        for word in words:
+            frequencies[word] += 1
+        return frequencies
+
+    def _create_tfidf_vector(self, word_counts: Dict[str, int], total_words: int) -> List[float]:
+        """Create TF-IDF vector from word counts"""
+        vector = [0.0] * self.dimension
         for word, count in word_counts.items():
             if word in self.vocab:
                 idx = self.vocab[word] % self.dimension
-                tf = count / denom
+                tf = count / max(1, total_words)
                 idf = self.idf.get(word, 1.0)
-                embedding[idx] += tf * idf
-                
-        # Normalize
-        norm = math.sqrt(sum(x*x for x in embedding)) or 1.0
-        return [x / norm for x in embedding]
+                vector[idx] += tf * idf
+        return vector
 
-class TextProcessingPipeline:
-    """
-    End-to-end text processing pipeline for generating and evaluating embeddings.
-    """
+    def _normalize_vector(self, vector: List[float]) -> List[float]:
+        """L2 normalize vector"""
+        norm = math.sqrt(sum(x*x for x in vector)) or 1.0
+        return [x / norm for x in vector]
+
+class BatchProcessor:
+    """Text processing pipeline with batch support"""
     
     def __init__(self, embedding_dim: int = 100):
-        """
-        Initialize the pipeline with default components.
-        
-        Args:
-            embedding_dim: Dimension of the embedding vectors (default: 100)
-        """
+        self.embedding_dim = embedding_dim
+        self.embedding_model = TFIDFEmbedding(dimension=embedding_dim)
         self.text_preprocessor = TextPreprocessor()
         self.chunker = SentenceChunker()
-        self.embedding_model = SimpleEmbedding(dimension=embedding_dim)
-        self.quality_assessor = EmbeddingQualityAssessor()
-        self.metadata_extractor = MetadataExtractor()
+        self.quality_assessor = EmbeddingQualityAssessor()  
         self.is_fitted = False
-    
-    def process_text(self, text: str, source_info: Dict[str, Any] = None) -> Dict[str, Any]:
+
+    def process_batch(
+        self, 
+        texts: List[str],
+        batch_size: int = 32,
+        source_info: Optional[Dict[str, Any]] = None
+    ) -> List[ProcessingResult]:
         """
-        Process text through the entire pipeline.
+        Process multiple texts in batches
         
         Args:
-            text: Input text to process
-            source_info: Optional dictionary with source file information
+            texts: List of input texts
+            batch_size: Number of texts to process at once
+            source_info: Optional metadata about text sources
             
         Returns:
-            Dictionary containing processed chunks, embeddings, and quality metrics
+            List of processing results
         """
-        # 1. Generate metadata
+        results = []
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            batch_results = [self.process_single(text, source_info) for text in batch]
+            results.extend(batch_results)
+        return results
+
+    def process_single(
+        self, 
+        text: str,
+        source_info: Optional[Dict[str, Any]] = None
+    ) -> ProcessingResult:
+        """Process single text through pipeline"""
+        
+        # Extract metadata
         metadata = self._generate_metadata(text, source_info)
         
-        # 2. Preprocess text
-        preprocessed_text = self.text_preprocessor.preprocess(text)
+        # Preprocess text
+        clean_text = self.text_preprocessor.preprocess(text)
         
-        # 3. Chunk text
-        chunks = [chunk.text for chunk in self.chunker.chunk(preprocessed_text)]
+        # Chunk text
+        chunks = self.chunker.chunk(clean_text)
+        if not chunks:
+            chunks = [clean_text]  # Fallback to the entire text if no chunks are created
         
-        # 4. Fit the embedding model if not already fitted
+        # Fit embedding model if needed
         if not self.is_fitted and chunks:
-            self.embedding_model.fit(chunks)
+            self.embedding_model.fit([chunk.text for chunk in chunks])  # Truyền `chunk.text`
             self.is_fitted = True
+            
+        # Generate embeddings for each chunk
+        embeddings = [self.embedding_model.embed(chunk.text) for chunk in chunks]  # Truyền `chunk.text`
         
-        # 5. Generate embeddings
-        embeddings = [self.embedding_model.embed(chunk) for chunk in chunks]
+        # Convert embeddings to numpy array for quality assessment
+        embeddings_array = np.array(embeddings)
         
-        # 6. Assess quality if we have multiple chunks
-        quality_metrics = {}
-        if len(embeddings) > 1:
-            quality_metrics = self._assess_quality(embeddings)
+        # Assess quality
+        quality_metrics = self.quality_assessor.assess(embeddings_array) if len(embeddings) > 1 else {}
         
+        return ProcessingResult(
+            metadata=metadata,
+            chunks=chunks,
+            embeddings=embeddings,
+            quality_metrics=quality_metrics
+        )
+
+    def _generate_metadata(
+        self,
+        text: str,
+        source_info: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Generate metadata for text"""
         return {
-            "metadata": metadata,
-            "chunks": chunks,
-            "embeddings": embeddings,
-            "quality_metrics": quality_metrics
-        }
-    
-    def _generate_metadata(self, text: str, source_info: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Generate metadata for the input text."""
-        metadata = {
             "processing_timestamp": datetime.utcnow().isoformat(),
             "text_length": len(text),
             "word_count": len(text.split()),
             "source": source_info or {}
         }
-        return metadata
-    
+
     def _assess_quality(self, embeddings: List[List[float]]) -> Dict[str, float]:
-        """Assess the quality of generated embeddings."""
+        """Assess embedding quality metrics"""
         if not embeddings:
             return {}
             
-        np_embeddings = np.array(embeddings)
+        embedding_array = np.array(embeddings)
         return {
-            "cosine_similarity": self.quality_assessor.compute_cosine_similarity(np_embeddings),
-            "embedding_variance": self.quality_assessor.compute_embedding_variance(np_embeddings),
-            "avg_nearest_neighbor_dist": self.quality_assessor.compute_nearest_neighbor_distance(np_embeddings)
+            "cosine_similarity": self.quality_assessor.compute_cosine_similarity(embedding_array),
+            "embedding_variance": self.quality_assessor.compute_embedding_variance(embedding_array),
+            "avg_nearest_neighbor_dist": self.quality_assessor.compute_nearest_neighbor_distance(embedding_array)
         }
