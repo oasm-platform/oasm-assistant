@@ -3,7 +3,6 @@ Text preprocessing for embeddings
 """
 from __future__ import annotations
 import re
-from common.logger import logger 
 import unicodedata
 from typing import Dict, List, Optional
 
