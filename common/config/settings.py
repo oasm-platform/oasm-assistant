@@ -1,6 +1,6 @@
 from pydantic import Field
 from pydantic_settings import BaseSettings
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 
 class PostgresSettings(BaseSettings):
@@ -46,6 +46,31 @@ class LlmSettings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"  
+
+
+class GoogleEmbeddingSettings(BaseSettings):
+    project_id: Optional[str] = Field(None, alias="GOOGLE_PROJECT_ID") 
+    location: str = Field("us-central1", alias="GOOGLE_LOCATION")
+    base_url: Optional[str] = Field(None, alias="GOOGLE_BASE_URL")
+    api_key: Optional[str] = Field(None, alias="GOOGLE_API_KEY")
+    model_name: str = Field("textembedding-gecko@003", alias="GOOGLE_MODEL")
+
+    class Config:
+        extra = "ignore"
+
+
+class OpenAIConfig(BaseSettings):
+    api_key: str = Field("", alias="OPENAI_API_KEY")
+    org_id: str = Field("", alias="OPENAI_ORG_ID") 
+    base_url: str = Field("", alias="OPENAI_BASE_URL")
+    model_name: str = Field("text-embedding-3-small", alias="OPENAI_MODEL")
+    dimensions: int = Field(1536, alias="OPENAI_DIMENSIONS")
+    token_limit: int = Field(8192, alias="OPENAI_TOKEN_LIMIT")
+
+class MistralConfig(BaseSettings):
+    api_key: str = Field("", alias="MISTRAL_API_KEY")
+    model_name: str = Field("mistral-embed", alias="MISTRAL_MODEL")
+    dimensions: int = Field(1024, alias="MISTRAL_DIMENSIONS") 
 
 class WebSearchSettings(BaseSettings):
     default_search_engines_str: str = Field("duckduckgo", alias="DEFAULT_SEARCH_ENGINES")
@@ -110,6 +135,9 @@ class Settings(BaseSettings):
     app: AppSettings = AppSettings()
     web_search: WebSearchSettings = WebSearchSettings()
     llm: LlmSettings = LlmSettings()
+    google_embedding: GoogleEmbeddingSettings = GoogleEmbeddingSettings()
+    openai: OpenAIConfig = OpenAIConfig()
+    mistral: MistralConfig = MistralConfig()
     
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
@@ -126,4 +154,5 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
-        extra = "ignore" 
+        extra = "ignore"
+
