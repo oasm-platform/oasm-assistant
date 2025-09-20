@@ -15,8 +15,7 @@ class OpenAIEmbedding(APIBaseEmbedding):
         orgId: str = None,
     ):
         # Use settings if provided, otherwise create new Settings
-        self.settings = settings or Settings()
-        config = self.settings.openai
+        config = settings.openai
 
         # Override config with explicit parameters if provided
         self.name = name or config.model_name
