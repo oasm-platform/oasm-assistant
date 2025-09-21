@@ -1,48 +1,45 @@
-import os
 from typing import List
-from base_model import APIBaseEmbedding
+from .base import APIBaseEmbedding
 import openai
-from dotenv import load_dotenv
-load_dotenv()
+from common.config import EmbeddingSettings
 
 class OpenAIEmbedding(APIBaseEmbedding):
     def __init__(
-            self,
-            name: str = "text-embedding-3-small",
-            dimensions: int = 768,
-            token_limit: int = 8192,
-            baseUrl: str = None,
-            apiKey: str = None,
-            orgId: str = None,
-        ):
-        super().__init__(name=name, baseUrl=baseUrl, apiKey=apiKey)
-        self.dimensions = dimensions
-        self.apiKey = apiKey or os.getenv("OPENAI_API_KEY")
-        self.orgId = orgId or os.getenv("OPENAI_ORG_ID")
-        self.baseUrl = orgId or os.getenv("OPENAI_BASE_URL")
-        
-        if not self.apiKey:
+        self,
+        embedding_settings: EmbeddingSettings,
+    ):
+        self.embedding_settings = embedding_settings
+
+        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
+
+        if not self.embedding_settings.api_key:
             raise ValueError("The OpenAI API key must not be 'None'.")
-        
+
         try:
-            self.client = openai.Client(
-                base_url=self.baseUrl, api_key=self.apiKey, organization=self.orgId 
-            )
+            self.client = openai.OpenAI(api_key=self.embedding_settings.api_key)
         except Exception as e:
             raise ValueError(
-                f"OpenAI API client failed to initialize. Error: {e}"
+                f"OpenAI client failed to initialize. Error: {e}"
             ) from e
 
-    def encode(self, docs: List[str]):
+    def encode(self, docs: List[str]) -> List[List[float]]:
         try:
-            embeds = self.client.embeddings.create(
-                    input=docs,
-                    model=self.name,
-                    dimensions=self.dimensions,
-                )
-            embeddings = [embeds_obj.embedding for embeds_obj in embeds.data]
-            return embeddings
+            response = self.client.embeddings.create(
+                model=self.embedding_settings.model_name,
+                input=docs
+            )
+            return [item.embedding for item in response.data]
         except Exception as e:
-            raise ValueError(
-                f"Failed to get embeddings. Error details: {e}"
-            ) from e
+            raise ValueError(f"Failed to get embeddings. Error details: {e}") from e
+
+    @staticmethod
+    def _default_dim(model_name: str) -> int:
+        if "large" in model_name:
+            return 3072
+        if "small" in model_name:
+            return 1536
+        return 1536
+
+    @property
+    def dim(self) -> int:
+        return self.embedding_settings.dimensions or self._default_dim(self.embedding_settings.model_name)

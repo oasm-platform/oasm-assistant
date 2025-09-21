@@ -1,57 +1,49 @@
-##https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings
-
-
-from base_model import APIBaseEmbedding
-import os
 from typing import List
-from dotenv import load_dotenv
-load_dotenv()
+from .base import APIBaseEmbedding
+from common.config import EmbeddingSettings
+import google.generativeai as genai
+
 
 class GoogleEmbedding(APIBaseEmbedding):
+    """Google embedding model wrapper"""
+    
     def __init__(
         self,
-        name: str = "textembedding-gecko@003",
-        dimensions: int = 768,
-        token_limit: int = 8192,
-        baseUrl: str = None,
-        apiKey: str = None,
-        projectId: str = None,
-        location: str = None,
+        embedding_settings: EmbeddingSettings,
     ):
-        super().__init__(name=name, baseUrl=baseUrl, apiKey=apiKey)
-        self.name = name
+        self.embedding_settings = embedding_settings
+
+        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
+
+        if not self.embedding_settings.api_key:
+            raise ValueError("Google API key must not be None")
 
         try:
-            from google.cloud import aiplatform
-            from vertexai.language_models import TextEmbeddingModel
+            genai.configure(api_key=self.embedding_settings.api_key)
+            self.client = genai
         except ImportError:
             raise ImportError(
-                "To use GoogleEmbedding, please install the Google Cloud and Vertex AI libraries "
-                "You can do this with the following command: "
-                "`pip install google-cloud-aiplatform vertexai-language-models`"
+                "Required packages not installed. Run:\n"
+                "pip install google-generativeai"
             )
-        
-        projectId = projectId or os.getenv("GOOGLE_PROJECT_ID")
-        location = location or os.getenv("GOOGLE_LOCATION", "us-central1")
-        baseUrl = baseUrl or os.getenv("GOOGLE_BASE_URL")
-
-        if projectId is None:
-            raise ValueError("Google Project ID cannot be null.")
-        
-        try:
-            aiplatform.init(
-                project=projectId, location=location, api_endpoint=baseUrl
-            )
-            self.client = TextEmbeddingModel.from_pretrained(self.name)
-        except Exception as err:
-            raise ValueError(
-                f"Failed to initialize Google AI Platform client. Error: {err}"
-            ) from err
-
-    def encode(self, docs: List[str]):
-        try:
-            embeddings = self.client.get_embeddings(docs)
-            return [embedding.values for embedding in embeddings]
         except Exception as e:
-            raise ValueError(f"Google AI Platform API call failed. Error: {e}") from e
-        
+            raise ValueError(f"Failed to initialize Google client: {str(e)}")
+
+    def encode(self, docs: List[str]) -> List[List[float]]:
+        """Generate embeddings for input texts"""
+        try:
+            embeddings = []
+            for doc in docs:
+                result = self.client.embed_content(
+                    model=self.embedding_settings.model_name,
+                    content=doc
+                )
+                embeddings.append(result['embedding'])
+            return embeddings
+        except Exception as e:
+            raise ValueError(f"Google embedding generation failed: {str(e)}")
+
+    @property 
+    def dim(self) -> int:
+        """Get embedding dimension"""
+        return self.embedding_settings.dimensions or 768

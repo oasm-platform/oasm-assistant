@@ -26,11 +26,6 @@ langchain-anthropic
 langchain-google-genai
 langchain-community
 
-# LlamaIndex - core only
-llama-index
-
-# Vector Database - choose one
-chromadb
 
 # Document Processing
 pypdf
@@ -50,3 +45,9 @@ asyncio
 google-api-python-client
 requests
 beautifulsoup4
+
+# Embeddings
+google-generativeai
+mistralai
+sentence-transformers
+openai
