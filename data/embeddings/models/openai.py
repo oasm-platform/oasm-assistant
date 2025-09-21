@@ -1,59 +1,34 @@
 from typing import List
-from .base_model import APIBaseEmbedding
-from llama_index.embeddings.openai import OpenAIEmbedding as LlamaOpenAIEmbedding
-from common.config.settings import Settings
+from .base import APIBaseEmbedding
+import openai
+from common.config import EmbeddingSettings
 
 class OpenAIEmbedding(APIBaseEmbedding):
     def __init__(
         self,
-        settings: Settings = None,
-        name: str = None,
-        dimensions: int = None,
-        token_limit: int = None,
-        baseUrl: str = None,
-        apiKey: str = None,
-        orgId: str = None,
+        embedding_settings: EmbeddingSettings,
     ):
-        # Use settings if provided, otherwise create new Settings
-        config = settings.openai
+        self.embedding_settings = embedding_settings
 
-        # Override config with explicit parameters if provided
-        self.name = name or config.model_name
-        self.dimensions = dimensions or config.dimensions
-        self.token_limit = token_limit or config.token_limit
-        self.apiKey = apiKey or config.api_key
-        self.orgId = orgId or config.org_id
-        self.baseUrl = baseUrl or config.base_url
+        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
 
-        super().__init__(name=self.name, baseUrl=self.baseUrl, apiKey=self.apiKey)
-
-        if not self.apiKey:
+        if not self.embedding_settings.api_key:
             raise ValueError("The OpenAI API key must not be 'None'.")
 
-        # Build client kwargs
-        ctor_kwargs = self._build_client_kwargs()
-        
         try:
-            self.client = LlamaOpenAIEmbedding(**ctor_kwargs)
+            self.client = openai.OpenAI(api_key=self.embedding_settings.api_key)
         except Exception as e:
             raise ValueError(
-                f"LlamaIndex OpenAIEmbedding client failed to initialize with {ctor_kwargs}. Error: {e}"
+                f"OpenAI client failed to initialize. Error: {e}"
             ) from e
 
     def encode(self, docs: List[str]) -> List[List[float]]:
         try:
-            # Try common APIs across LlamaIndex versions
-            if hasattr(self.client, "get_text_embedding_batch"):
-                return self.client.get_text_embedding_batch(docs)
-            if hasattr(self.client, "get_text_embedding"):
-                first = self.client.get_text_embedding(docs[0])
-                if isinstance(first, list):
-                    rest = [self.client.get_text_embedding(t) for t in docs[1:]]
-                    return [first, *rest]
-                return [self.client.get_text_embedding(t)["embedding"] for t in docs]
-            if hasattr(self.client, "embed"):
-                return self.client.embed(texts=docs)
-            raise RuntimeError("No compatible embedding method found on client.")
+            response = self.client.embeddings.create(
+                model=self.embedding_settings.model_name,
+                input=docs
+            )
+            return [item.embedding for item in response.data]
         except Exception as e:
             raise ValueError(f"Failed to get embeddings. Error details: {e}") from e
 
@@ -67,4 +42,4 @@ class OpenAIEmbedding(APIBaseEmbedding):
 
     @property
     def dim(self) -> int:
-        return self.dimensions
+        return self.embedding_settings.dimensions or self._default_dim(self.embedding_settings.model_name)

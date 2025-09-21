@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import threading
 from .models import (
     BaseEmbedding,
@@ -7,17 +5,17 @@ from .models import (
     GoogleEmbedding,
     MistralEmbedding,
     SentenceTransformerEmbedding,
-    EmbeddingConfig,
 )
 from common.logger import logger
-from typing import Dict, List, Type, Any
+from common.config import EmbeddingSettings
+from typing import List, Type
 """
 Usage example:
 
 from .embeddings import Embeddings
 
 # Create an OpenAI embedding instance
-embedding = Embeddings.create_embedding('openai', api_key='your_api_key')
+embedding = Embeddings.create_embedding('openai', api_key='your_api_key', model_name='text-embedding-3-small')
 
 # Get list of available providers
 providers = Embeddings.get_available_providers()
@@ -31,7 +29,6 @@ class Embeddings:
         'google': GoogleEmbedding,
         'mistral': MistralEmbedding,
         'sentence_transformer': SentenceTransformerEmbedding,
-        'huggingface': SentenceTransformerEmbedding,  # alias for sentence_transformer
     }
     
     _lock = threading.RLock()
@@ -39,22 +36,44 @@ class Embeddings:
     @classmethod
     def _normalize_provider(cls, provider: str) -> str:
         p = provider.lower().strip()
-        if p == 'huggingface':  # alias
-            p = 'sentence_transformer'
         return p
 
     @classmethod
-    def _coerce_config(cls, embedding_class: Type[BaseEmbedding], kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        if embedding_class == SentenceTransformerEmbedding and 'config' not in kwargs:
-            cfg = {}
-            if 'name' in kwargs:   
-                cfg['name'] = kwargs.pop('name')
-            elif 'model' in kwargs:  
-                cfg['name'] = kwargs.pop('model')
-            if 'device' in kwargs: cfg['device'] = kwargs.pop('device')
-            if cfg:
-                kwargs['config'] = EmbeddingConfig(**cfg)
-        return kwargs
+    def _create_embedding_settings(cls, **kwargs) -> EmbeddingSettings:
+        """Create EmbeddingSettings from kwargs"""
+        print(f"_create_embedding_settings received kwargs: {kwargs}")
+        # Map common parameter names to EmbeddingSettings fields (using aliases)
+        settings_kwargs = {}
+        
+        # Handle model name variations with defaults
+        if 'model_name' in kwargs:
+            settings_kwargs['EMBEDDING_MODEL_NAME'] = kwargs['model_name']
+        elif 'model' in kwargs:
+            settings_kwargs['EMBEDDING_MODEL_NAME'] = kwargs['model']
+        elif 'name' in kwargs:
+            settings_kwargs['EMBEDDING_MODEL_NAME'] = kwargs['name']
+        else:
+            # Set default model name if none provided
+            settings_kwargs['EMBEDDING_MODEL_NAME'] = "all-MiniLM-L6-v2"
+            
+        # Handle API key variations
+        if 'api_key' in kwargs:
+            settings_kwargs['EMBEDDING_API_KEY'] = kwargs['api_key']
+            
+        # Handle other common settings
+        if 'dimensions' in kwargs:
+            settings_kwargs['EMBEDDING_DIMENSIONS'] = kwargs['dimensions']
+
+        if 'base_url' in kwargs:
+            settings_kwargs['EMBEDDING_BASE_URL'] = kwargs['base_url']
+        
+        print(f"Final settings_kwargs: {settings_kwargs}")
+        
+        # Create EmbeddingSettings with explicit values to override env vars
+        # Use _env_file=None to prevent reading from .env file
+        result = EmbeddingSettings(_env_file=None, **settings_kwargs)
+        print(f"Created EmbeddingSettings: model_name='{result.model_name}'")
+        return result
     
     @classmethod
     def create_embedding(cls, provider: str, **kwargs) -> BaseEmbedding:
@@ -83,16 +102,17 @@ class Embeddings:
             )
         
         embedding_class = cls._providers[provider]
-        kwargs = cls._coerce_config(embedding_class, kwargs)
         
         try:
-            instance = embedding_class(**kwargs)
+            # Create EmbeddingSettings from kwargs
+            embedding_settings = cls._create_embedding_settings(**kwargs)
+            # All embedding classes now expect EmbeddingSettings as first argument
+            instance = embedding_class(embedding_settings)
             return instance
         except Exception as e:
             logger.exception(f"[Embeddings] Failed to create {provider} embedding")
             raise ValueError(f"Failed to create {provider} embedding: {e}") from e
 
-    
     @classmethod
     def get_available_providers(cls) -> List[str]:
         """Get list of available embedding providers"""

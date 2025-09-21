@@ -1,76 +1,49 @@
-##https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/text-embeddings
+from typing import List
+from .base import APIBaseEmbedding
+from common.config import EmbeddingSettings
+import google.generativeai as genai
 
-
-from typing import List, Optional
-from .base_model import APIBaseEmbedding
-from common.config.settings import Settings
 
 class GoogleEmbedding(APIBaseEmbedding):
-    """Google Cloud AI Platform embedding model wrapper"""
+    """Google embedding model wrapper"""
     
     def __init__(
         self,
-        settings: Settings = None,
-        name: str = None,
-        apiKey: str = None,
+        embedding_settings: EmbeddingSettings,
     ):
-        # Use settings if provided, otherwise create new Settings
-        self.settings = settings or Settings()
-        config = self.settings.google_embedding
+        self.embedding_settings = embedding_settings
 
-        # Override config with explicit parameters
-        self.name = name or config.model_name
-        self.apiKey = apiKey or config.api_key
+        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
 
-        super().__init__(name=self.name, apiKey=self.apiKey)
-
-        if not self.apiKey:
+        if not self.embedding_settings.api_key:
             raise ValueError("Google API key must not be None")
 
         try:
-            from google.cloud import aiplatform
-            from vertexai.language_models import TextEmbeddingModel
-            self.TextEmbeddingModel = TextEmbeddingModel
+            genai.configure(api_key=self.embedding_settings.api_key)
+            self.client = genai
         except ImportError:
             raise ImportError(
                 "Required packages not installed. Run:\n"
-                "pip install google-cloud-aiplatform"
+                "pip install google-generativeai"
             )
-
-        try:
-            # Initialize client
-            aiplatform.init(api_key=self.apiKey)
-            self.client = self.TextEmbeddingModel.from_pretrained(self.name)
         except Exception as e:
             raise ValueError(f"Failed to initialize Google client: {str(e)}")
 
     def encode(self, docs: List[str]) -> List[List[float]]:
-        """Generate embeddings for input texts
-        
-        Args:
-            docs: List of input texts
-            
-        Returns:
-            List of embedding vectors
-            
-        Raises:
-            ValueError: If API call fails
-        """
+        """Generate embeddings for input texts"""
         try:
-            embeddings = self.client.get_embeddings(docs)
-            return [embedding.values for embedding in embeddings]
+            embeddings = []
+            for doc in docs:
+                result = self.client.embed_content(
+                    model=self.embedding_settings.model_name,
+                    content=doc
+                )
+                embeddings.append(result['embedding'])
+            return embeddings
         except Exception as e:
             raise ValueError(f"Google embedding generation failed: {str(e)}")
 
     @property 
     def dim(self) -> int:
         """Get embedding dimension"""
-        # Default dimensions for Google models
-        dims = {
-            "textembedding-gecko": 768,
-            "textembedding-gecko-multilingual": 768,
-            "textembedding-gecko@001": 768,
-            "textembedding-gecko@002": 768,
-            "textembedding-gecko@003": 768
-        }
-        return dims.get(self.name, 768)
+        return self.embedding_settings.dimensions or 768
