@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     container_name: postgresql
     ports:
-      - "5432:5432"
+      - "9432:5432"
     env_file:
       - .env
     volumes:
@@ -29,8 +29,6 @@ services:
     depends_on:
       postgresql:
         condition: service_healthy
-      chromadb:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - oasm-network
@@ -40,5 +38,4 @@ networks:
     driver: bridge
 
 volumes:
-  chroma_data:
   postgres_data:

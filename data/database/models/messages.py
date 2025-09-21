@@ -11,10 +11,10 @@ class Message(BaseEntity):
 
     sender_type = Column("senderType", String(10), nullable=False)
     content = Column("content", Text, nullable=False)
-    metadata = Column("metadata", JSON)
+    message_metadata = Column("metadata", JSON)
 
     __table_args__ = (
-        CheckConstraint("senderType IN ('user', 'AI', 'system')", name="chk_sender_type"),
+        CheckConstraint('"senderType" IN (\'user\', \'AI\', \'system\')', name="chk_sender_type"),
     )
 
     conversation = relationship("Conversation", back_populates="messages")
