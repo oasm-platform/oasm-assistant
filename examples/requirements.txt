@@ -1,0 +1,6 @@
+# Requirements for OASM Assistant Examples
+# These are the minimum dependencies needed to run the example clients
+
+grpcio>=1.50.0
+grpcio-tools>=1.50.0
+protobuf>=4.21.0
