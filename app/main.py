@@ -5,7 +5,7 @@ import traceback
 
 from .protos import assistant_pb2_grpc
 
-from .services import ServiceRegistry
+from .services import HealthService, DomainClassifier
 
 from common.logger import logger
 from common.config import settings
@@ -27,7 +27,8 @@ def serve():
         )
         
         # Add servicer
-        assistant_pb2_grpc.add_AppServiceServicer_to_server(ServiceRegistry(), server)
+        assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthService(), server)
+        assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifier(), server)
         
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"

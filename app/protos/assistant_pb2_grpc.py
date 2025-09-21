@@ -5,7 +5,7 @@ import grpc
 from app.protos import assistant_pb2 as app_dot_protos_dot_assistant__pb2
 
 
-class AppServiceStub(object):
+class HealthCheckStub(object):
     """Missing associated documentation comment in .proto file."""
 
     def __init__(self, channel):
@@ -15,18 +15,13 @@ class AppServiceStub(object):
             channel: A grpc.Channel.
         """
         self.HealthCheck = channel.unary_unary(
-                '/app.AppService/HealthCheck',
+                '/app.HealthCheck/HealthCheck',
                 request_serializer=app_dot_protos_dot_assistant__pb2.HealthCheckRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.HealthCheckResponse.FromString,
                 )
-        self.DomainClassify = channel.unary_unary(
-                '/app.AppService/DomainClassify',
-                request_serializer=app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.FromString,
-                )
 
 
-class AppServiceServicer(object):
+class HealthCheckServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def HealthCheck(self, request, context):
@@ -35,33 +30,22 @@ class AppServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DomainClassify(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
 
-
-def add_AppServiceServicer_to_server(servicer, server):
+def add_HealthCheckServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'HealthCheck': grpc.unary_unary_rpc_method_handler(
                     servicer.HealthCheck,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.HealthCheckRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.HealthCheckResponse.SerializeToString,
             ),
-            'DomainClassify': grpc.unary_unary_rpc_method_handler(
-                    servicer.DomainClassify,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.SerializeToString,
-            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'app.AppService', rpc_method_handlers)
+            'app.HealthCheck', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
 
 
  # This class is part of an EXPERIMENTAL API.
-class AppService(object):
+class HealthCheck(object):
     """Missing associated documentation comment in .proto file."""
 
     @staticmethod
@@ -75,11 +59,55 @@ class AppService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.AppService/HealthCheck',
+        return grpc.experimental.unary_unary(request, target, '/app.HealthCheck/HealthCheck',
             app_dot_protos_dot_assistant__pb2.HealthCheckRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.HealthCheckResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+
+class DomainClassifyStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.DomainClassify = channel.unary_unary(
+                '/app.DomainClassify/DomainClassify',
+                request_serializer=app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.FromString,
+                )
+
+
+class DomainClassifyServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def DomainClassify(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_DomainClassifyServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'DomainClassify': grpc.unary_unary_rpc_method_handler(
+                    servicer.DomainClassify,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'app.DomainClassify', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
+ # This class is part of an EXPERIMENTAL API.
+class DomainClassify(object):
+    """Missing associated documentation comment in .proto file."""
 
     @staticmethod
     def DomainClassify(request,
@@ -92,7 +120,7 @@ class AppService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.AppService/DomainClassify',
+        return grpc.experimental.unary_unary(request, target, '/app.DomainClassify/DomainClassify',
             app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.FromString,
             options, channel_credentials,

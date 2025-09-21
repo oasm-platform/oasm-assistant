@@ -1,7 +1,7 @@
-from app.protos import assistant_pb2
+from app.protos import assistant_pb2, assistant_pb2_grpc
 
-class HealthService:
-    def check_health(self) -> assistant_pb2.HealthCheckResponse:
+class HealthService(assistant_pb2_grpc.HealthCheckServicer):
+    def HealthCheck(self, request, context) -> assistant_pb2.HealthCheckResponse:
         return assistant_pb2.HealthCheckResponse(
             message="ok"
         )

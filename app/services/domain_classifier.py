@@ -6,9 +6,9 @@ import json
 from llms import llm_manager
 from tools.crawl_web import CrawlWeb
 from common.config import settings
+from app.protos import assistant_pb2, assistant_pb2_grpc
 
-
-class DomainClassifier:
+class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
     def __init__(self):
         self.llm_manager = llm_manager
         self.crawler = CrawlWeb(
@@ -226,3 +226,34 @@ Focus on the most relevant categories with confidence scores between 0.0 and 1.0
                 "success": False,
                 "error": str(e)
             }
+
+    def DomainClassify(self, request, context):
+        """Domain classification endpoint"""
+        try:
+            domain = request.domain
+            
+            if not domain:
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details("Domain is required")
+                return assistant_pb2.DomainClassifyResponse(
+                    label=[]
+                )
+            
+            result = self.classify_domain(domain)
+            
+            # Build response (only using 'label' field from old proto)
+            labels = result.get("labels", [])
+            
+            response = assistant_pb2.DomainClassifyResponse(
+                label=labels
+            )
+            
+            logger.info(f"Domain classification completed for {domain}: {labels}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Domain classification error for {request.domain}: {e}")
+            
+            return assistant_pb2.DomainClassifyResponse(
+                label=[]
+            )

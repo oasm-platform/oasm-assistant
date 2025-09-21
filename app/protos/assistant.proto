@@ -2,15 +2,24 @@ syntax = "proto3";
 
 package app;
 
-service AppService {
+// ----------------
+// Health Check
+// ----------------
+service HealthCheck {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
-  rpc DomainClassify(DomainClassifyRequest) returns (DomainClassifyResponse);
 }
 
 message HealthCheckRequest {}
 
 message HealthCheckResponse {
   string message = 1;
+}
+
+// ----------------
+// Domain Classify
+// ----------------
+service DomainClassify {
+  rpc DomainClassify(DomainClassifyRequest) returns (DomainClassifyResponse);
 }
 
 message DomainClassifyRequest {

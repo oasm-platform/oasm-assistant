@@ -1,5 +1,7 @@
-from .service_registry import ServiceRegistry
+from .health_service import HealthService
+from .domain_classifier import DomainClassifier
 
 __all__ = [
-    "ServiceRegistry"
+    "HealthService",
+    "DomainClassifier"
 ]

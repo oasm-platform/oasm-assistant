@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x61pp/protos/assistant.proto\x12\x03\x61pp\"\x14\n\x12HealthCheckRequest\"&\n\x13HealthCheckResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\'\n\x15\x44omainClassifyRequest\x12\x0e\n\x06\x64omain\x18\x01 \x01(\t\"\'\n\x16\x44omainClassifyResponse\x12\r\n\x05label\x18\x01 \x03(\t2\x99\x01\n\nAppService\x12@\n\x0bHealthCheck\x12\x17.app.HealthCheckRequest\x1a\x18.app.HealthCheckResponse\x12I\n\x0e\x44omainClassify\x12\x1a.app.DomainClassifyRequest\x1a\x1b.app.DomainClassifyResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x61pp/protos/assistant.proto\x12\x03\x61pp\"\x14\n\x12HealthCheckRequest\"&\n\x13HealthCheckResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\'\n\x15\x44omainClassifyRequest\x12\x0e\n\x06\x64omain\x18\x01 \x01(\t\"\'\n\x16\x44omainClassifyResponse\x12\r\n\x05label\x18\x01 \x03(\t2O\n\x0bHealthCheck\x12@\n\x0bHealthCheck\x12\x17.app.HealthCheckRequest\x1a\x18.app.HealthCheckResponse2[\n\x0e\x44omainClassify\x12I\n\x0e\x44omainClassify\x12\x1a.app.DomainClassifyRequest\x1a\x1b.app.DomainClassifyResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -29,6 +29,8 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_DOMAINCLASSIFYREQUEST']._serialized_end=136
   _globals['_DOMAINCLASSIFYRESPONSE']._serialized_start=138
   _globals['_DOMAINCLASSIFYRESPONSE']._serialized_end=177
-  _globals['_APPSERVICE']._serialized_start=180
-  _globals['_APPSERVICE']._serialized_end=333
+  _globals['_HEALTHCHECK']._serialized_start=179
+  _globals['_HEALTHCHECK']._serialized_end=258
+  _globals['_DOMAINCLASSIFY']._serialized_start=260
+  _globals['_DOMAINCLASSIFY']._serialized_end=351
 # @@protoc_insertion_point(module_scope)
