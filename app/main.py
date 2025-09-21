@@ -3,66 +3,12 @@ from concurrent import futures
 import sys
 import traceback
 
-from .protos import assistant_pb2
 from .protos import assistant_pb2_grpc
 
-from .services.health_service import HealthService
-from .services.domain_classifier import DomainClassifier
+from .services import ServiceRegistry
+
 from common.logger import logger
 from common.config import settings
-
-
-class AppServiceServicer(assistant_pb2_grpc.AppServiceServicer):
-    def __init__(self):
-        self.health_service = HealthService()
-        self.domain_classifier = DomainClassifier()
-        logger.info("AppServiceServicer initialized")
-    
-    def HealthCheck(self, request, context):
-        """Health check endpoint"""
-        try:
-            health_data = self.health_service.check_health()
-            
-            response = assistant_pb2.HealthCheckResponse(
-                message=health_data["message"]
-            )
-            return response
-        except Exception as e:
-            logger.error(f"Health check error: {e}")     
-            return assistant_pb2.HealthCheckResponse(
-                message="Health check failed"
-            )
-    
-    def DomainClassify(self, request, context):
-        """Domain classification endpoint"""
-        try:
-            domain = request.domain
-            
-            if not domain:
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("Domain is required")
-                return assistant_pb2.DomainClassifyResponse(
-                    label=[]
-                )
-            
-            result = self.domain_classifier.classify_domain(domain)
-            
-            # Build response (only using 'label' field from old proto)
-            labels = result.get("labels", [])
-            
-            response = assistant_pb2.DomainClassifyResponse(
-                label=labels
-            )
-            
-            logger.info(f"Domain classification completed for {domain}: {labels}")
-            return response
-            
-        except Exception as e:
-            logger.error(f"Domain classification error for {request.domain}: {e}")
-            
-            return assistant_pb2.DomainClassifyResponse(
-                label=[]
-            )
 
 def serve():
     """Start gRPC server"""
@@ -81,7 +27,7 @@ def serve():
         )
         
         # Add servicer
-        assistant_pb2_grpc.add_AppServiceServicer_to_server(AppServiceServicer(), server)
+        assistant_pb2_grpc.add_AppServiceServicer_to_server(ServiceRegistry(), server)
         
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"
