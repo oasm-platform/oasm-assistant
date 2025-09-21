@@ -20,11 +20,6 @@ class PostgresSettings(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"  
 
-class ChromaSettings(BaseSettings):
-    host: str = Field("localhost", alias="CHROMA_HOST")
-    port: int = Field(8000, alias="CHROMA_PORT")
-    persist_directory: str = Field("", alias="CHROMA_PERSIST_DIRECTORY")
-
 
 class AppSettings(BaseSettings):
     host: str = Field("0.0.0.0", alias="APP_HOST")
@@ -121,7 +116,6 @@ class WebSearchSettings(BaseSettings):
 
 class Settings(BaseSettings):
     postgres: PostgresSettings = PostgresSettings()
-    chroma: ChromaSettings = ChromaSettings()
     app: AppSettings = AppSettings()
     web_search: WebSearchSettings = WebSearchSettings()
     llm: LlmSettings = LlmSettings()

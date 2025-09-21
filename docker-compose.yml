@@ -1,22 +1,4 @@
 services:
-  chromadb:
-    image: chromadb/chroma:0.6.3
-    container_name: chromadb
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
-    volumes:
-      - chroma_data:/chroma_data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v2/heartbeat"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - oasm-network
-
   postgresql:
     image: postgres:16-alpine
     container_name: postgresql
