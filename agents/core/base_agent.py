@@ -6,18 +6,12 @@ import uuid
 import logging
 from enum import Enum
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.language_models import BaseLanguageModel
 from langchain.memory import ConversationBufferWindowMemory
+from langchain.agents import AgentExecutor
 
-# Try to import AgentExecutor, fallback if not available
-try:
-    from langchain.agents import AgentExecutor
-except ImportError:
-    AgentExecutor = None
-
-# Import LLM manager
 from llms import llm_manager
 
 from .environment import AgentEnvironment
@@ -157,12 +151,17 @@ class BaseAgent(ABC):
                 logger.info(f"Using default LLM provider: {provider}")
 
             # Initialize LLM
-            self.llm = llm_manager.get_llm(
-                provider=provider,
-                model=self.llm_model,
-                temperature=0.1,  # Lower temperature for security tasks
-                max_tokens=4000
-            )
+            llm_kwargs = {
+                "provider": provider,
+                "temperature": 0.1,  # Lower temperature for security tasks
+                "max_tokens": 4000
+            }
+
+            # Only add model parameter if specified
+            if self.llm_model:
+                llm_kwargs["model"] = self.llm_model
+
+            self.llm = llm_manager.get_llm(**llm_kwargs)
 
             self.llm_provider = provider
             logger.info(f"LLM initialized: {provider}")
@@ -201,7 +200,7 @@ You have access to security tools and databases. Use your expertise to provide c
 
         return prompt
 
-    async def query_llm(self, message: str, context: Dict[str, Any] = None) -> str:
+    def query_llm(self, message: str, context: Dict[str, Any] = None) -> str:
         """Query the LLM with security context"""
         if not self.llm:
             logger.error("LLM not initialized")
@@ -227,8 +226,8 @@ Current Security Context:
                 HumanMessage(content=formatted_message)
             ]
 
-            # Get response
-            response = await self.llm.ainvoke(messages)
+            # Get response - use sync invoke to avoid event loop issues
+            response = self.llm.invoke(messages)
 
             # Extract text content
             if hasattr(response, 'content'):
@@ -240,7 +239,7 @@ Current Security Context:
             logger.error(f"LLM query failed: {e}")
             return f"Error querying LLM: {e}"
 
-    async def analyze_with_llm(self, data: Dict[str, Any], analysis_type: str = "security") -> Dict[str, Any]:
+    def analyze_with_llm(self, data: Dict[str, Any], analysis_type: str = "security") -> Dict[str, Any]:
         """Analyze data using LLM with structured response"""
         if not self.llm:
             return {"error": "LLM not available"}
@@ -262,7 +261,7 @@ Please provide:
 Format your response as structured analysis.
 """
 
-            response = await self.query_llm(
+            response = self.query_llm(
                 analysis_prompt,
                 context={
                     "alert_level": self.state.security_alert_level.value,
