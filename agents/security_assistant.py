@@ -1,8 +1,3 @@
-"""
-OASM Security Assistant Agent for Q&A functionality
-Specialized agent for handling security-related questions and providing expert guidance
-"""
-
 from typing import Dict, Any, List
 from datetime import datetime
 

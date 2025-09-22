@@ -1,12 +1,9 @@
 import asyncio
-from typing import Dict, Any
 from app.protos import assistant_pb2, assistant_pb2_grpc
 from data.database import db as database_instance
 from common.logger import logger
 from grpc import StatusCode
 from data.database.models import Message, Conversation
-
-# Import OASM security agent
 from agents.security_assistant import create_security_agent
 
 
@@ -15,14 +12,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
     def __init__(self):
         self.db = database_instance
-
-        # Initialize OASM Security Agent
-        try:
-            self.security_agent = create_security_agent()
-            logger.info("OASM Security Agent initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize OASM Security Agent: {e}")
-            self.security_agent = None
+        self.security_agent = create_security_agent()
 
     def GetMessages(self, request, context):
         """Get all messages for a conversation"""
@@ -174,21 +164,3 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteMessageResponse(message="Error deleting message", success=False)
-
-    def get_agent_status(self) -> Dict[str, Any]:
-        """Get status of the security agent"""
-        if self.security_agent:
-            return {
-                "agent_available": True,
-                "agent_name": self.security_agent.name,
-                "agent_role": self.security_agent.role.value,
-                "llm_available": self.security_agent.llm is not None,
-                "llm_provider": self.security_agent.llm_provider,
-                "capabilities": len(self.security_agent.capabilities),
-                "performance": self.security_agent.get_performance_metrics()
-            }
-        else:
-            return {
-                "agent_available": False,
-                "error": "Security agent not initialized"
-            }

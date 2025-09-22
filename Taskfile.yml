@@ -4,7 +4,7 @@ tasks:
   install:
     cmds:
       - python -m venv venv
-      - cmd /c ".\venv\Scripts\activate"
+      - ./venv/Scripts/activate
       - pip install -r requirements.txt
 
   proto:
@@ -13,5 +13,4 @@ tasks:
 
   dev:
     cmds:
-      - cmd /c ".\venv\Scripts\activate"
       - python -m app.main
