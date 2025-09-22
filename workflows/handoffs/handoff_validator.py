@@ -1,3 +1,0 @@
-"""
-Validate successful handoffs
-"""

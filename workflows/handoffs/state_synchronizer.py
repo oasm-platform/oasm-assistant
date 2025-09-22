@@ -1,3 +1,0 @@
-"""
-Synchronize agent states
-"""

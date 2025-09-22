@@ -1,3 +1,0 @@
-"""
-Environment execution engine
-"""

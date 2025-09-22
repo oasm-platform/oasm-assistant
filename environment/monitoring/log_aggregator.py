@@ -1,3 +1,0 @@
-"""
-Log collection & aggregation
-"""

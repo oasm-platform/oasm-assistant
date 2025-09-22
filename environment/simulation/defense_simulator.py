@@ -1,3 +1,0 @@
-"""
-Defense mechanism testing
-"""

@@ -1,3 +1,0 @@
-"""
-Threat hunting workflow
-"""

@@ -1,3 +1,0 @@
-"""
-Incident response workflow
-"""

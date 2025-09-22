@@ -1,3 +1,0 @@
-"""
-Penetration testing workflow
-"""

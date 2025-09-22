@@ -1,3 +1,0 @@
-"""
-Current threat landscape
-"""

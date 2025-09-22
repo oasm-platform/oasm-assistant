@@ -1,3 +1,0 @@
-"""
-Agent-to-agent handoffs
-"""

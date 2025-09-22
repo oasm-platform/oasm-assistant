@@ -1,3 +1,0 @@
-"""
-Security environment context
-"""
