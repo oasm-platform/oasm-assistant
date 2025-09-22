@@ -69,7 +69,7 @@ message CreateConversationResponse {
 }
 
 message UpdateConversationRequest {
-  string conversation_id = 1;
+  string id = 1;
   string title = 2;
   string description = 3;
 }
@@ -79,11 +79,12 @@ message UpdateConversationResponse {
 }
 
 message DeleteConversationRequest {
-  string conversation_id = 1;
+  string id = 1;
 }
 
 message DeleteConversationResponse {
   string message = 1;
+  bool success = 2;
 }
 
 message DeleteConversationsRequest {
@@ -92,6 +93,7 @@ message DeleteConversationsRequest {
 
 message DeleteConversationsResponse {
   string message = 1;
+  bool success = 2;
 }
 
 // ----------------
@@ -105,7 +107,7 @@ service MessageService {
 }
 
 message Message {
-  string message_id = 1;
+  string id = 1;
   string sender_type = 2;
   string content = 3;
   string conversation_id = 4;
@@ -133,7 +135,7 @@ message CreateMessageResponse {
 }
 
 message UpdateMessageRequest {
-  int64 message_id = 1;
+  string id = 1;
   string sender_type = 2;
   string content = 3;
 }
@@ -143,9 +145,10 @@ message UpdateMessageResponse {
 }
 
 message DeleteMessageRequest {
-  string message_id = 1;
+  string id = 1;
 }
 
 message DeleteMessageResponse {
   string message = 1;
+  bool success = 2;
 }
