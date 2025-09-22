@@ -16,7 +16,7 @@ class Message(BaseEntity):
 
     __table_args__ = (
         CheckConstraint(
-            "sender_type IN ('user', 'system')", 
+            sender_type.in_(['user', 'system']), 
             name="chk_sender_type"
         ),
     )
