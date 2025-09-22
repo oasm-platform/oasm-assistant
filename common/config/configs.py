@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 from typing import Dict, List, Any, Optional
 
 
-class PostgresSettings(BaseSettings):
+class PostgresConfigs(BaseSettings):
     host: str = Field("localhost", alias="POSTGRES_HOST")
     port: int = Field(5432, alias="POSTGRES_PORT")
     user: str = Field("postgres", alias="POSTGRES_USER")
@@ -21,12 +21,12 @@ class PostgresSettings(BaseSettings):
         extra = "ignore"  
 
 
-class AppSettings(BaseSettings):
+class AppConfigs(BaseSettings):
     host: str = Field("0.0.0.0", alias="APP_HOST")
     port: int = Field(8000, alias="APP_PORT")
 
 
-class LlmSettings(BaseSettings):
+class LlmConfigs(BaseSettings):
     provider: str = Field("", alias="LLM_PROVIDER")
     api_key: str = Field("", alias="LLM_API_KEY")
     model_name: str = Field("", alias="LLM_MODEL_NAME")
@@ -43,7 +43,7 @@ class LlmSettings(BaseSettings):
         extra = "ignore"  
 
 
-class EmbeddingSettings(BaseSettings):
+class EmbeddingConfigs(BaseSettings):
     provider: str = Field("", alias="EMBEDDING_PROVIDER")
     api_key: str = Field("", alias="EMBEDDING_API_KEY")
     model_name: str = Field("", alias="EMBEDDING_MODEL_NAME")
@@ -57,7 +57,7 @@ class EmbeddingSettings(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
-class WebSearchSettings(BaseSettings):
+class WebSearchConfigs(BaseSettings):
     default_search_engines_str: str = Field("duckduckgo", alias="DEFAULT_SEARCH_ENGINES")
     
     class Config:
@@ -114,12 +114,12 @@ class WebSearchSettings(BaseSettings):
     validate_search_sources: bool = Field(True, alias="VALIDATE_SEARCH_SOURCES")
 
 
-class Settings(BaseSettings):
-    postgres: PostgresSettings = PostgresSettings()
-    app: AppSettings = AppSettings()
-    web_search: WebSearchSettings = WebSearchSettings()
-    llm: LlmSettings = LlmSettings()
-    embedding: EmbeddingSettings = EmbeddingSettings()
+class Configs(BaseSettings):
+    postgres: PostgresConfigs = PostgresConfigs()
+    app: AppConfigs = AppConfigs()
+    web_search: WebSearchConfigs = WebSearchConfigs()
+    llm: LlmConfigs = LlmConfigs()
+    embedding: EmbeddingConfigs = EmbeddingConfigs()
     
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")

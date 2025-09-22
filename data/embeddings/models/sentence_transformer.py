@@ -1,10 +1,10 @@
 from typing import List
 from .base import BaseEmbedding
 from sentence_transformers import SentenceTransformer
-from common.config import EmbeddingSettings
+from common.config import EmbeddingConfigs
 
 class SentenceTransformerEmbedding(BaseEmbedding):
-    def __init__(self, embedding_settings: EmbeddingSettings):  
+    def __init__(self, embedding_settings: EmbeddingConfigs):  
         # Initialize parent class with the correct name
         super().__init__("sentence_transformer")
         self.embedding_settings = embedding_settings  

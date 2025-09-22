@@ -1,6 +1,6 @@
 from typing import List
 from .base import APIBaseEmbedding
-from common.config import EmbeddingSettings
+from common.config import EmbeddingConfigs
 import google.generativeai as genai
 
 
@@ -9,7 +9,7 @@ class GoogleEmbedding(APIBaseEmbedding):
     
     def __init__(
         self,
-        embedding_settings: EmbeddingSettings,
+        embedding_settings: EmbeddingConfigs,
     ):
         self.embedding_settings = embedding_settings
 

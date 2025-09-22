@@ -1,12 +1,12 @@
 from typing import List
 from .base import APIBaseEmbedding
 import openai
-from common.config import EmbeddingSettings
+from common.config import EmbeddingConfigs
 
 class OpenAIEmbedding(APIBaseEmbedding):
     def __init__(
         self,
-        embedding_settings: EmbeddingSettings,
+        embedding_settings: EmbeddingConfigs,
     ):
         self.embedding_settings = embedding_settings
 

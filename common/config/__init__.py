@@ -1,7 +1,7 @@
-from .settings import Settings, EmbeddingSettings
+from .configs import Configs, EmbeddingConfigs
 
-settings = Settings()
+configs = Configs()
 
-__doc__ = "Settings for the application"
+__doc__ = "Configs for the application"
 
-__all__ = ["settings", "EmbeddingSettings"]
+__all__ = ["configs", "EmbeddingConfigs"]

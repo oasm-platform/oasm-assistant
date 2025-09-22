@@ -1,12 +1,12 @@
 from typing import List
 from .base import APIBaseEmbedding
 from mistralai.client import MistralClient
-from common.config import EmbeddingSettings
+from common.config import EmbeddingConfigs
 
 class MistralEmbedding(APIBaseEmbedding):
     def __init__(
             self,
-            embedding_settings: EmbeddingSettings,
+            embedding_settings: EmbeddingConfigs,
         ):
         self.embedding_settings = embedding_settings
 

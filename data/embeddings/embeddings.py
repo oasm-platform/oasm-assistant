@@ -7,7 +7,7 @@ from .models import (
     SentenceTransformerEmbedding,
 )
 from common.logger import logger
-from common.config import EmbeddingSettings
+from common.config import EmbeddingConfigs
 from typing import List, Type
 """
 Usage example:
@@ -39,10 +39,10 @@ class Embeddings:
         return p
 
     @classmethod
-    def _create_embedding_settings(cls, **kwargs) -> EmbeddingSettings:
-        """Create EmbeddingSettings from kwargs"""
+    def _create_embedding_settings(cls, **kwargs) -> EmbeddingConfigs:
+        """Create EmbeddingConfigs from kwargs"""
         print(f"_create_embedding_settings received kwargs: {kwargs}")
-        # Map common parameter names to EmbeddingSettings fields (using aliases)
+        # Map common parameter names to EmbeddingConfigs fields (using aliases)
         settings_kwargs = {}
         
         # Handle model name variations with defaults
@@ -69,10 +69,10 @@ class Embeddings:
         
         print(f"Final settings_kwargs: {settings_kwargs}")
         
-        # Create EmbeddingSettings with explicit values to override env vars
+        # Create EmbeddingConfigs with explicit values to override env vars
         # Use _env_file=None to prevent reading from .env file
-        result = EmbeddingSettings(_env_file=None, **settings_kwargs)
-        print(f"Created EmbeddingSettings: model_name='{result.model_name}'")
+        result = EmbeddingConfigs(_env_file=None, **settings_kwargs)
+        print(f"Created EmbeddingConfigs: model_name='{result.model_name}'")
         return result
     
     @classmethod
@@ -104,9 +104,9 @@ class Embeddings:
         embedding_class = cls._providers[provider]
         
         try:
-            # Create EmbeddingSettings from kwargs
+            # Create EmbeddingConfigs from kwargs
             embedding_settings = cls._create_embedding_settings(**kwargs)
-            # All embedding classes now expect EmbeddingSettings as first argument
+            # All embedding classes now expect EmbeddingConfigs as first argument
             instance = embedding_class(embedding_settings)
             return instance
         except Exception as e:
