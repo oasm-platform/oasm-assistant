@@ -14,7 +14,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x61pp/protos/assistant.proto\x12\x03\x61pp\"\x14\n\x12HealthCheckRequest\"&\n\x13HealthCheckResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\'\n\x15\x44omainClassifyRequest\x12\x0e\n\x06\x64omain\x18\x01 \x01(\t\"\'\n\x16\x44omainClassifyResponse\x12\r\n\x05label\x18\x01 \x03(\t\"\x8f\x01\n\x0c\x43onversation\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x14\n\x0cworkspace_id\x18\x04 \x01(\t\x12\x11\n\tembedding\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x12\n\nupdated_at\x18\x07 \x01(\t\"/\n\x17GetConversationsRequest\x12\x14\n\x0cworkspace_id\x18\x01 \x01(\t\"D\n\x18GetConversationsResponse\x12(\n\rconversations\x18\x01 \x03(\x0b\x32\x11.app.Conversation\"U\n\x19\x43reateConversationRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x14\n\x0cworkspace_id\x18\x03 \x01(\t\"E\n\x1a\x43reateConversationResponse\x12\'\n\x0c\x63onversation\x18\x01 \x01(\x0b\x32\x11.app.Conversation\"K\n\x19UpdateConversationRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\"E\n\x1aUpdateConversationResponse\x12\'\n\x0c\x63onversation\x18\x01 \x01(\x0b\x32\x11.app.Conversation\"\'\n\x19\x44\x65leteConversationRequest\x12\n\n\x02id\x18\x01 \x01(\t\">\n\x1a\x44\x65leteConversationResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"2\n\x1a\x44\x65leteConversationsRequest\x12\x14\n\x0cworkspace_id\x18\x01 \x01(\t\"?\n\x1b\x44\x65leteConversationsResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x8f\x01\n\x07Message\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0bsender_type\x18\x02 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x03 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x04 \x01(\t\x12\x11\n\tembedding\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x12\n\nupdated_at\x18\x07 \x01(\t\"-\n\x12GetMessagesRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\"5\n\x13GetMessagesResponse\x12\x1e\n\x08messages\x18\x01 \x03(\x0b\x32\x0c.app.Message\"U\n\x14\x43reateMessageRequest\x12\x13\n\x0bsender_type\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x03 \x01(\t\"6\n\x15\x43reateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"H\n\x14UpdateMessageRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\x13\n\x0bsender_type\x18\x02 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x03 \x01(\t\"6\n\x15UpdateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"\"\n\x14\x44\x65leteMessageRequest\x12\n\n\x02id\x18\x01 \x01(\t\"9\n\x15\x44\x65leteMessageResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x32O\n\x0bHealthCheck\x12@\n\x0bHealthCheck\x12\x17.app.HealthCheckRequest\x1a\x18.app.HealthCheckResponse2[\n\x0e\x44omainClassify\x12I\n\x0e\x44omainClassify\x12\x1a.app.DomainClassifyRequest\x1a\x1b.app.DomainClassifyResponse2\xc5\x03\n\x13\x43onversationService\x12O\n\x10GetConversations\x12\x1c.app.GetConversationsRequest\x1a\x1d.app.GetConversationsResponse\x12U\n\x12\x43reateConversation\x12\x1e.app.CreateConversationRequest\x1a\x1f.app.CreateConversationResponse\x12U\n\x12UpdateConversation\x12\x1e.app.UpdateConversationRequest\x1a\x1f.app.UpdateConversationResponse\x12U\n\x12\x44\x65leteConversation\x12\x1e.app.DeleteConversationRequest\x1a\x1f.app.DeleteConversationResponse\x12X\n\x13\x44\x65leteConversations\x12\x1f.app.DeleteConversationsRequest\x1a .app.DeleteConversationsResponse2\xaa\x02\n\x0eMessageService\x12@\n\x0bGetMessages\x12\x17.app.GetMessagesRequest\x1a\x18.app.GetMessagesResponse\x12\x46\n\rCreateMessage\x12\x19.app.CreateMessageRequest\x1a\x1a.app.CreateMessageResponse\x12\x46\n\rUpdateMessage\x12\x19.app.UpdateMessageRequest\x1a\x1a.app.UpdateMessageResponse\x12\x46\n\rDeleteMessage\x12\x19.app.DeleteMessageRequest\x1a\x1a.app.DeleteMessageResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x61pp/protos/assistant.proto\x12\x03\x61pp\"\x14\n\x12HealthCheckRequest\"&\n\x13HealthCheckResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\'\n\x15\x44omainClassifyRequest\x12\x0e\n\x06\x64omain\x18\x01 \x01(\t\"\'\n\x16\x44omainClassifyResponse\x12\r\n\x05label\x18\x01 \x03(\t\"\x8f\x01\n\x0c\x43onversation\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x14\n\x0cworkspace_id\x18\x04 \x01(\t\x12\x11\n\tembedding\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x12\n\nupdated_at\x18\x07 \x01(\t\"/\n\x17GetConversationsRequest\x12\x14\n\x0cworkspace_id\x18\x01 \x01(\t\"D\n\x18GetConversationsResponse\x12(\n\rconversations\x18\x01 \x03(\x0b\x32\x11.app.Conversation\"U\n\x19\x43reateConversationRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x14\n\x0cworkspace_id\x18\x03 \x01(\t\"E\n\x1a\x43reateConversationResponse\x12\'\n\x0c\x63onversation\x18\x01 \x01(\x0b\x32\x11.app.Conversation\"K\n\x19UpdateConversationRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\"E\n\x1aUpdateConversationResponse\x12\'\n\x0c\x63onversation\x18\x01 \x01(\x0b\x32\x11.app.Conversation\"\'\n\x19\x44\x65leteConversationRequest\x12\n\n\x02id\x18\x01 \x01(\t\">\n\x1a\x44\x65leteConversationResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"2\n\x1a\x44\x65leteConversationsRequest\x12\x14\n\x0cworkspace_id\x18\x01 \x01(\t\"?\n\x1b\x44\x65leteConversationsResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x8b\x01\n\x07Message\x12\n\n\x02id\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x03 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x04 \x01(\t\x12\x11\n\tembedding\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x12\n\nupdated_at\x18\x07 \x01(\t\"-\n\x12GetMessagesRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\"5\n\x13GetMessagesResponse\x12\x1e\n\x08messages\x18\x01 \x03(\x0b\x32\x0c.app.Message\"A\n\x14\x43reateMessageRequest\x12\x10\n\x08question\x18\x01 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x02 \x01(\t\"6\n\x15\x43reateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"4\n\x14UpdateMessageRequest\x12\n\n\x02id\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\"6\n\x15UpdateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"\"\n\x14\x44\x65leteMessageRequest\x12\n\n\x02id\x18\x01 \x01(\t\"9\n\x15\x44\x65leteMessageResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\x32O\n\x0bHealthCheck\x12@\n\x0bHealthCheck\x12\x17.app.HealthCheckRequest\x1a\x18.app.HealthCheckResponse2[\n\x0e\x44omainClassify\x12I\n\x0e\x44omainClassify\x12\x1a.app.DomainClassifyRequest\x1a\x1b.app.DomainClassifyResponse2\xc5\x03\n\x13\x43onversationService\x12O\n\x10GetConversations\x12\x1c.app.GetConversationsRequest\x1a\x1d.app.GetConversationsResponse\x12U\n\x12\x43reateConversation\x12\x1e.app.CreateConversationRequest\x1a\x1f.app.CreateConversationResponse\x12U\n\x12UpdateConversation\x12\x1e.app.UpdateConversationRequest\x1a\x1f.app.UpdateConversationResponse\x12U\n\x12\x44\x65leteConversation\x12\x1e.app.DeleteConversationRequest\x1a\x1f.app.DeleteConversationResponse\x12X\n\x13\x44\x65leteConversations\x12\x1f.app.DeleteConversationsRequest\x1a .app.DeleteConversationsResponse2\xaa\x02\n\x0eMessageService\x12@\n\x0bGetMessages\x12\x17.app.GetMessagesRequest\x1a\x18.app.GetMessagesResponse\x12\x46\n\rCreateMessage\x12\x19.app.CreateMessageRequest\x1a\x1a.app.CreateMessageResponse\x12\x46\n\rUpdateMessage\x12\x19.app.UpdateMessageRequest\x1a\x1a.app.UpdateMessageResponse\x12\x46\n\rDeleteMessage\x12\x19.app.DeleteMessageRequest\x1a\x1a.app.DeleteMessageResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -52,29 +52,29 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_DELETECONVERSATIONSRESPONSE']._serialized_start=907
   _globals['_DELETECONVERSATIONSRESPONSE']._serialized_end=970
   _globals['_MESSAGE']._serialized_start=973
-  _globals['_MESSAGE']._serialized_end=1116
-  _globals['_GETMESSAGESREQUEST']._serialized_start=1118
-  _globals['_GETMESSAGESREQUEST']._serialized_end=1163
-  _globals['_GETMESSAGESRESPONSE']._serialized_start=1165
-  _globals['_GETMESSAGESRESPONSE']._serialized_end=1218
-  _globals['_CREATEMESSAGEREQUEST']._serialized_start=1220
-  _globals['_CREATEMESSAGEREQUEST']._serialized_end=1305
-  _globals['_CREATEMESSAGERESPONSE']._serialized_start=1307
-  _globals['_CREATEMESSAGERESPONSE']._serialized_end=1361
-  _globals['_UPDATEMESSAGEREQUEST']._serialized_start=1363
-  _globals['_UPDATEMESSAGEREQUEST']._serialized_end=1435
-  _globals['_UPDATEMESSAGERESPONSE']._serialized_start=1437
-  _globals['_UPDATEMESSAGERESPONSE']._serialized_end=1491
-  _globals['_DELETEMESSAGEREQUEST']._serialized_start=1493
-  _globals['_DELETEMESSAGEREQUEST']._serialized_end=1527
-  _globals['_DELETEMESSAGERESPONSE']._serialized_start=1529
-  _globals['_DELETEMESSAGERESPONSE']._serialized_end=1586
-  _globals['_HEALTHCHECK']._serialized_start=1588
-  _globals['_HEALTHCHECK']._serialized_end=1667
-  _globals['_DOMAINCLASSIFY']._serialized_start=1669
-  _globals['_DOMAINCLASSIFY']._serialized_end=1760
-  _globals['_CONVERSATIONSERVICE']._serialized_start=1763
-  _globals['_CONVERSATIONSERVICE']._serialized_end=2216
-  _globals['_MESSAGESERVICE']._serialized_start=2219
-  _globals['_MESSAGESERVICE']._serialized_end=2517
+  _globals['_MESSAGE']._serialized_end=1112
+  _globals['_GETMESSAGESREQUEST']._serialized_start=1114
+  _globals['_GETMESSAGESREQUEST']._serialized_end=1159
+  _globals['_GETMESSAGESRESPONSE']._serialized_start=1161
+  _globals['_GETMESSAGESRESPONSE']._serialized_end=1214
+  _globals['_CREATEMESSAGEREQUEST']._serialized_start=1216
+  _globals['_CREATEMESSAGEREQUEST']._serialized_end=1281
+  _globals['_CREATEMESSAGERESPONSE']._serialized_start=1283
+  _globals['_CREATEMESSAGERESPONSE']._serialized_end=1337
+  _globals['_UPDATEMESSAGEREQUEST']._serialized_start=1339
+  _globals['_UPDATEMESSAGEREQUEST']._serialized_end=1391
+  _globals['_UPDATEMESSAGERESPONSE']._serialized_start=1393
+  _globals['_UPDATEMESSAGERESPONSE']._serialized_end=1447
+  _globals['_DELETEMESSAGEREQUEST']._serialized_start=1449
+  _globals['_DELETEMESSAGEREQUEST']._serialized_end=1483
+  _globals['_DELETEMESSAGERESPONSE']._serialized_start=1485
+  _globals['_DELETEMESSAGERESPONSE']._serialized_end=1542
+  _globals['_HEALTHCHECK']._serialized_start=1544
+  _globals['_HEALTHCHECK']._serialized_end=1623
+  _globals['_DOMAINCLASSIFY']._serialized_start=1625
+  _globals['_DOMAINCLASSIFY']._serialized_end=1716
+  _globals['_CONVERSATIONSERVICE']._serialized_start=1719
+  _globals['_CONVERSATIONSERVICE']._serialized_end=2172
+  _globals['_MESSAGESERVICE']._serialized_start=2175
+  _globals['_MESSAGESERVICE']._serialized_end=2473
 # @@protoc_insertion_point(module_scope)

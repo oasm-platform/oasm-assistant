@@ -108,8 +108,8 @@ service MessageService {
 
 message Message {
   string id = 1;
-  string sender_type = 2;
-  string content = 3;
+  string question = 2;
+  string answer = 3;
   string conversation_id = 4;
   string embedding = 5;
   string created_at = 6;
@@ -125,9 +125,8 @@ message GetMessagesResponse {
 }
 
 message CreateMessageRequest {
-  string sender_type = 1;
-  string content = 2;
-  string conversation_id = 3;
+  string question = 1;
+  string conversation_id = 2;
 }
 
 message CreateMessageResponse {
@@ -136,8 +135,7 @@ message CreateMessageResponse {
 
 message UpdateMessageRequest {
   string id = 1;
-  string sender_type = 2;
-  string content = 3;
+  string question = 2;
 }
 
 message UpdateMessageResponse {
