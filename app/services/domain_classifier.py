@@ -5,15 +5,16 @@ import re
 import json
 from llms import llm_manager
 from tools.crawl_web import CrawlWeb
-from common.config import settings
+from common.config import configs
 from app.protos import assistant_pb2, assistant_pb2_grpc
+import grpc
 
 class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
     def __init__(self):
         self.llm_manager = llm_manager
         self.crawler = CrawlWeb(
-            timeout=settings.crawl_timeout,
-            max_retries=settings.crawl_max_retries
+            timeout=configs.crawl_timeout,
+            max_retries=configs.crawl_max_retries
         )
         
         self.categories = [
@@ -197,7 +198,7 @@ Focus on the most relevant categories with confidence scores between 0.0 and 1.0
             sorted_categories = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
             
             # Get top categories
-            labels = [cat for cat, score in sorted_categories if score >= settings.classification_confidence_threshold]
+            labels = [cat for cat, score in sorted_categories if score >= configs.classification_confidence_threshold]
             # Return empty array if no categories meet threshold
             
             # Calculate overall confidence

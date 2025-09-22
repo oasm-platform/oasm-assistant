@@ -6,7 +6,10 @@ from app.protos import assistant_pb2 as app_dot_protos_dot_assistant__pb2
 
 
 class HealthCheckStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """----------------
+    Health Check
+    ----------------
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -22,7 +25,10 @@ class HealthCheckStub(object):
 
 
 class HealthCheckServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """----------------
+    Health Check
+    ----------------
+    """
 
     def HealthCheck(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -46,7 +52,10 @@ def add_HealthCheckServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class HealthCheck(object):
-    """Missing associated documentation comment in .proto file."""
+    """----------------
+    Health Check
+    ----------------
+    """
 
     @staticmethod
     def HealthCheck(request,
@@ -67,7 +76,10 @@ class HealthCheck(object):
 
 
 class DomainClassifyStub(object):
-    """Missing associated documentation comment in .proto file."""
+    """----------------
+    Domain Classify
+    ----------------
+    """
 
     def __init__(self, channel):
         """Constructor.
@@ -83,7 +95,10 @@ class DomainClassifyStub(object):
 
 
 class DomainClassifyServicer(object):
-    """Missing associated documentation comment in .proto file."""
+    """----------------
+    Domain Classify
+    ----------------
+    """
 
     def DomainClassify(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -107,7 +122,10 @@ def add_DomainClassifyServicer_to_server(servicer, server):
 
  # This class is part of an EXPERIMENTAL API.
 class DomainClassify(object):
-    """Missing associated documentation comment in .proto file."""
+    """----------------
+    Domain Classify
+    ----------------
+    """
 
     @staticmethod
     def DomainClassify(request,
@@ -123,5 +141,376 @@ class DomainClassify(object):
         return grpc.experimental.unary_unary(request, target, '/app.DomainClassify/DomainClassify',
             app_dot_protos_dot_assistant__pb2.DomainClassifyRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.DomainClassifyResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+
+class ConversationServiceStub(object):
+    """----------------
+    Conversation
+    ----------------
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetConversations = channel.unary_unary(
+                '/app.ConversationService/GetConversations',
+                request_serializer=app_dot_protos_dot_assistant__pb2.GetConversationsRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.GetConversationsResponse.FromString,
+                )
+        self.CreateConversation = channel.unary_unary(
+                '/app.ConversationService/CreateConversation',
+                request_serializer=app_dot_protos_dot_assistant__pb2.CreateConversationRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.CreateConversationResponse.FromString,
+                )
+        self.UpdateConversation = channel.unary_unary(
+                '/app.ConversationService/UpdateConversation',
+                request_serializer=app_dot_protos_dot_assistant__pb2.UpdateConversationRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.UpdateConversationResponse.FromString,
+                )
+        self.DeleteConversation = channel.unary_unary(
+                '/app.ConversationService/DeleteConversation',
+                request_serializer=app_dot_protos_dot_assistant__pb2.DeleteConversationRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteConversationResponse.FromString,
+                )
+        self.DeleteConversations = channel.unary_unary(
+                '/app.ConversationService/DeleteConversations',
+                request_serializer=app_dot_protos_dot_assistant__pb2.DeleteConversationsRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteConversationsResponse.FromString,
+                )
+
+
+class ConversationServiceServicer(object):
+    """----------------
+    Conversation
+    ----------------
+    """
+
+    def GetConversations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateConversation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateConversation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteConversation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteConversations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ConversationServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetConversations': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetConversations,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetConversationsRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.GetConversationsResponse.SerializeToString,
+            ),
+            'CreateConversation': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateConversation,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.CreateConversationRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.CreateConversationResponse.SerializeToString,
+            ),
+            'UpdateConversation': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateConversation,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.UpdateConversationRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.UpdateConversationResponse.SerializeToString,
+            ),
+            'DeleteConversation': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteConversation,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteConversationRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DeleteConversationResponse.SerializeToString,
+            ),
+            'DeleteConversations': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteConversations,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteConversationsRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DeleteConversationsResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'app.ConversationService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ConversationService(object):
+    """----------------
+    Conversation
+    ----------------
+    """
+
+    @staticmethod
+    def GetConversations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.ConversationService/GetConversations',
+            app_dot_protos_dot_assistant__pb2.GetConversationsRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.GetConversationsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateConversation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.ConversationService/CreateConversation',
+            app_dot_protos_dot_assistant__pb2.CreateConversationRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.CreateConversationResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def UpdateConversation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.ConversationService/UpdateConversation',
+            app_dot_protos_dot_assistant__pb2.UpdateConversationRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.UpdateConversationResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def DeleteConversation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.ConversationService/DeleteConversation',
+            app_dot_protos_dot_assistant__pb2.DeleteConversationRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.DeleteConversationResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def DeleteConversations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.ConversationService/DeleteConversations',
+            app_dot_protos_dot_assistant__pb2.DeleteConversationsRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.DeleteConversationsResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+
+class MessageServiceStub(object):
+    """----------------
+    Message
+    ----------------
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetMessages = channel.unary_unary(
+                '/app.MessageService/GetMessages',
+                request_serializer=app_dot_protos_dot_assistant__pb2.GetMessagesRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.GetMessagesResponse.FromString,
+                )
+        self.CreateMessage = channel.unary_unary(
+                '/app.MessageService/CreateMessage',
+                request_serializer=app_dot_protos_dot_assistant__pb2.CreateMessageRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.CreateMessageResponse.FromString,
+                )
+        self.UpdateMessage = channel.unary_unary(
+                '/app.MessageService/UpdateMessage',
+                request_serializer=app_dot_protos_dot_assistant__pb2.UpdateMessageRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMessageResponse.FromString,
+                )
+        self.DeleteMessage = channel.unary_unary(
+                '/app.MessageService/DeleteMessage',
+                request_serializer=app_dot_protos_dot_assistant__pb2.DeleteMessageRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMessageResponse.FromString,
+                )
+
+
+class MessageServiceServicer(object):
+    """----------------
+    Message
+    ----------------
+    """
+
+    def GetMessages(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateMessage(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateMessage(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteMessage(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_MessageServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetMessages': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMessages,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetMessagesRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.GetMessagesResponse.SerializeToString,
+            ),
+            'CreateMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateMessage,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.CreateMessageRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.CreateMessageResponse.SerializeToString,
+            ),
+            'UpdateMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateMessage,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMessageRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.UpdateMessageResponse.SerializeToString,
+            ),
+            'DeleteMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteMessage,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMessageRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DeleteMessageResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'app.MessageService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
+ # This class is part of an EXPERIMENTAL API.
+class MessageService(object):
+    """----------------
+    Message
+    ----------------
+    """
+
+    @staticmethod
+    def GetMessages(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.MessageService/GetMessages',
+            app_dot_protos_dot_assistant__pb2.GetMessagesRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.GetMessagesResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.MessageService/CreateMessage',
+            app_dot_protos_dot_assistant__pb2.CreateMessageRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.CreateMessageResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def UpdateMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.MessageService/UpdateMessage',
+            app_dot_protos_dot_assistant__pb2.UpdateMessageRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.UpdateMessageResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def DeleteMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/app.MessageService/DeleteMessage',
+            app_dot_protos_dot_assistant__pb2.DeleteMessageRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.DeleteMessageResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

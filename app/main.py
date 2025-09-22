@@ -5,10 +5,10 @@ import traceback
 
 from .protos import assistant_pb2_grpc
 
-from .services import HealthService, DomainClassifier
+from .services import HealthService, DomainClassifier, ConversationService, MessageService
 
 from common.logger import logger
-from common.config import settings
+from common.config import configs as settings 
 
 def serve():
     """Start gRPC server"""
@@ -29,6 +29,8 @@ def serve():
         # Add servicer
         assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthService(), server)
         assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifier(), server)
+        assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationService(), server)
+        assistant_pb2_grpc.add_MessageServiceServicer_to_server(MessageService(), server)
         
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"

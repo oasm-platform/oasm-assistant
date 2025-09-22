@@ -28,3 +28,124 @@ message DomainClassifyRequest {
 message DomainClassifyResponse {
   repeated string label = 1;
 }
+
+// ----------------
+// Conversation
+// ----------------
+service ConversationService {
+  rpc GetConversations(GetConversationsRequest) returns (GetConversationsResponse);
+  rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
+  rpc UpdateConversation(UpdateConversationRequest) returns (UpdateConversationResponse);
+  rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
+  rpc DeleteConversations(DeleteConversationsRequest) returns (DeleteConversationsResponse);
+}
+
+message Conversation {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string workspace_id = 4;
+  string embedding = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message GetConversationsRequest {
+  string workspace_id = 1;
+}
+
+message GetConversationsResponse {
+  repeated Conversation conversations = 1;
+}
+
+message CreateConversationRequest {
+  string title = 1;
+  string description = 2;
+  string workspace_id = 3;
+}
+
+message CreateConversationResponse {
+  Conversation conversation = 1;
+}
+
+message UpdateConversationRequest {
+  string conversation_id = 1;
+  string title = 2;
+  string description = 3;
+}
+
+message UpdateConversationResponse {
+  Conversation conversation = 1;
+}
+
+message DeleteConversationRequest {
+  string conversation_id = 1;
+}
+
+message DeleteConversationResponse {
+  string message = 1;
+}
+
+message DeleteConversationsRequest {
+  string workspace_id = 1;
+}
+
+message DeleteConversationsResponse {
+  string message = 1;
+}
+
+// ----------------
+// Message
+// ----------------
+service MessageService {
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
+  rpc CreateMessage(CreateMessageRequest) returns (CreateMessageResponse);
+  rpc UpdateMessage(UpdateMessageRequest) returns (UpdateMessageResponse);
+  rpc DeleteMessage(DeleteMessageRequest) returns (DeleteMessageResponse);
+}
+
+message Message {
+  string message_id = 1;
+  string sender_type = 2;
+  string content = 3;
+  string conversation_id = 4;
+  string embedding = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message GetMessagesRequest {
+  string conversation_id = 1;
+}
+
+message GetMessagesResponse {
+  repeated Message messages = 1;
+}
+
+message CreateMessageRequest {
+  string sender_type = 1;
+  string content = 2;
+  string conversation_id = 3;
+}
+
+message CreateMessageResponse {
+  Message message = 1;
+}
+
+message UpdateMessageRequest {
+  int64 message_id = 1;
+  string sender_type = 2;
+  string content = 3;
+}
+
+message UpdateMessageResponse {
+  Message message = 1;
+}
+
+message DeleteMessageRequest {
+  string message_id = 1;
+}
+
+message DeleteMessageResponse {
+  string message = 1;
+}
