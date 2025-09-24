@@ -1,23 +1,14 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 import uuid
-import logging
 from enum import Enum
 
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.language_models import BaseLanguageModel
-from langchain.memory import ConversationBufferWindowMemory
 
-# Try to import AgentExecutor, fallback if not available
-try:
-    from langchain.agents import AgentExecutor
-except ImportError:
-    AgentExecutor = None
-
-# Import LLM manager
 from llms import llm_manager
 
 from .environment import AgentEnvironment
@@ -25,7 +16,7 @@ from .perception import PerceptionSystem
 from .memory import AgentMemory
 from .state import AgentState
 
-logger = logging.getLogger("agents")
+from common.logger import logger
 
 
 class AgentType(Enum):
@@ -56,16 +47,6 @@ class AgentCapability:
     enabled: bool = True
 
 
-@dataclass
-class AgentGoal:
-    """Agent goal for threat monitoring and security tasks"""
-    id: str
-    description: str
-    priority: int
-    status: str = "pending"  # pending, active, completed, failed
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    deadline: Optional[datetime] = None
-    success_criteria: List[str] = field(default_factory=list)
 
 
 class BaseAgent(ABC):
@@ -94,8 +75,7 @@ class BaseAgent(ABC):
         self.memory = AgentMemory(self.id)
         self.state = AgentState()
 
-        # Goals and tasks for security operations
-        self.goals: List[AgentGoal] = []
+        # Current task for security operations
         self.current_task: Optional[Dict[str, Any]] = None
 
         # Performance tracking for security operations
@@ -108,11 +88,7 @@ class BaseAgent(ABC):
         self.llm_model = llm_model
         self.llm: Optional[BaseLanguageModel] = None
         self.tools = []  # Security tools (nuclei, nmap, etc.)
-        self.agent_executor: Optional[AgentExecutor] = None
-        self.conversation_memory = ConversationBufferWindowMemory(
-            k=kwargs.get('memory_window', 10),
-            return_messages=True
-        )
+        # Removed unused LangChain components
 
         # Initialize LLM
         self._initialize_llm()
@@ -157,12 +133,17 @@ class BaseAgent(ABC):
                 logger.info(f"Using default LLM provider: {provider}")
 
             # Initialize LLM
-            self.llm = llm_manager.get_llm(
-                provider=provider,
-                model=self.llm_model,
-                temperature=0.1,  # Lower temperature for security tasks
-                max_tokens=4000
-            )
+            llm_kwargs = {
+                "provider": provider,
+                "temperature": 0.1,  # Lower temperature for security tasks
+                "max_tokens": 4000
+            }
+
+            # Only add model parameter if specified
+            if self.llm_model:
+                llm_kwargs["model"] = self.llm_model
+
+            self.llm = llm_manager.get_llm(**llm_kwargs)
 
             self.llm_provider = provider
             logger.info(f"LLM initialized: {provider}")
@@ -201,7 +182,7 @@ You have access to security tools and databases. Use your expertise to provide c
 
         return prompt
 
-    async def query_llm(self, message: str, context: Dict[str, Any] = None) -> str:
+    def query_llm(self, message: str, context: Dict[str, Any] = None) -> str:
         """Query the LLM with security context"""
         if not self.llm:
             logger.error("LLM not initialized")
@@ -227,8 +208,8 @@ Current Security Context:
                 HumanMessage(content=formatted_message)
             ]
 
-            # Get response
-            response = await self.llm.ainvoke(messages)
+            # Get response - use sync invoke to avoid event loop issues
+            response = self.llm.invoke(messages)
 
             # Extract text content
             if hasattr(response, 'content'):
@@ -240,7 +221,7 @@ Current Security Context:
             logger.error(f"LLM query failed: {e}")
             return f"Error querying LLM: {e}"
 
-    async def analyze_with_llm(self, data: Dict[str, Any], analysis_type: str = "security") -> Dict[str, Any]:
+    def analyze_with_llm(self, data: Dict[str, Any], analysis_type: str = "security") -> Dict[str, Any]:
         """Analyze data using LLM with structured response"""
         if not self.llm:
             return {"error": "LLM not available"}
@@ -262,7 +243,7 @@ Please provide:
 Format your response as structured analysis.
 """
 
-            response = await self.query_llm(
+            response = self.query_llm(
                 analysis_prompt,
                 context={
                     "alert_level": self.state.security_alert_level.value,
@@ -275,7 +256,7 @@ Format your response as structured analysis.
             return {
                 "analysis_type": analysis_type,
                 "response": response,
-                "timestamp": datetime.utcnow(),
+                "timestamp": datetime.now(),
                 "agent_id": self.id,
                 "confidence": 0.8  # Default confidence
             }
@@ -290,7 +271,7 @@ Format your response as structured analysis.
         pass
 
     @abstractmethod
-    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute security task (threat analysis, vulnerability scan, etc.)"""
         pass
 
@@ -299,11 +280,6 @@ Format your response as structured analysis.
         self.capabilities.append(capability)
         logger.info(f"Added capability '{capability.name}' to agent {self.name}")
 
-    def add_goal(self, goal: AgentGoal):
-        """Add security goal to agent"""
-        self.goals.append(goal)
-        self.state.update("goals_count", len(self.goals))
-        logger.info(f"Added goal '{goal.description}' to agent {self.name}")
 
     def perceive(self) -> Dict[str, Any]:
         """Perceive threats and security events in environment"""
@@ -313,7 +289,7 @@ Format your response as structured analysis.
         """Reason about security observations using CoT (Chain of Thought)"""
         reasoning_result = {
             "observations_processed": len(observations),
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(),
             "confidence": 1.0,
             "threat_indicators": self._extract_threat_indicators(observations),
             "security_context": self._analyze_security_context(observations)
@@ -324,67 +300,26 @@ Format your response as structured analysis.
 
         return reasoning_result
 
-    def plan(self, goal: AgentGoal) -> List[Dict[str, Any]]:
-        """Plan security actions to achieve goal"""
-        plan = []
 
-        # Security-focused planning logic
-        if "threat" in goal.description.lower():
-            plan.extend(self._plan_threat_analysis(goal))
-        elif "vulnerability" in goal.description.lower():
-            plan.extend(self._plan_vulnerability_assessment(goal))
-        elif "scan" in goal.description.lower():
-            plan.extend(self._plan_security_scan(goal))
-        else:
-            # Generic security analysis
-            plan.append({
-                "action": "analyze_security_goal",
-                "goal_id": goal.id,
-                "description": f"Analyze security goal: {goal.description}",
-                "priority": goal.priority
-            })
-
-        return plan
-
-    async def act(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    def act(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Execute security action using ReAct pattern"""
         try:
             action_type = action.get("action")
 
             # Security-specific actions
-            if action_type == "analyze_security_goal":
-                return await self._analyze_security_goal(action)
-            elif action_type == "run_security_scan":
-                return await self._run_security_scan(action)
+            if action_type == "run_security_scan":
+                return self._run_security_scan(action)
             elif action_type == "analyze_threat":
-                return await self._analyze_threat(action)
+                return self._analyze_threat(action)
             else:
-                return await self.execute_task(action)
+                return self.execute_task(action)
 
         except Exception as e:
             logger.error(f"Action execution failed for agent {self.name}: {e}")
             return {"success": False, "error": str(e)}
 
-    async def _analyze_security_goal(self, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze security goal with threat intelligence"""
-        goal_id = action.get("goal_id")
-        goal = next((g for g in self.goals if g.id == goal_id), None)
 
-        if not goal:
-            return {"success": False, "error": "Goal not found"}
-
-        analysis = {
-            "goal_id": goal_id,
-            "security_feasibility": self._assess_security_feasibility(goal),
-            "required_tools": self._get_required_security_tools(goal),
-            "threat_level": self._assess_threat_level_for_goal(goal),
-            "estimated_time": self._estimate_completion_time(goal),
-            "success": True
-        }
-
-        return analysis
-
-    async def _run_security_scan(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_security_scan(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Run security scan using available tools"""
         scan_type = action.get("scan_type", "basic")
         target = action.get("target")
@@ -400,7 +335,7 @@ Format your response as structured analysis.
             "results": "Scan completed - implement in subclass"
         }
 
-    async def _analyze_threat(self, action: Dict[str, Any]) -> Dict[str, Any]:
+    def _analyze_threat(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze threat using threat intelligence"""
         threat_data = action.get("threat_data")
 
@@ -438,123 +373,8 @@ Format your response as structured analysis.
             "requires_attention": False
         }
 
-    def _plan_threat_analysis(self, goal: AgentGoal) -> List[Dict[str, Any]]:
-        """Plan threat analysis actions"""
-        return [
-            {
-                "action": "gather_threat_intelligence",
-                "goal_id": goal.id,
-                "description": "Gather threat intelligence data",
-                "priority": goal.priority
-            },
-            {
-                "action": "analyze_threat",
-                "goal_id": goal.id,
-                "description": "Analyze threat indicators",
-                "priority": goal.priority
-            }
-        ]
-
-    def _plan_vulnerability_assessment(self, goal: AgentGoal) -> List[Dict[str, Any]]:
-        """Plan vulnerability assessment actions"""
-        return [
-            {
-                "action": "run_security_scan",
-                "scan_type": "vulnerability",
-                "goal_id": goal.id,
-                "description": "Run vulnerability scan",
-                "priority": goal.priority
-            },
-            {
-                "action": "analyze_vulnerabilities",
-                "goal_id": goal.id,
-                "description": "Analyze discovered vulnerabilities",
-                "priority": goal.priority
-            }
-        ]
-
-    def _plan_security_scan(self, goal: AgentGoal) -> List[Dict[str, Any]]:
-        """Plan security scan actions"""
-        return [
-            {
-                "action": "run_security_scan",
-                "scan_type": "comprehensive",
-                "goal_id": goal.id,
-                "description": "Run comprehensive security scan",
-                "priority": goal.priority
-            }
-        ]
-
-    def _assess_security_feasibility(self, goal: AgentGoal) -> float:
-        """Assess security goal feasibility"""
-        # Consider available security tools and capabilities
-        relevant_caps = [cap for cap in self.capabilities if cap.enabled]
-        return min(0.9, len(relevant_caps) * 0.2)
-
-    def _get_required_security_tools(self, goal: AgentGoal) -> List[str]:
-        """Get required security tools for goal"""
-        tools = []
-        goal_desc = goal.description.lower()
-
-        if "scan" in goal_desc:
-            tools.extend(["nmap", "nuclei", "httpx"])
-        if "vulnerability" in goal_desc:
-            tools.extend(["nuclei", "subfinder"])
-        if "threat" in goal_desc:
-            tools.extend(["threat_intelligence", "ioc_analyzer"])
-
-        return tools
-
-    def _assess_threat_level_for_goal(self, goal: AgentGoal) -> str:
-        """Assess threat level for specific goal"""
-        threat_keywords = ["critical", "high", "urgent", "immediate"]
-        goal_desc = goal.description.lower()
-
-        if any(keyword in goal_desc for keyword in threat_keywords):
-            return "high"
-        elif goal.priority > 8:
-            return "medium"
-        else:
-            return "low"
-
-    def _assess_goal_feasibility(self, goal: AgentGoal) -> float:
-        """Assess general goal feasibility"""
-        return self._assess_security_feasibility(goal)
-
-    def _get_required_capabilities(self, goal: AgentGoal) -> List[str]:
-        """Get required capabilities for goal"""
-        return [cap.name for cap in self.capabilities if cap.enabled]
-
-    def _estimate_completion_time(self, goal: AgentGoal) -> int:
-        """Estimate completion time for security goal (seconds)"""
-        base_time = 300  # 5 minutes base
-
-        # Adjust based on goal complexity
-        if "comprehensive" in goal.description.lower():
-            base_time *= 3
-        elif "quick" in goal.description.lower():
-            base_time //= 2
-
-        return base_time
-
-    def learn_from_experience(self, experience: Dict[str, Any]):
-        """Learn from security operation experience"""
-        self.memory.add_experience(experience)
-
-        # Update performance metrics
-        if experience.get("success"):
-            self.success_count += 1
-        else:
-            self.failure_count += 1
-
-        # Update agent state based on experience
-        if experience.get("threat_detected"):
-            self.state.adjust_confidence(0.1)
-        if experience.get("scan_completed"):
-            self.state.adjust_energy(-0.1)
-
     def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get security agent performance metrics"""
+        """Get basic security agent performance metrics"""
         total_executions = self.success_count + self.failure_count
         success_rate = self.success_count / total_executions if total_executions > 0 else 0
 
@@ -565,28 +385,5 @@ Format your response as structured analysis.
             "total_executions": total_executions,
             "success_count": self.success_count,
             "failure_count": self.failure_count,
-            "success_rate": success_rate,
-            "goals_count": len(self.goals),
-            "active_goals": len([g for g in self.goals if g.status == "active"]),
-            "capabilities_count": len(self.capabilities),
-            "threat_indicators_processed": self.state.threats_detected,
-            "scans_completed": self.state.custom_state.get("completed_scans", 0)
-        }
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Serialize OASM agent to dictionary"""
-        return {
-            "id": self.id,
-            "name": self.name,
-            "role": self.role.value,
-            "agent_type": self.agent_type.value,
-            "capabilities": [cap.__dict__ for cap in self.capabilities],
-            "goals": [goal.__dict__ for goal in self.goals],
-            "state": self.state.to_dict(),
-            "performance": self.get_performance_metrics(),
-            "security_context": {
-                "active_threats": len(self._extract_threat_indicators({})),
-                "last_scan": self.state.get("last_scan_time"),
-                "threat_level": self.state.get("current_threat_level", "low")
-            }
+            "success_rate": success_rate
         }

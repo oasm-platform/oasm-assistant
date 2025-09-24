@@ -1,11 +1,10 @@
 from .llm_manager import LLMManager
 from common.config import configs
-from .llm_manager import LLMConfig
+from common.config import LlmConfigs
 
 # Initialize LLM manager with settings
 llm_manager = LLMManager(
-    configs={
-        configs.llm.provider: LLMConfig(
+    config=LlmConfigs(
             provider=configs.llm.provider,
             api_key=configs.llm.api_key,
             model_name=configs.llm.model_name,
@@ -16,7 +15,6 @@ llm_manager = LLMManager(
             base_url=configs.llm.base_url,
             **configs.llm.extra_params
         )
-    }
 )
 
 __all__ = ['llm_manager']
