@@ -47,7 +47,7 @@ OASM Assistant is a sophisticated multi-agent system designed to enhance cyberse
 ### 🗄️ Data Management
 
 - **LlamaIndex**: Advanced document indexing and retrieval
-- **Vector Storage**: Semantic search across security knowledge
+- **Vector Storage**: Semantic search across security knowledge using pgvector
 - **PostgreSQL**: Structured storage for scan results and threat data
 - **Real-time Processing**: Live data ingestion and analysis
 

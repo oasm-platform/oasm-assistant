@@ -13,6 +13,7 @@ asyncpg
 sqlalchemy
 alembic
 psycopg2-binary
+pgvector
 
 # AI/ML Core
 torch

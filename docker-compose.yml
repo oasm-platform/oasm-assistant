@@ -1,13 +1,14 @@
 services:
   postgresql:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: postgresql
     ports:
-      - "9432:5432"
+      - "5432:5432"
     env_file:
       - .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
