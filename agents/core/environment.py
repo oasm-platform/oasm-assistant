@@ -12,6 +12,18 @@ class ThreatLevel(Enum):
     CRITICAL = "critical"
 
 
+class EnvironmentData:
+    """Environment data container for OASM agents"""
+    def __init__(self, data: Dict[str, Any] = None):
+        self.data = data or {}
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return self.data.get(key, default)
+
+    def set(self, key: str, value: Any):
+        self.data[key] = value
+
+
 class AgentEnvironment:
     """Simplified security environment for OASM agents"""
 
