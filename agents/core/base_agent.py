@@ -26,13 +26,10 @@ class AgentType(Enum):
 
 
 class AgentRole(Enum):
-    THREAT_ANALYST = "threat_analyst"
-    SECURITY_RESEARCHER = "security_researcher"
-    SCAN_ANALYZER = "scan_analyzer"
-    VULNERABILITY_ASSESSOR = "vulnerability_assessor"
-    INCIDENT_RESPONDER = "incident_responder"
-    ORCHESTRATOR = "orchestrator"
-    NUCLEI_GENERATION = "nuclei_generation"
+    THREAT_INTELLIGENCE_AGENT = "threat_intelligence_agent"
+    ANALYSIS_AGENT = "analysis_agent"
+    INCIDENT_RESPONSE_AGENT = "incident_response_agent"
+    ORCHESTRATION_AGENT = "orchestration_agent"
 
 
 @dataclass
