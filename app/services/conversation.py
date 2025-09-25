@@ -11,11 +11,8 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
 
     def GetConversations(self, request, context):
         try:
-            workspace_id = request.workspace_id
             with self.db.get_session() as session:
-                conversations = session.query(Conversation).filter(
-                    Conversation.workspace_id == workspace_id
-                ).all()
+                conversations = session.query(Conversation).all()
                 return assistant_pb2.GetConversationsResponse(conversations=[conversation.to_dict() for conversation in conversations])
         
         except Exception as e:
@@ -26,12 +23,11 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
     
     def CreateConversation(self, request, context):
         try:
-            workspace_id = request.workspace_id
             title = request.title
             description = request.description
 
             with self.db.get_session() as session:
-                conversation = Conversation(title=title, description=description, workspace_id=workspace_id)
+                conversation = Conversation(title=title, description=description)
                 session.add(conversation)
                 session.commit()
                 session.refresh(conversation)
@@ -104,12 +100,8 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
 
     def DeleteConversations(self, request, context):
         try:
-            workspace_id = request.workspace_id
-
             with self.db.get_session() as session:
-                conversations = session.query(Conversation).filter(
-                    Conversation.workspace_id == workspace_id
-                ).all()
+                conversations = session.query(Conversation).all()
                 for conversation in conversations:
                     session.delete(conversation)
                 session.commit()
