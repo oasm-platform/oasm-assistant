@@ -1,7 +1,16 @@
 from typing import Dict, Any, List
 from datetime import datetime
 from collections import deque
+from enum import Enum
 from common.logger import logger
+
+
+class MemoryType(Enum):
+    """Types of memory for agent systems"""
+    WORKING = "working"
+    LONG_TERM = "long_term"
+    EPISODIC = "episodic"
+    SEMANTIC = "semantic"
 
 
 class AgentMemory:
