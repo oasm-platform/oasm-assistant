@@ -41,7 +41,7 @@ service ConversationService {
 }
 
 message Conversation {
-  string id = 1;
+  string conversation_id = 1;
   string title = 2;
   string description = 3;
   string embedding = 4;
@@ -66,7 +66,7 @@ message CreateConversationResponse {
 }
 
 message UpdateConversationRequest {
-  string id = 1;
+  string conversation_id = 1;
   string title = 2;
   string description = 3;
 }
@@ -76,7 +76,7 @@ message UpdateConversationResponse {
 }
 
 message DeleteConversationRequest {
-  string id = 1;
+  string conversation_id = 1;
 }
 
 message DeleteConversationResponse {
@@ -103,7 +103,7 @@ service MessageService {
 }
 
 message Message {
-  string id = 1;
+  string message_id = 1;
   string question = 2;
   string answer = 3;
   string conversation_id = 4;
@@ -131,7 +131,7 @@ message CreateMessageResponse {
 }
 
 message UpdateMessageRequest {
-  string id = 1;
+  string message_id = 1;
   string question = 2;
   string is_create_template = 3;
 }
@@ -141,7 +141,7 @@ message UpdateMessageResponse {
 }
 
 message DeleteMessageRequest {
-  string id = 1;
+  string message = 1;
 }
 
 message DeleteMessageResponse {
