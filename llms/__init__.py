@@ -17,4 +17,4 @@ llm_manager = LLMManager(
         )
 )
 
-__all__ = ['llm_manager']
+__all__ = ['llm_manager', 'LLMManager']

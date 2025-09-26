@@ -154,7 +154,9 @@ class LLMManager:
 
     def get_llm(self, provider: str = None, model: str = None, **kwargs) -> BaseLanguageModel:
         """Get an LLM instance"""
-        provider = provider
+        # Use the configured default provider if no provider is specified
+        if not provider:
+            provider = self.config.provider
 
         if not provider:
             raise ValueError("No provider specified")

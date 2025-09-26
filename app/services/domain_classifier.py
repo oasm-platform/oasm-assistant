@@ -3,15 +3,16 @@ from langchain_core.messages import HumanMessage
 from common.logger import logger
 import re
 import json
-from llms import llm_manager
+from llms import LLMManager
 from tools.crawl_web import CrawlWeb
 from common.config import configs
 from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
+from common.config import configs
 
 class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
     def __init__(self):
-        self.llm_manager = llm_manager
+        self.llm_manager = LLMManager(configs.llm)
         self.crawler = CrawlWeb(
             timeout=configs.crawl_timeout,
             max_retries=configs.crawl_max_retries
