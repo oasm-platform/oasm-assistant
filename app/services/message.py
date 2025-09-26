@@ -6,7 +6,7 @@ from grpc import StatusCode
 from data.database.models import Message, Conversation
 from agents.core import BaseAgent, AgentRole
 from agents.workflows.langgraph_coordinator import LangGraphSecurityCoordinator
-
+from app.interceptors import get_metadata_interceptor
 
 def create_security_agent():
     """Create a basic security agent for fallback"""
@@ -65,14 +65,23 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
         logger.info("Message service initialized with LangGraph security coordination")
 
+    @get_metadata_interceptor
     def GetMessages(self, request, context):
         """Get all messages for a conversation"""
         try:
             conversation_id = request.conversation_id
+            # Extract workspace_id and user_id from metadata
+            workspace_id = context.workspace_id
+            user_id = context.user_id
+            
             with self.db.get_session() as session:
-                messages = session.query(Message).filter(
-                    Message.conversation_id == conversation_id
-                ).all()
+                query = session.query(Message).join(Conversation).filter(
+                    Message.conversation_id == conversation_id,
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                )
+                
+                messages = query.all()
                 return assistant_pb2.GetMessagesResponse(messages=[message.to_dict() for message in messages])
 
         except Exception as e:
@@ -81,17 +90,24 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             context.set_details(str(e))
             return assistant_pb2.GetMessagesResponse(messages=[])
 
+    @get_metadata_interceptor
     def CreateMessage(self, request, context):
         """Enhanced CreateMessage with OASM security agent integration"""
         try:
             conversation_id = request.conversation_id
             question = request.question
+            
+            # Extract workspace_id and user_id from metadata
+            workspace_id = context.workspace_id
+            user_id = context.user_id
 
             with self.db.get_session() as session:
                 # Check if conversation exists
-                conversation = session.query(Conversation).filter(
-                    Conversation.id == conversation_id
-                ).first()
+                query = session.query(Conversation).filter(Conversation.conversation_id == conversation_id,
+                Conversation.workspace_id == workspace_id,
+                Conversation.user_id == user_id)
+                
+                conversation = query.first()
 
                 if not conversation:
                     context.set_code(StatusCode.NOT_FOUND)
@@ -155,16 +171,23 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             context.set_details(str(e))
             return assistant_pb2.CreateMessageResponse()
 
+    @get_metadata_interceptor
     def UpdateMessage(self, request, context):
         """Enhanced UpdateMessage with potential re-generation of answers"""
         try:
             id = request.id
             question = request.question
+            
+            # Extract workspace_id and user_id from metadata
+            workspace_id = context.workspace_id
+            user_id = context.user_id
 
             with self.db.get_session() as session:
-                message = session.query(Message).filter(
-                    Message.id == id
-                ).first()
+                query = session.query(Message).join(Conversation).filter(Message.id == id,
+                Conversation.workspace_id == workspace_id,
+                Conversation.user_id == user_id)
+                
+                message = query.first()
 
                 if not message:
                     context.set_code(StatusCode.NOT_FOUND)
@@ -210,15 +233,22 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             context.set_details(str(e))
             return assistant_pb2.UpdateMessageResponse()
 
+    @get_metadata_interceptor
     def DeleteMessage(self, request, context):
         """Delete a message"""
         try:
             id = request.id
+            
+            # Extract workspace_id and user_id from metadata
+            workspace_id = context.workspace_id
+            user_id = context.user_id
 
             with self.db.get_session() as session:
-                message = session.query(Message).filter(
-                    Message.id == id
-                ).first()
+                query = session.query(Message).join(Conversation).filter(Message.id == id,
+                Conversation.workspace_id == workspace_id,
+                Conversation.user_id == user_id)
+                
+                message = query.first()
 
                 if not message:
                     context.set_code(StatusCode.NOT_FOUND)
