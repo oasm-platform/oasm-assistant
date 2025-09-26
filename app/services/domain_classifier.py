@@ -9,6 +9,7 @@ from common.config import configs
 from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
 from common.config import configs
+from llms.prompts import DomainClassificationPrompts
 
 class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
     def __init__(self):
@@ -101,37 +102,12 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
         try:
             llm = self.llm_manager.get_llm()
             
-            # Prepare prompt
-            prompt = f"""
-Classify the website domain "{domain}" into one or more of these categories:
-{', '.join(self.categories)}
-
-"""
-            
-            if content:
-                # Limit content for LLM
-                content_preview = content[:2000] + "..." if len(content) > 2000 else content
-                prompt += f"""
-Website content preview:
-{content_preview}
-
-"""
-            
-            prompt += f"""
-Analyze the domain name and content (if provided) to determine the most appropriate categories.
-
-Respond in JSON format:
-{{
-  "primary_category": "main category",
-  "categories": [
-    {{"category": "category1", "confidence": 0.9}},
-    {{"category": "category2", "confidence": 0.7}}
-  ],
-  "reasoning": "Brief explanation of classification"
-}}
-
-Focus on the most relevant categories with confidence scores between 0.0 and 1.0.
-"""
+            # Prepare prompt using external prompt
+            prompt = DomainClassificationPrompts.get_domain_classification_prompt(
+                categories=self.categories,
+                domain=domain,
+                content=content
+            )
             
             response = llm.invoke([HumanMessage(content=prompt)])
             
@@ -151,7 +127,7 @@ Focus on the most relevant categories with confidence scores between 0.0 and 1.0
                     }
             except json.JSONDecodeError:
                 return {
-                    "primary_category": "", 
+                    "primary_category": "",
                     "categories": [],
                     "reasoning": "Invalid JSON response from LLM"
                 }
