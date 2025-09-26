@@ -2,9 +2,8 @@
 LangGraph-based workflows for OASM security agent coordination
 """
 
-from .langgraph_coordinator import LangGraphSecurityCoordinator, security_coordinator
+from .security_coordinator import SecurityCoordinator
 
 __all__ = [
-    "LangGraphSecurityCoordinator",
-    "security_coordinator"
+    "SecurityCoordinator"
 ]

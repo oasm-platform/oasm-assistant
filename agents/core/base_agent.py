@@ -129,7 +129,6 @@ class BaseAgent(ABC):
             provider = self.llm_provider
             if not provider or provider not in available_providers:
                 provider = available_providers[0]
-                logger.info(f"Using default LLM provider: {provider}")
 
             llm_kwargs = {
                 "provider": provider,
