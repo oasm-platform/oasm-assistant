@@ -232,6 +232,7 @@ class NucleiGenerationAgent(BaseAgent):
 
     def _parse_template_response(self, llm_response: str, template_id: str) -> Optional[NucleiTemplate]:
         try:
+            print("LLM Response: ", llm_response)
             yaml_content = self._extract_yaml_from_response(llm_response)
             if not yaml_content:
                 # If no YAML found, create a basic template with the response as description

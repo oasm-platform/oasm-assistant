@@ -123,7 +123,7 @@ message GetMessagesResponse {
 message CreateMessageRequest {
   string question = 1;
   string conversation_id = 2;
-  string is_create_template = 3;
+  bool is_create_template = 3;
 }
 
 message CreateMessageResponse {
@@ -133,7 +133,7 @@ message CreateMessageResponse {
 message UpdateMessageRequest {
   string message_id = 1;
   string question = 2;
-  string is_create_template = 3;
+  bool is_create_template = 3;
 }
 
 message UpdateMessageResponse {
