@@ -32,6 +32,7 @@ class AgentRole(Enum):
     VULNERABILITY_ASSESSOR = "vulnerability_assessor"
     INCIDENT_RESPONDER = "incident_responder"
     ORCHESTRATOR = "orchestrator"
+    NUCLEI_GENERATION = "nuclei_generation"
 
 
 @dataclass

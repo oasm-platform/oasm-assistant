@@ -5,7 +5,7 @@ Provides base classes and utilities for AI agent implementation
 
 from .base_agent import BaseAgent, AgentRole, AgentType, AgentCapability
 from .environment import AgentEnvironment, EnvironmentData
-from .memory import AgentMemory, MemoryType
+from .memory import AgentMemory
 from .perception import PerceptionSystem
 from .state import AgentState, SecurityAlertLevel
 
@@ -20,7 +20,6 @@ __all__ = [
     "AgentEnvironment",
     "EnvironmentData",
     "AgentMemory",
-    "MemoryType",
     "PerceptionSystem",
     "AgentState",
     "SecurityAlertLevel",

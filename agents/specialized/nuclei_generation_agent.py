@@ -1,8 +1,5 @@
 import re
 import uuid
-import yaml
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
@@ -11,31 +8,13 @@ from llms.prompts.nuclei_generation_prompts import NucleiGenerationPrompts
 from llms.prompts.security_agent_prompts import SecurityAgentPrompts
 
 
-@dataclass
-class NucleiTemplate:
-    id: str
-    name: str
-    severity: str
-    description: str
-    tags: List[str]
-    yaml_content: str
-    confidence: float
-    cve_id: Optional[str] = None
-    created_at: datetime = None
-    metadata: Dict[str, Any] = None
-
-    def __post_init__(self):
-        if self.created_at is None:
-            self.created_at = datetime.now()
-        if self.metadata is None:
-            self.metadata = {}
 
 
 class NucleiGenerationAgent(BaseAgent):
     def __init__(self, **kwargs):
         super().__init__(
             name="NucleiGenerationAgent",
-            role=AgentRole.SECURITY_RESEARCHER,
+            role=AgentRole.NUCLEI_GENERATION,
             agent_type=AgentType.GOAL_BASED,
             capabilities=[
                 AgentCapability(
@@ -128,13 +107,13 @@ class NucleiGenerationAgent(BaseAgent):
                 "severity": vulnerability_data.get("severity", "medium")
             })
 
-            template = self._parse_template_response(llm_response, cve_id)
+            template_string = self._parse_template_response(llm_response, cve_id)
 
-            if template:
+            if template_string:
                 logger.info(f"Generated Nuclei template for {cve_id}")
                 return {
                     "success": True,
-                    "template": template,
+                    "template": template_string,
                     "generation_type": "cve_based",
                     "agent": self.name
                 }
@@ -167,13 +146,13 @@ class NucleiGenerationAgent(BaseAgent):
             })
 
             template_id = f"{vuln_type.lower().replace(' ', '-')}-detection"
-            template = self._parse_template_response(llm_response, template_id)
+            template_string = self._parse_template_response(llm_response, template_id)
 
-            if template:
+            if template_string:
                 logger.info(f"Generated Nuclei template for {vuln_type}")
                 return {
                     "success": True,
-                    "template": template,
+                    "template": template_string,
                     "generation_type": "vulnerability_type",
                     "agent": self.name
                 }
@@ -205,13 +184,13 @@ class NucleiGenerationAgent(BaseAgent):
             llm_response = self.query_llm(prompt)
 
             template_id = f"custom-{str(uuid.uuid4())[:8]}"
-            template = self._parse_template_response(llm_response, template_id)
+            template_string = self._parse_template_response(llm_response, template_id)
 
-            if template:
+            if template_string:
                 logger.info(f"Generated generic Nuclei template: {template_id}")
                 return {
                     "success": True,
-                    "template": template,
+                    "template": template_string,
                     "generation_type": "generic",
                     "agent": self.name
                 }
@@ -230,268 +209,177 @@ class NucleiGenerationAgent(BaseAgent):
                 "agent": self.name
             }
 
-    def _parse_template_response(self, llm_response: str, template_id: str) -> Optional[NucleiTemplate]:
+    def _parse_template_response(self, llm_response: str, template_id: str) -> Optional[str]:
+        """Parse LLM response to extract Nuclei template without validation"""
         try:
             print("LLM Response: ", llm_response)
+            # Extract YAML content without validation
             yaml_content = self._extract_yaml_from_response(llm_response)
             if not yaml_content:
-                # If no YAML found, create a basic template with the response as description
+                logger.warning("No YAML content found in response, creating fallback")
                 return self._create_fallback_template(llm_response, template_id)
 
-            try:
-                parsed_yaml = yaml.safe_load(yaml_content)
-            except yaml.YAMLError as e:
-                logger.error(f"Invalid YAML generated: {e}")
-                logger.info("Creating fallback template due to YAML parsing error")
-                return self._create_fallback_template(llm_response, template_id)
+            logger.debug(f"Extracted YAML content length: {len(yaml_content)}")
 
-            if not isinstance(parsed_yaml, dict):
-                logger.error("Parsed YAML is not a dictionary")
-                return self._create_fallback_template(llm_response, template_id)
+            # Return the original LLM response with YAML marked properly
+            output = f"{llm_response}\n\nExtracted YAML Content:\n```yaml\n{yaml_content}\n```\n"
 
-            info = parsed_yaml.get("info", {})
-            template_name = info.get("name", template_id)
-            severity = info.get("severity", "medium")
-            description = info.get("description", "Generated Nuclei template")
-            tags = info.get("tags", "").split(",") if info.get("tags") else []
-
-            template = NucleiTemplate(
-                id=parsed_yaml.get("id", template_id),
-                name=template_name,
-                severity=severity,
-                description=description,
-                tags=[tag.strip() for tag in tags],
-                yaml_content=yaml_content,
-                confidence=0.8,
-                cve_id=info.get("classification", {}).get("cve-id") if isinstance(info.get("classification"), dict) else None,
-                metadata={
-                    "generated_by": self.name,
-                    "yaml_valid": True,
-                    "template_type": "nuclei"
-                }
-            )
-
-            return template
+            logger.info(f"Successfully returned LLM response with YAML content")
+            return output
 
         except Exception as e:
-            logger.error(f"Template parsing failed: {e}")
+            logger.error(f"Template extraction failed: {e}", exc_info=True)
             return self._create_fallback_template(llm_response, template_id)
 
-    def _create_fallback_template(self, llm_response: str, template_id: str) -> NucleiTemplate:
+    def _create_fallback_template(self, llm_response: str, template_id: str) -> str:
         """Create a fallback template when YAML parsing fails"""
-        return NucleiTemplate(
-            id=template_id,
-            name=f"Generated Template - {template_id}",
-            severity="medium",
-            description=f"Template generation attempted but YAML parsing failed. Raw response available in metadata.",
-            tags=["generated", "fallback"],
-            yaml_content=f"# Failed to parse YAML from LLM response\n# Template ID: {template_id}\n# Raw response in metadata",
-            confidence=0.3,  # Lower confidence for fallback
-            metadata={
-                "generated_by": self.name,
-                "yaml_valid": False,
-                "template_type": "nuclei",
-                "fallback": True,
-                "raw_llm_response": llm_response[:1000]  # Truncate to avoid too much data
+        output = f"LLM Response:\n{llm_response}\n\n"
+        output += f"Fallback YAML Content:\n```yaml\n# Failed to parse YAML from LLM response\n# Template ID: {template_id}\n# Raw response:\n{llm_response[:1000]}\n```\n"  # Truncate to avoid too much data
+
+        return output
+
+    def _extract_template_info_from_text(self, yaml_content: str, default_id: str) -> Dict[str, Any]:
+        """Extract template information from YAML text without parsing"""
+        try:
+            # Initialize with defaults
+            template_info = {
+                "id": default_id,
+                "name": f"Generated Template - {default_id}",
+                "severity": "medium",
+                "description": "Generated Nuclei template",
+                "tags": ["generated"],
+                "cve_id": None
             }
-        )
+
+            lines = yaml_content.split('\n')
+
+            for line in lines:
+                line_stripped = line.strip()
+
+                # Extract ID
+                if line_stripped.startswith('id:'):
+                    value = line_stripped[3:].strip()
+                    if value:
+                        template_info["id"] = value.strip('"').strip("'")
+
+                # Extract name from info section
+                elif 'name:' in line_stripped and not line_stripped.startswith('#'):
+                    value = line_stripped.split('name:', 1)[1].strip()
+                    if value:
+                        template_info["name"] = value.strip('"').strip("'")
+
+                # Extract severity
+                elif 'severity:' in line_stripped and not line_stripped.startswith('#'):
+                    value = line_stripped.split('severity:', 1)[1].strip()
+                    if value:
+                        template_info["severity"] = value.strip('"').strip("'")
+
+                # Extract description
+                elif 'description:' in line_stripped and not line_stripped.startswith('#'):
+                    value = line_stripped.split('description:', 1)[1].strip()
+                    if value:
+                        template_info["description"] = value.strip('"').strip("'")
+
+                # Extract tags
+                elif 'tags:' in line_stripped and not line_stripped.startswith('#'):
+                    value = line_stripped.split('tags:', 1)[1].strip()
+                    if value:
+                        # Handle both string and list format tags
+                        tags_text = value.strip('"').strip("'").strip('[').strip(']')
+                        if ',' in tags_text:
+                            template_info["tags"] = [tag.strip().strip('"').strip("'") for tag in tags_text.split(',') if tag.strip()]
+                        else:
+                            template_info["tags"] = [tags_text] if tags_text else ["generated"]
+
+                # Extract CVE ID
+                elif 'cve-id:' in line_stripped and not line_stripped.startswith('#'):
+                    value = line_stripped.split('cve-id:', 1)[1].strip()
+                    if value:
+                        template_info["cve_id"] = value.strip('"').strip("'")
+                elif 'cve_id:' in line_stripped and not line_stripped.startswith('#'):
+                    value = line_stripped.split('cve_id:', 1)[1].strip()
+                    if value:
+                        template_info["cve_id"] = value.strip('"').strip("'")
+
+            logger.debug(f"Extracted template info: {template_info}")
+            return template_info
+
+        except Exception as e:
+            logger.error(f"Failed to extract template info from text: {e}")
+            return {
+                "id": default_id,
+                "name": f"Generated Template - {default_id}",
+                "severity": "medium",
+                "description": "Generated Nuclei template",
+                "tags": ["generated"],
+                "cve_id": None
+            }
 
     def _extract_yaml_from_response(self, response: str) -> Optional[str]:
+        """Extract YAML content from LLM response without validation"""
         try:
-            # First try to extract from code blocks
-            yaml_pattern = r'```ya?ml\s*\n(.*?)\n```'
-            match = re.search(yaml_pattern, response, re.DOTALL | re.IGNORECASE)
+            # Strategy 1: Extract from code blocks (most reliable)
+            yaml_patterns = [
+                r'```ya?ml\s*\n(.*?)\n```',  # Standard YAML code block
+                r'```\s*\n(id:.*?)\n```',   # Code block starting with id:
+                r'```\s*\n(.*?)\n```'       # Any code block
+            ]
 
-            if match:
-                yaml_content = match.group(1).strip()
-                return self._clean_yaml_content(yaml_content)
+            for pattern in yaml_patterns:
+                match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
+                if match:
+                    yaml_content = match.group(1).strip()
+                    logger.debug(f"Found YAML in code block")
+                    if 'id:' in yaml_content:  # Basic check for Nuclei template
+                        return yaml_content
 
-            # Try to find YAML structure without code blocks
+            # Strategy 2: Look for YAML starting with 'id:'
+            id_match = re.search(r'(id:\s*[^\n]+.*?)(?=\n\n|\n[^\s]|\Z)', response, re.DOTALL | re.IGNORECASE)
+            if id_match:
+                yaml_content = id_match.group(1).strip()
+                logger.debug("Found YAML starting with 'id:'")
+                return yaml_content
+
+            # Strategy 3: Extract multi-line YAML-like structure
             lines = response.split('\n')
             yaml_lines = []
             in_yaml = False
-            base_indent = 0
-            inside_list_context = False  # Track if we're inside a list context where '-' is valid
 
             for line in lines:
-                stripped_line = line.strip()
-                
-                if stripped_line.startswith('id:') and not in_yaml:
-                    # Start of YAML content
+                stripped = line.strip()
+
+                # Start YAML detection
+                if not in_yaml and (stripped.startswith('id:') or
+                                   stripped.startswith('info:') or
+                                   stripped.startswith('requests:')):
                     in_yaml = True
                     yaml_lines.append(line)
-                    base_indent = len(line) - len(line.lstrip())
-                elif in_yaml:
-                    current_indent = len(line) - len(line.lstrip()) if line.strip() else 0
-                    
-                    if not line.strip():
-                        # Empty line - keep it as part of the structure
+                    continue
+
+                if in_yaml:
+                    # Continue if line looks like YAML
+                    if (not stripped or  # Empty line
+                        stripped.startswith('#') or  # Comment
+                        ':' in stripped or  # Key-value pair
+                        stripped.startswith('-') or  # List item
+                        line.startswith(' ') or line.startswith('\t')):  # Indented
                         yaml_lines.append(line)
-                        continue
-                    
-                    # Check if this line is at the base level (same indentation as 'id:')
-                    if current_indent == base_indent:
-                        # If it's a new top-level key (contains ':' but doesn't start with '-'),
-                        # it might be the start of a new YAML block or non-YAML content
-                        if ':' in stripped_line and not stripped_line.startswith('-'):
-                            # This is a new top-level key, so we continue with YAML
-                            yaml_lines.append(line)
-                        elif stripped_line.startswith('-'):
-                            # This is a list item at the base level, which shouldn't happen in valid Nuclei templates
-                            # This likely means we've reached content that's not part of the template
-                            break
-                        else:
-                            # This doesn't look like valid YAML, so we stop
-                            break
-                    elif current_indent > base_indent:
-                        # Indented content - part of the YAML structure
-                        yaml_lines.append(line)
-                        
-                        # Check if this line introduces a list context
-                        if ':' in stripped_line and stripped_line.endswith(':') and not stripped_line.startswith('-'):
-                            # This is a key that ends with ':', which might introduce a list on following lines
-                            # Check if the content after the colon is a list marker
-                            line_content_after_colon = stripped_line.split(':', 1)[1].strip()
-                            if line_content_after_colon == '-':  # like "paths: -"
-                                inside_list_context = True
                     else:
-                        # Less indented than base - this shouldn't happen in valid YAML, so we stop
+                        # Stop if line doesn't look like YAML
                         break
 
             if yaml_lines:
-                yaml_content = '\n'.join(yaml_lines)
-                return self._clean_yaml_content(yaml_content)
+                yaml_content = '\n'.join(yaml_lines).strip()
+                logger.debug(f"Extracted YAML with {len(yaml_lines)} lines")
+                return yaml_content
 
+            logger.warning("No YAML content found in response")
             return None
 
         except Exception as e:
             logger.error(f"YAML extraction failed: {e}")
             return None
 
-    def _clean_yaml_content(self, yaml_content: str) -> str:
-        """Clean and fix common YAML issues"""
-        try:
-            # Remove any trailing commas in YAML
-            yaml_content = re.sub(r',(\s*\n)', r'\1', yaml_content)
-
-            # Fix common quote escaping issues
-            yaml_content = re.sub(r'\\([\'"])', r'\1', yaml_content)
-
-            # Fix malformed YAML lists - properly quote problematic entries
-            lines = yaml_content.split('\n')
-            cleaned_lines = []
-            skip_next_lines = 0
-
-            for i, line in enumerate(lines):
-                if skip_next_lines > 0:
-                    skip_next_lines -= 1
-                    continue
-
-                # Skip empty lines or comments only
-                if not line.strip() or line.strip().startswith('#'):
-                    cleaned_lines.append(line)
-                    continue
-
-                # Look for SQL injection patterns and properly quote them
-                if re.search(r"(?i)(' OR '1'='1|' UNION|' OR 1=1|SLEEP\(|WAITFOR|EXEC\(|SELECT.*FROM|UNION.*SELECT)", line):
-                    # This looks like a SQL injection payload, need to properly quote it
-                    if ':' in line and not (line.strip().endswith(':') or line.strip().startswith('-')):
-                        # Handle key-value pairs
-                        key, value = line.split(':', 1)
-                        value = value.strip()
-                        # Add quotes around the value if not already quoted
-                        if value and not (value.startswith('"') and value.endswith('"')) and not (value.startswith("'") and value.endswith("'")):
-                            # Properly escape quotes within the value to avoid double quotes issues
-                            value = value.replace('"', '\\"')
-                            value = f'"{value}"'
-                        line = f"{key.strip()}: {value}"
-                    elif line.strip().startswith('-'):
-                        # Handle list items that start with '-'
-                        # Extract the content after the '-'
-                        content = line.strip()[1:].strip()
-                        # Add quotes around the content if it contains problematic characters
-                        if content and not (content.startswith('"') and content.endswith('"')) and not (content.startswith("'") and content.endswith("'")):
-                            # Properly escape quotes within the content to avoid double quotes issues
-                            content = content.replace('"', '\\"')
-                            content = f'"{content}"'
-                        line = f"- {content}"
-                
-                # Check for problematic YAML patterns and fix them instead of skipping
-                if re.search(r'["\'][^"\']*["\'][^"\']*["\']', line):
-                    # Line has multiple quotes, likely malformed - try to fix it
-                    # Instead of skipping, try to properly quote the content
-                    if ':' in line and not line.strip().endswith(':'):
-                        # It's a key-value pair, try to fix the value part
-                        key, value = line.split(':', 1)
-                        value = value.strip()
-                        # If the value contains problematic quote patterns, wrap it in quotes
-                        if value and not (value.startswith('"') and value.endswith('"')) and not (value.startswith("'") and value.endswith("'")):
-                            # Escape quotes properly before wrapping
-                            value = value.replace('"', '\\"')
-                            value = f'"{value}"'
-                        line = f"{key.strip()}: {value}"
-                    elif line.strip().startswith('-') and ':' not in line:
-                        # Handle list items that start with '-' but don't have a colon
-                        # Extract the content after the '-'
-                        prefix = line.split('-', 1)[0]  # Preserve any indentation
-                        content = line.split('-', 1)[1].strip()
-                        # Add quotes around the content if it contains problematic characters
-                        if content and not (content.startswith('"') and content.endswith('"')) and not (content.startswith("'") and content.endswith("'")):
-                            # Properly escape quotes within the content to avoid double quotes issues
-                            content = content.replace('"', '\\"')
-                            content = f'"{content}"'
-                        line = f"{prefix}- {content}"
-                    else:
-                        # For other lines with multiple quotes, wrap the entire content in quotes
-                        content = line.strip()
-                        if content and not (content.startswith('"') and content.endswith('"')) and not (content.startswith("'") and content.endswith("'")):
-                            # Escape quotes properly before wrapping
-                            content = content.replace('"', '\\"')
-                            content = f'"{content}"'
-                        line = content
-
-                # Check for unclosed quotes
-                quote_count = line.count('"') + line.count("'")
-                if quote_count % 2 != 0:
-                    # Odd number of quotes, likely unclosed - try to fix or skip
-                    if line.strip().startswith('-') and ':' not in line:
-                        # Handle list item with unclosed quote
-                        prefix = line.split('-', 1)[0]  # Preserve any indentation
-                        content = line.split('-', 1)[1].strip()
-                        if '"' in content and not content.endswith('"'):
-                            # First ensure any quotes in the content are properly escaped
-                            content = content.replace('"', '\\"')
-                            # Add a closing quote
-                            content += '"'
-                        elif "'" in content and not content.endswith("'"):
-                            # First ensure any single quotes in the content are properly escaped
-                            content = content.replace("'", "\\'")
-                            # Add a closing quote
-                            content += "'"
-                        line = f"{prefix}- {content}"
-                    elif ':' in line and not line.strip().endswith(':'):
-                        # Handle key-value pair with unclosed quote
-                        key, value = line.split(':', 1)
-                        value = value.strip()
-                        if '"' in value and not value.endswith('"'):
-                            # First ensure any quotes in the value are properly escaped
-                            value = value.replace('"', '\\"')
-                            # Add a closing quote
-                            value += '"'
-                        elif "'" in value and not value.endswith("'"):
-                            # First ensure any single quotes in the value are properly escaped
-                            value = value.replace("'", "\\'")
-                            # Add a closing quote
-                            value += "'"
-                        line = f"{key.strip()}: {value}"
-
-                cleaned_lines.append(line)
-
-            return '\n'.join(cleaned_lines)
-
-        except Exception as e:
-            logger.error(f"YAML cleaning failed: {e}")
-            return yaml_content
 
     def _validate_template(self, task: Dict[str, Any]) -> Dict[str, Any]:
         try:
