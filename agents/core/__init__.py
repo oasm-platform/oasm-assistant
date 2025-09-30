@@ -7,7 +7,7 @@ from .base_agent import BaseAgent, AgentRole, AgentType, AgentCapability
 from .environment import AgentEnvironment, EnvironmentData
 from .memory import AgentMemory
 from .perception import PerceptionSystem
-from .state import AgentState, SecurityAlertLevel
+from .state import AgentState as AgentStateClass, SecurityAlertLevel
 
 __all__ = [
     # Base agent classes
@@ -21,6 +21,6 @@ __all__ = [
     "EnvironmentData",
     "AgentMemory",
     "PerceptionSystem",
-    "AgentState",
+    "AgentStateClass",
     "SecurityAlertLevel",
 ]

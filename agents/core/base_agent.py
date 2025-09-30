@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Any, Optional, TypedDict
 import uuid
@@ -10,12 +9,10 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.language_models import BaseLanguageModel
 
 from common.logger import logger
-from llms import llm_manager
-from llms.prompts import SecurityAgentPrompts
 from .environment import AgentEnvironment
 from .memory import AgentMemory
 from .perception import PerceptionSystem
-from .state import AgentState
+from .state import AgentState as AgentStateClass
 
 
 class AgentType(Enum):
@@ -41,7 +38,7 @@ class AgentCapability:
     enabled: bool = True
 
 
-class AgentState(TypedDict):
+class LangGraphAgentState(TypedDict):
     messages: List[Any]
     current_task: Optional[Dict[str, Any]]
     agent_results: Dict[str, Any]
@@ -70,7 +67,7 @@ class BaseAgent(ABC):
         self.environment = environment or AgentEnvironment()
         self.perception = PerceptionSystem(self)
         self.memory = AgentMemory(self.id)
-        self.state = AgentState()
+        self.state = AgentStateClass()
 
         self.current_task: Optional[Dict[str, Any]] = None
         self.execution_count = 0
@@ -119,6 +116,9 @@ class BaseAgent(ABC):
 
     def _initialize_llm(self):
         try:
+            # Lazy import to avoid dependency issues during core module loading
+            from llms import llm_manager
+
             available_providers = llm_manager.get_available_providers()
             if not available_providers:
                 logger.warning("No LLM providers available")
@@ -146,12 +146,21 @@ class BaseAgent(ABC):
             self.llm = None
 
     def _create_security_prompt_template(self) -> ChatPromptTemplate:
-        capabilities = [cap.name for cap in self.capabilities]
-        system_prompt = SecurityAgentPrompts.get_base_security_prompt(
-            self.name,
-            self.role.value,
-            capabilities
-        )
+        try:
+            # Lazy import to avoid dependency issues
+            from llms.prompts import SecurityAgentPrompts
+
+            capabilities = [cap.name for cap in self.capabilities]
+            system_prompt = SecurityAgentPrompts.get_base_security_prompt(
+                self.name,
+                self.role.value,
+                capabilities
+            )
+        except ImportError:
+            # Fallback if prompts module not available
+            system_prompt = f"""You are {self.name}, a security agent with role: {self.role.value}.
+Your capabilities include: {', '.join([cap.name for cap in self.capabilities])}.
+Always respond in a professional, security-focused manner."""
 
         return ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -207,7 +216,40 @@ Current Security Context:
             "total_executions": total_executions,
             "success_count": self.success_count,
             "failure_count": self.failure_count,
-            "success_rate": success_rate
+            "success_rate": success_rate,
+            "last_execution": getattr(self, 'last_execution_time', None)
+        }
+
+    def update_execution_stats(self, success: bool, execution_time: float = None):
+        """Update execution statistics"""
+        self.execution_count += 1
+        if success:
+            self.success_count += 1
+        else:
+            self.failure_count += 1
+
+        if execution_time:
+            self.last_execution_time = execution_time
+
+        logger.debug(f"Agent {self.name} stats updated: success={success}, total={self.execution_count}")
+
+    def is_available(self) -> bool:
+        """Check if agent is available for new tasks"""
+        return self.current_task is None and self.state.status.value in ['idle', 'thinking']
+
+    def get_state_summary(self) -> Dict[str, Any]:
+        """Get a summary of current agent state"""
+        return {
+            "agent_id": self.id,
+            "name": self.name,
+            "role": self.role.value,
+            "status": self.state.status.value,
+            "confidence": self.state.confidence,
+            "energy": self.state.energy,
+            "alert_level": self.state.security_alert_level.value,
+            "active_threats": len(self.state.active_threats),
+            "capabilities": [cap.name for cap in self.capabilities if cap.enabled],
+            "available": self.is_available()
         }
 
     @abstractmethod

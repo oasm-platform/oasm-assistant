@@ -16,7 +16,7 @@ class PerceptionSystem:
     def perceive(self) -> Dict[str, Any]:
         """Perceive environment and security context"""
         perception_data = {
-            "timestamp": datetime.now(datetime.timezone.utc),
+            "timestamp": datetime.now(),
             "agent_id": self.agent.id,
             "environment_state": self.agent.environment.get_environment_state(),
             "agent_state": {

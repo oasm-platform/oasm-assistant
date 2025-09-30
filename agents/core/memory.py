@@ -21,7 +21,7 @@ class AgentMemory:
         """Add observation to memory"""
         observation_entry = {
             **observation,
-            "timestamp": datetime.now(datetime.timezone.utc),
+            "timestamp": datetime.now(),
             "agent_id": self.agent_id
         }
 
