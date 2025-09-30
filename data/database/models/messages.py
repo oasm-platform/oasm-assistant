@@ -15,7 +15,6 @@ class Message(BaseEntity):
 
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=True)
-    is_create_template = Column(Boolean, nullable=True, default=False)
 
     embedding = Column(ARRAY(Float), nullable=True)
 
