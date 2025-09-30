@@ -7,7 +7,7 @@ from .vulnerability_scan_agent import VulnerabilityScanAgent
 from .network_recon_agent import NetworkReconAgent
 from .report_generation_agent import ReportGenerationAgent
 from .web_security_agent import WebSecurityAgent
-from .nuclei_generation_agent import NucleiGenerationAgent, NucleiTemplate
+from .nuclei_generation_agent import NucleiGenerationAgent
 
 __all__ = [
     "ThreatDetectionAgent",
@@ -16,5 +16,4 @@ __all__ = [
     "ReportGenerationAgent",
     "WebSecurityAgent",
     "NucleiGenerationAgent",
-    "NucleiTemplate",
 ]
