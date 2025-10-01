@@ -5,7 +5,6 @@ from grpc import StatusCode
 from data.database.models import Message, Conversation
 from app.interceptors import get_metadata_interceptor
 from agents.workflows.security_coordinator import SecurityCoordinator
-from agents.specialized.nuclei_generation_agent import NucleiGenerationAgent
 
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
@@ -53,50 +52,65 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
     @get_metadata_interceptor
     def CreateMessage(self, request, context):
-        """Create a message with question and answer"""
+        """Create a message with question and AI-generated answer using security agents"""
         try:
+            # Extract request data
             conversation_id = request.conversation_id
-            question = request.question
-            is_create_template_raw = getattr(request, 'is_create_template', False)
-            # Ensure is_create_template is a boolean value
-            is_create_template = bool(is_create_template_raw) if is_create_template_raw is not None else False
-            
+            question = request.question.strip()
+
+            # Validate input
+            if not question:
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("Question cannot be empty")
+                return assistant_pb2.CreateMessageResponse()
+
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
 
+            logger.info(f"Creating message for conversation {conversation_id}: {question[:100]}...")
+
             with self.db.get_session() as session:
-                # Check if conversation exists
-                query = session.query(Conversation).filter(Conversation.conversation_id == conversation_id,
-                Conversation.workspace_id == workspace_id,
-                Conversation.user_id == user_id)
-                
-                conversation = query.first()
+                # Verify conversation exists and belongs to user
+                conversation = session.query(Conversation).filter(
+                    Conversation.conversation_id == conversation_id,
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                ).first()
 
                 if not conversation:
+                    logger.warning(f"Conversation {conversation_id} not found for user {user_id}")
                     context.set_code(StatusCode.NOT_FOUND)
                     context.set_details("Conversation not found")
                     return assistant_pb2.CreateMessageResponse()
 
-                # Process the question to generate answer using SecurityCoordinator
+                # Initialize SecurityCoordinator and process question
+                logger.info("Processing question with SecurityCoordinator...")
                 coordinator = SecurityCoordinator()
-                answer = coordinator.process_message_question(question, is_create_template)
 
-                # Create and save message with both question and answer
-                # Ensure is_create_template is converted to boolean
+                try:
+                    # Generate answer using updated security agents
+                    answer = coordinator.process_message_question(question)
+                    logger.info(f"Generated answer length: {len(answer)} characters")
+
+                except Exception as agent_error:
+                    logger.error(f"Security agent processing failed: {agent_error}")
+                    answer = f"I apologize, but I encountered an issue processing your security question: {str(agent_error)[:200]}..."
+
+                # Create and save message
                 message = Message(
                     conversation_id=conversation_id,
                     question=question,
-                    answer=answer,
-                    is_create_template=bool(is_create_template)
+                    answer=answer
                 )
+
                 session.add(message)
                 session.commit()
                 session.refresh(message)
 
-                logger.info(f"Created message with ID: {message.message_id}")
-                
-                # Create protobuf message response without is_create_template field
+                logger.info(f"Message created successfully with ID: {message.message_id}")
+
+                # Build response
                 pb_message = assistant_pb2.Message(
                     message_id=str(message.message_id),
                     question=message.question,
@@ -106,54 +120,78 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     created_at=message.created_at.isoformat() if message.created_at else "",
                     updated_at=message.updated_at.isoformat() if message.updated_at else ""
                 )
-                
+
                 return assistant_pb2.CreateMessageResponse(message=pb_message)
 
         except Exception as e:
-            logger.error(f"Error creating message: {e}")
+            logger.error(f"Error in CreateMessage: {e}", exc_info=True)
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(str(e))
+            context.set_details(f"Internal server error: {str(e)}")
             return assistant_pb2.CreateMessageResponse()
 
     @get_metadata_interceptor
     def UpdateMessage(self, request, context):
-        """Update a message"""
+        """Update a message and regenerate answer if question changed"""
         try:
-            id = request.id
-            question = request.question
-            
+            # Extract request data
+            message_id = request.message_id
+            new_question = request.question.strip()
+
+            # Validate input
+            if not new_question:
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("Question cannot be empty")
+                return assistant_pb2.UpdateMessageResponse()
+
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
 
+            logger.info(f"Updating message {message_id}: {new_question[:100]}...")
+
             with self.db.get_session() as session:
-                query = session.query(Message).join(Conversation).filter(Message.id == id,
-                Conversation.workspace_id == workspace_id,
-                Conversation.user_id == user_id)
-                
-                message = query.first()
+                # Find message and verify permissions
+                message = session.query(Message).join(Conversation).filter(
+                    Message.message_id == message_id,
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                ).first()
 
                 if not message:
+                    logger.warning(f"Message {message_id} not found for user {user_id}")
                     context.set_code(StatusCode.NOT_FOUND)
                     context.set_details("Message not found")
                     return assistant_pb2.UpdateMessageResponse()
 
-                # Update question
+                # Store old question for comparison
                 old_question = message.question
-                message.question = question
-                # Update is_create_template if provided in request
-                if hasattr(request, 'is_create_template'):
-                    message.is_create_template = request.is_create_template
+                message.question = new_question
 
-                # If question changed significantly, regenerate answer
-                if old_question != question:
+                # If question changed, regenerate answer
+                if old_question.strip() != new_question.strip():
+                    logger.info("Question changed, regenerating answer with SecurityCoordinator...")
                     coordinator = SecurityCoordinator()
-                    message.answer = coordinator.process_message_question(question, message.is_create_template)
 
+                    try:
+                        # Generate new answer using updated security agents
+                        new_answer = coordinator.process_message_question(new_question)
+                        message.answer = new_answer
+                        logger.info(f"Answer regenerated, length: {len(new_answer)} characters")
+
+                    except Exception as agent_error:
+                        logger.error(f"Security agent processing failed during update: {agent_error}")
+                        message.answer = f"I apologize, but I encountered an issue processing your updated security question: {str(agent_error)[:200]}..."
+
+                else:
+                    logger.info("Question unchanged, keeping existing answer")
+
+                # Save changes
                 session.commit()
                 session.refresh(message)
-                
-                # Create protobuf message response without is_create_template field
+
+                logger.info(f"Message {message_id} updated successfully")
+
+                # Build response
                 pb_message = assistant_pb2.Message(
                     message_id=str(message.message_id),
                     question=message.question,
@@ -163,13 +201,13 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     created_at=message.created_at.isoformat() if message.created_at else "",
                     updated_at=message.updated_at.isoformat() if message.updated_at else ""
                 )
-                
+
                 return assistant_pb2.UpdateMessageResponse(message=pb_message)
 
         except Exception as e:
-            logger.error(f"Error updating message: {e}")
+            logger.error(f"Error in UpdateMessage: {e}", exc_info=True)
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(str(e))
+            context.set_details(f"Internal server error: {str(e)}")
             return assistant_pb2.UpdateMessageResponse()
 
     @get_metadata_interceptor

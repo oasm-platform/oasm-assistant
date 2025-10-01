@@ -47,6 +47,7 @@ class SecurityCoordinator:
         workflow = StateGraph(SecurityWorkflowState)
 
         workflow.add_node("router", self._route_task)
+        workflow.add_node("nuclei_template_generation", self._execute_nuclei_template_generation)
         workflow.add_node("threat_intelligence", self._execute_threat_intelligence)
         workflow.add_node("analysis", self._execute_analysis)
         workflow.add_node("incident_response", self._execute_incident_response)
@@ -59,6 +60,7 @@ class SecurityCoordinator:
             "router",
             self._should_continue_from_router,
             {
+                "nuclei_template_generation": "nuclei_template_generation",
                 "threat_intelligence": "threat_intelligence",
                 "analysis": "analysis",
                 "incident_response": "incident_response",
@@ -67,7 +69,7 @@ class SecurityCoordinator:
             }
         )
 
-        for node in ["threat_intelligence", "analysis", "incident_response", "orchestration"]:
+        for node in ["nuclei_template_generation", "threat_intelligence", "analysis", "incident_response", "orchestration"]:
             workflow.add_edge(node, "result_formatter")
 
         workflow.add_edge("result_formatter", END)
@@ -117,7 +119,9 @@ class SecurityCoordinator:
     def _route_task(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
         task_type = state["task_type"]
 
-        if task_type == "threat_intelligence":
+        if task_type == "nuclei_template_generation":
+            state["next_action"] = "nuclei_template_generation"
+        elif task_type == "threat_intelligence":
             state["next_action"] = "threat_intelligence"
         elif task_type == "incident_response":
             state["next_action"] = "incident_response"
@@ -140,10 +144,13 @@ class SecurityCoordinator:
     def _should_continue_from_router(self, state: SecurityWorkflowState) -> str:
         next_action = state.get("next_action", "end")
 
-        if next_action in ["threat_intelligence", "analysis", "incident_response", "orchestration"]:
+        if next_action in ["nuclei_template_generation", "threat_intelligence", "analysis", "incident_response", "orchestration"]:
             return next_action
 
         return "end"
+
+    def _execute_nuclei_template_generation(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
+        return self._execute_agent_task(state, "analysis", "generate_nuclei_template", "Nuclei template generation")
 
     def _execute_threat_intelligence(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
         return self._execute_agent_task(state, "threat_intelligence", "gather_intelligence", "Threat intelligence gathering")
@@ -220,9 +227,14 @@ class SecurityCoordinator:
         """Analyze question to determine appropriate agent task type"""
         question_lower = question.lower()
 
+        # Priority 1: Nuclei template generation (must check first!)
+        if any(keyword in question_lower for keyword in ["nuclei", "template", "create template", "generate template"]):
+            return "nuclei_template_generation"
+
+        # Priority 2: Other specific tasks
         if any(keyword in question_lower for keyword in ["intelligence", "threat", "ioc", "attribution", "campaign"]):
             return "threat_intelligence"
-        if any(keyword in question_lower for keyword in ["incident", "response", "breach", "attack", "emergency"]):
+        if any(keyword in question_lower for keyword in ["incident", "response", "breach", "emergency"]):
             return "incident_response"
         if any(keyword in question_lower for keyword in ["analyze", "forensic", "malware", "artifact", "sample"]):
             return "security_analysis"
@@ -284,6 +296,8 @@ class SecurityCoordinator:
             agent_results = result.get("agent_results", {})
 
             # Handle specific task type formatting if needed
+            if task_type == "nuclei_template_generation":
+                return self._format_nuclei_template_response(result, question)
 
             response = f"**LangGraph Security Analysis Complete**\n\n"
             response += f"**Task Type :** {task_type.replace('_', ' ').title()}\n"
@@ -319,6 +333,49 @@ class SecurityCoordinator:
             logger.error(f"Error formatting LangGraph response: {e}")
             return f"LangGraph analysis completed, but I encountered an issue formatting the detailed response."
 
+    def _format_nuclei_template_response(self, result: dict, question: str) -> str:
+        """Format nuclei template generation response"""
+        try:
+            agent_results = result.get("agent_results", {})
+            analysis_result = agent_results.get("analysis", {})
+
+            if not analysis_result.get("success"):
+                return f"I apologize, but nuclei template generation failed: {analysis_result.get('error', 'Unknown error')}"
+
+            template_data = analysis_result.get("template", {})
+            vuln_type = analysis_result.get("vulnerability_type", "unknown")
+
+            if not template_data:
+                return "Nuclei template generation completed, but template data is not available."
+
+            # Format the response
+            response = f"**Nuclei Template Generated Successfully**\n\n"
+            response += f"**Question:** {question}\n\n"
+            response += f"**Template Details:**\n"
+            response += f"- Template ID: {template_data.get('id', 'N/A')}\n"
+            response += f"- Name: {template_data.get('name', 'N/A')}\n"
+            response += f"- Vulnerability Type: {vuln_type.upper()}\n"
+            response += f"- Severity: {template_data.get('severity', 'N/A')}\n"
+            response += f"- Description: {template_data.get('description', 'N/A')}\n"
+            response += f"- Tags: {', '.join(template_data.get('tags', []))}\n"
+            response += f"- Author: {template_data.get('author', 'N/A')}\n"
+            response += f"- Confidence: {template_data.get('confidence', 0):.1%}\n\n"
+
+            response += f"**YAML Template:**\n"
+            response += f"```yaml\n{template_data.get('yaml_content', 'Template content not available')}\n```\n\n"
+
+            response += f"**Usage Instructions:**\n"
+            response += f"1. Save the template to a .yaml file\n"
+            response += f"2. Run with nuclei: `nuclei -t template.yaml -u target_url`\n"
+            response += f"3. The template will scan for {vuln_type.upper()} vulnerabilities\n\n"
+
+            response += f"The template follows nuclei best practices and is ready for immediate use."
+
+            return response
+
+        except Exception as e:
+            logger.error(f"Error formatting nuclei template response: {e}")
+            return "Nuclei template generation completed, but I encountered an issue formatting the detailed response."
 
     def create_security_agent(self):
         """Create a basic security agent for fallback"""

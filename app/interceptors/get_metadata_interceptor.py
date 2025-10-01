@@ -10,7 +10,7 @@ def get_metadata_interceptor(func):
         # Check if workspace_id and user_id are present in metadata
         if not workspace_id or not user_id:
             logger.warning("Missing workspace_id or user_id in metadata")
-            context.set_code(StatusCode.BAD_REQUEST)
+            context.set_code(StatusCode.INVALID_ARGUMENT)
             context.set_details("Missing workspace_id or user_id in metadata")
             return None
         

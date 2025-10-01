@@ -70,6 +70,8 @@ class AnalysisAgent(BaseAgent):
                 return self._malware_analysis(task)
             elif action == "behavioral_analysis":
                 return self._behavioral_analysis(task)
+            elif action == "generate_nuclei_template":
+                return self._generate_nuclei_template(task)
             else:
                 return {"success": False, "error": f"Unknown action: {action}"}
 
@@ -172,3 +174,173 @@ class AnalysisAgent(BaseAgent):
             "behavioral_analysis": analysis_result,
             "agent": self.name
         }
+
+    def _generate_nuclei_template(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate a nuclei template based on the provided vulnerability details"""
+        question = task.get("question", "")
+        vulnerability_data = task.get("vulnerability_data", {})
+        target = task.get("target", "")
+
+        # Extract vulnerability type from question
+        vuln_type = self._extract_vulnerability_type(question)
+
+        # Generate template based on vulnerability type
+        template = self._create_nuclei_yaml_template(vuln_type, question, vulnerability_data, target)
+
+        return {
+            "success": True,
+            "template_type": "nuclei",
+            "vulnerability_type": vuln_type,
+            "template": template,
+            "agent": self.name
+        }
+
+    def _extract_vulnerability_type(self, question: str) -> str:
+        """Extract vulnerability type from question"""
+        question_lower = question.lower()
+
+        if "xss" in question_lower or "cross-site scripting" in question_lower:
+            return "xss"
+        elif "sql injection" in question_lower or "sqli" in question_lower:
+            return "sqli"
+        elif "lfi" in question_lower or "local file inclusion" in question_lower:
+            return "lfi"
+        elif "rfi" in question_lower or "remote file inclusion" in question_lower:
+            return "rfi"
+        elif "ssrf" in question_lower or "server-side request forgery" in question_lower:
+            return "ssrf"
+        elif "csrf" in question_lower or "cross-site request forgery" in question_lower:
+            return "csrf"
+        elif "rce" in question_lower or "remote code execution" in question_lower:
+            return "rce"
+        elif "directory traversal" in question_lower or "path traversal" in question_lower:
+            return "directory_traversal"
+        else:
+            return "generic"
+
+    def _create_nuclei_yaml_template(self, vuln_type: str, question: str, vulnerability_data: Dict, target: str) -> Dict[str, Any]:
+        """Create a nuclei YAML template structure"""
+
+        template_id = f"{vuln_type}-detection-{hash(question) % 10000:04d}"
+
+        # Base template structure
+        template = {
+            "id": template_id,
+            "name": f"{vuln_type.upper()} Detection Template",
+            "description": f"Detects {vuln_type.upper()} vulnerabilities",
+            "severity": self._get_severity_for_vuln_type(vuln_type),
+            "tags": [vuln_type, "vulnerability", "security"],
+            "author": "OASM Assistant",
+            "confidence": 0.85,
+            "created_at": "2025-09-30",
+            "yaml_content": self._generate_yaml_content(vuln_type, template_id)
+        }
+
+        # Add specific details based on vulnerability type
+        if vuln_type == "xss":
+            template["tags"].extend(["xss", "injection", "web"])
+            template["description"] = "Detects Cross-Site Scripting (XSS) vulnerabilities"
+        elif vuln_type == "sqli":
+            template["tags"].extend(["sqli", "injection", "database"])
+            template["description"] = "Detects SQL Injection vulnerabilities"
+
+        return template
+
+    def _get_severity_for_vuln_type(self, vuln_type: str) -> str:
+        """Get severity level for vulnerability type"""
+        high_severity = ["sqli", "rce", "ssrf"]
+        medium_severity = ["xss", "csrf", "lfi", "rfi"]
+
+        if vuln_type in high_severity:
+            return "high"
+        elif vuln_type in medium_severity:
+            return "medium"
+        else:
+            return "low"
+
+    def _generate_yaml_content(self, vuln_type: str, template_id: str) -> str:
+        """Generate actual YAML content for the nuclei template"""
+
+        if vuln_type == "xss":
+            return f'''id: {template_id}
+
+info:
+  name: XSS Detection Template
+  author: OASM Assistant
+  severity: medium
+  description: Detects Cross-Site Scripting (XSS) vulnerabilities
+  tags: xss,injection,web
+
+requests:
+  - method: GET
+    path:
+      - "{{{{BaseURL}}}}/search?q=<script>alert('XSS')</script>"
+      - "{{{{BaseURL}}}}/index.php?page=<img src=x onerror=alert('XSS')>"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "<script>alert('XSS')</script>"
+          - "<img src=x onerror=alert('XSS')>"
+        part: body
+
+      - type: word
+        words:
+          - "text/html"
+        part: header
+
+      - type: status
+        status:
+          - 200'''
+
+        elif vuln_type == "sqli":
+            return f'''id: {template_id}
+
+info:
+  name: SQL Injection Detection Template
+  author: OASM Assistant
+  severity: high
+  description: Detects SQL Injection vulnerabilities
+  tags: sqli,injection,database
+
+requests:
+  - method: GET
+    path:
+      - "{{{{BaseURL}}}}/login.php?id=1' OR '1'='1"
+      - "{{{{BaseURL}}}}/search?q=1' UNION SELECT 1,2,3--"
+
+    matchers-condition: and
+    matchers:
+      - type: word
+        words:
+          - "mysql_fetch"
+          - "ORA-00933"
+          - "Microsoft Access Driver"
+          - "SQLServer JDBC Driver"
+        part: body
+
+      - type: status
+        status:
+          - 200
+          - 500'''
+
+        else:
+            return f'''id: {template_id}
+
+info:
+  name: {vuln_type.title()} Detection Template
+  author: OASM Assistant
+  severity: medium
+  description: Detects {vuln_type} vulnerabilities
+  tags: {vuln_type},vulnerability
+
+requests:
+  - method: GET
+    path:
+      - "{{{{BaseURL}}}}"
+
+    matchers:
+      - type: status
+        status:
+          - 200'''
