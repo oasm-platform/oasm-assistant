@@ -5,13 +5,15 @@ from grpc import StatusCode
 from data.database.models import Message, Conversation
 from app.interceptors import get_metadata_interceptor
 from agents.workflows.security_coordinator import SecurityCoordinator
-
+from llms.prompts import CONVERSATION_TITLE_PROMPT
+from llms import llm_manager
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
     """Message service with OASM security agent integration"""
 
     def __init__(self):
         self.db = database_instance
+        self.llm = llm_manager.get_llm()
 
     @get_metadata_interceptor
     def GetMessages(self, request, context):
@@ -72,23 +74,22 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             logger.info(f"Creating message for conversation {conversation_id}: {question[:100]}...")
 
             with self.db.get_session() as session:
-                # Verify conversation exists and belongs to user
-                conversation = session.query(Conversation).filter(
-                    Conversation.conversation_id == conversation_id,
-                    Conversation.workspace_id == workspace_id,
-                    Conversation.user_id == user_id
-                ).first()
-
-                if not conversation:
-                    if is_create_conversation:
-                        conversation = Conversation(conversation_id=conversation_id,
-                        workspace_id=workspace_id,
-                        user_id=user_id)
-                        session.add(conversation)
-                        session.commit()
-                        session.refresh(conversation)
-                    else:
-                        logger.warning(f"Conversation {conversation_id} not found for user {user_id}")
+                if is_create_conversation:
+                    title_response = self.llm.invoke(CONVERSATION_TITLE_PROMPT.format(question=question))
+                    conversation = Conversation(
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                    title=title_response.content)
+                    session.add(conversation)
+                    session.commit()
+                    session.refresh(conversation)
+                else:
+                    conversation = session.query(Conversation).filter(
+                        Conversation.conversation_id == conversation_id,
+                        Conversation.workspace_id == workspace_id,
+                        Conversation.user_id == user_id
+                    ).first()
+                    if not conversation:
                         context.set_code(StatusCode.NOT_FOUND)
                         context.set_details("Conversation not found")
                         return assistant_pb2.CreateMessageResponse()
