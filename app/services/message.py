@@ -57,6 +57,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             # Extract request data
             conversation_id = request.conversation_id
             question = request.question.strip()
+            is_create_conversation = request.is_create_conversation
 
             # Validate input
             if not question:
@@ -79,10 +80,18 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 ).first()
 
                 if not conversation:
-                    logger.warning(f"Conversation {conversation_id} not found for user {user_id}")
-                    context.set_code(StatusCode.NOT_FOUND)
-                    context.set_details("Conversation not found")
-                    return assistant_pb2.CreateMessageResponse()
+                    if is_create_conversation:
+                        conversation = Conversation(conversation_id=conversation_id,
+                        workspace_id=workspace_id,
+                        user_id=user_id)
+                        session.add(conversation)
+                        session.commit()
+                        session.refresh(conversation)
+                    else:
+                        logger.warning(f"Conversation {conversation_id} not found for user {user_id}")
+                        context.set_code(StatusCode.NOT_FOUND)
+                        context.set_details("Conversation not found")
+                        return assistant_pb2.CreateMessageResponse()
 
                 # Initialize SecurityCoordinator and process question
                 logger.info("Processing question with SecurityCoordinator...")
@@ -214,16 +223,18 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
     def DeleteMessage(self, request, context):
         """Delete a message"""
         try:
-            id = request.id
+            message_id = request.message_id
             
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
 
             with self.db.get_session() as session:
-                query = session.query(Message).join(Conversation).filter(Message.id == id,
-                Conversation.workspace_id == workspace_id,
-                Conversation.user_id == user_id)
+                query = session.query(Message).join(Conversation).filter(
+                    Message.message_id == message_id,
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                )
                 
                 message = query.first()
 

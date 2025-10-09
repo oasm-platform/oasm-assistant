@@ -34,7 +34,6 @@ message DomainClassifyResponse {
 // ----------------
 service ConversationService {
   rpc GetConversations(GetConversationsRequest) returns (GetConversationsResponse);
-  rpc CreateConversation(CreateConversationRequest) returns (CreateConversationResponse);
   rpc UpdateConversation(UpdateConversationRequest) returns (UpdateConversationResponse);
   rpc DeleteConversation(DeleteConversationRequest) returns (DeleteConversationResponse);
   rpc DeleteConversations(DeleteConversationsRequest) returns (DeleteConversationsResponse);
@@ -54,15 +53,6 @@ message GetConversationsRequest {
 
 message GetConversationsResponse {
   repeated Conversation conversations = 1;
-}
-
-message CreateConversationRequest {
-  string title = 1;
-  string description = 2;
-}
-
-message CreateConversationResponse {
-  Conversation conversation = 1;
 }
 
 message UpdateConversationRequest {
@@ -123,6 +113,7 @@ message GetMessagesResponse {
 message CreateMessageRequest {
   string question = 1;
   string conversation_id = 2;
+  bool is_create_conversation = 3;
 }
 
 message CreateMessageResponse {

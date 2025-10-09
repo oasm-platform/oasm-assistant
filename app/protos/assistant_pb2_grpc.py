@@ -162,11 +162,6 @@ class ConversationServiceStub(object):
                 request_serializer=app_dot_protos_dot_assistant__pb2.GetConversationsRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.GetConversationsResponse.FromString,
                 )
-        self.CreateConversation = channel.unary_unary(
-                '/app.ConversationService/CreateConversation',
-                request_serializer=app_dot_protos_dot_assistant__pb2.CreateConversationRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.CreateConversationResponse.FromString,
-                )
         self.UpdateConversation = channel.unary_unary(
                 '/app.ConversationService/UpdateConversation',
                 request_serializer=app_dot_protos_dot_assistant__pb2.UpdateConversationRequest.SerializeToString,
@@ -191,12 +186,6 @@ class ConversationServiceServicer(object):
     """
 
     def GetConversations(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def CreateConversation(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -227,11 +216,6 @@ def add_ConversationServiceServicer_to_server(servicer, server):
                     servicer.GetConversations,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.GetConversationsRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.GetConversationsResponse.SerializeToString,
-            ),
-            'CreateConversation': grpc.unary_unary_rpc_method_handler(
-                    servicer.CreateConversation,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.CreateConversationRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.CreateConversationResponse.SerializeToString,
             ),
             'UpdateConversation': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateConversation,
@@ -275,23 +259,6 @@ class ConversationService(object):
         return grpc.experimental.unary_unary(request, target, '/app.ConversationService/GetConversations',
             app_dot_protos_dot_assistant__pb2.GetConversationsRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.GetConversationsResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def CreateConversation(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.ConversationService/CreateConversation',
-            app_dot_protos_dot_assistant__pb2.CreateConversationRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.CreateConversationResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

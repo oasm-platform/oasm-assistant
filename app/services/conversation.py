@@ -45,29 +45,6 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
             context.set_details(str(e))
             return assistant_pb2.GetConversationsResponse()
 
-    @get_metadata_interceptor
-    def CreateConversation(self, request, context):
-        try:
-            title = request.title
-            description = request.description
-            
-            # Extract workspace_id and user_id from context
-            workspace_id = context.workspace_id
-            user_id = context.user_id
-
-            with self.db.get_session() as session:
-                conversation = Conversation(title=title, description=description, 
-                    workspace_id=workspace_id, user_id=user_id)
-                session.add(conversation)
-                session.commit()
-                session.refresh(conversation)
-                return assistant_pb2.CreateConversationResponse(conversation=self._conversation_to_proto(conversation))
-        
-        except Exception as e:
-            logger.error(f"Error creating conversation: {e}")
-            context.set_code(StatusCode.INTERNAL)
-            context.set_details(str(e))
-            return assistant_pb2.CreateConversationResponse()
     
     @get_metadata_interceptor
     def UpdateConversation(self, request, context):
