@@ -54,145 +54,130 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             "subdomain": subdomain
         }
 
-    def _classify_by_domain_patterns(self, domain_info: Dict[str, str]) -> List[Tuple[str, float]]:
-        """Classify based on domain patterns"""
-        scores = []
-        domain = domain_info["domain"]
-        main_domain = domain_info["main_domain"]
-        subdomain = domain_info["subdomain"]
-        tld = domain_info["tld"]
-        
-        # E-commerce patterns
-        ecommerce_patterns = ['shop', 'store', 'buy', 'sell', 'mart', 'commerce', 'cart']
-        if any(pattern in main_domain for pattern in ecommerce_patterns):
-            scores.append(("e-commerce", 0.8))
-        
-        # News patterns
-        news_patterns = ['news', 'press', 'times', 'post', 'herald', 'tribune']
-        if any(pattern in main_domain for pattern in news_patterns):
-            scores.append(("news", 0.8))
-        
-        # Blog patterns
-        blog_patterns = ['blog', 'diary', 'journal']
-        if any(pattern in main_domain for pattern in blog_patterns) or subdomain == 'blog':
-            scores.append(("blog", 0.7))
-        
-        # Social media patterns
-        social_patterns = ['facebook', 'twitter', 'instagram', 'linkedin', 'youtube', 'tiktok']
-        if any(pattern in domain for pattern in social_patterns):
-            scores.append(("social_media", 0.9))
-        
-        # Government patterns
-        if tld in ['gov', 'mil'] or 'government' in main_domain:
-            scores.append(("government", 0.9))
-        
-        # Education patterns
-        if tld == 'edu' or any(pattern in main_domain for pattern in ['school', 'university', 'college', 'academy']):
-            scores.append(("education", 0.8))
-        
-        # Technology patterns
-        tech_patterns = ['tech', 'software', 'app', 'dev', 'code', 'digital', 'ai', 'ml']
-        if any(pattern in main_domain for pattern in tech_patterns):
-            scores.append(("technology", 0.7))
-        
-        return scores
 
     def _classify_with_llm(self, domain: str, content: Optional[str] = None) -> Dict[str, any]:
-        """Classify using LLM"""
+        """Classify using LLM - Step 2 of specification"""
         try:
             llm = self.llm_manager.get_llm()
-            
+
             # Prepare prompt using external prompt
             prompt = DomainClassificationPrompts.get_domain_classification_prompt(
                 categories=self.categories,
                 domain=domain,
                 content=content
             )
-            
+
+            logger.info(f"Sending domain classification request for: {domain}")
             response = llm.invoke([HumanMessage(content=prompt)])
-            
-            # Parse response
+
+            # Parse response with improved error handling
             try:
-                # Extract JSON from response
-                json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
+                # Extract JSON from response - look for first complete JSON object
+                json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response.content, re.DOTALL)
                 if json_match:
                     result = json.loads(json_match.group())
+
+                    # Validate required fields
+                    if not isinstance(result.get('categories'), list):
+                        result['categories'] = []
+                    if not result.get('primary_category'):
+                        result['primary_category'] = ""
+                    if not result.get('reasoning'):
+                        result['reasoning'] = "LLM classification completed"
+
+                    logger.info(f"LLM classification successful for {domain}")
                     return result
                 else:
-                    # Fallback parsing
-                    return {
-                        "primary_category": "",
-                        "categories": [],
-                        "reasoning": "Could not parse LLM response"
-                    }
-            except json.JSONDecodeError:
-                return {
-                    "primary_category": "",
-                    "categories": [],
-                    "reasoning": "Invalid JSON response from LLM"
-                }
-                
+                    logger.warning(f"No JSON found in LLM response for {domain}")
+                    # Try to extract at least some info from text response
+                    return self._fallback_parse_response(response.content)
+
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON decode error for {domain}: {e}")
+                return self._fallback_parse_response(response.content)
+
         except Exception as e:
-            logger.error(f"LLM classification error: {e}")
+            logger.error(f"LLM classification error for {domain}: {e}")
             return {
                 "primary_category": "",
                 "categories": [],
                 "reasoning": f"Error during LLM classification: {str(e)}"
             }
 
+    def _fallback_parse_response(self, response_text: str) -> Dict[str, any]:
+        """Fallback parsing when JSON extraction fails"""
+        # Try to extract category names from response
+        found_categories = []
+        response_lower = response_text.lower()
+
+        for category in self.categories:
+            if category.lower() in response_lower:
+                found_categories.append({
+                    "category": category,
+                    "confidence": 0.7  # Default confidence for fallback
+                })
+
+        return {
+            "primary_category": found_categories[0]["category"] if found_categories else "",
+            "categories": found_categories[:3],  # Max 3 categories
+            "reasoning": "Fallback parsing - JSON extraction failed"
+        }
+
     def classify_domain(self, domain: str) -> Dict[str, any]:
-        """Main classification method"""
+        """Main classification method - Following specification: Step 1: Collect data, Step 2: LLM classification"""
         try:
-            # Extract domain information
+            # Step 1: Collect data from URL/subdomain
             domain_info = self._extract_domain_info(domain)
-            
-            # Get content by crawling
+
+            # Get HTTP response and extract HTML title, meta tags, body content
             content = None
             crawl_result = self.crawler.crawl(domain)
             if crawl_result:
                 content = crawl_result
-            
-            # Pattern-based classification
-            pattern_scores = self._classify_by_domain_patterns(domain_info)
-            
-            # LLM-based classification with content
+
+            # Step 2: Aggregate data and use LLM for labeling
             llm_result = self._classify_with_llm(domain, content)
-            
-            # Combine results
+
+            # Process LLM results
             all_scores = {}
-            
-            # Add pattern scores
-            for category, score in pattern_scores:
-                all_scores[category] = max(all_scores.get(category, 0), score)
-            
-            # Add LLM scores
+            labels = []
+
+            # Extract categories from LLM result
             for cat_data in llm_result.get('categories', []):
                 category = cat_data.get('category', 'unknown')
-                confidence = cat_data.get('confidence', 0.5)
-                all_scores[category] = max(all_scores.get(category, 0), confidence)
-            
+                confidence = cat_data.get('confidence', 0.0)
+
+                # Only include categories with confidence >= 0.6 as per prompt specification
+                if confidence >= 0.6:
+                    all_scores[category] = confidence
+                    labels.append(category)
+
             # Sort by confidence
             sorted_categories = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
-            
-            # Get top categories
-            labels = [cat for cat, score in sorted_categories if score >= configs.classification_confidence_threshold]
-            # Return empty array if no categories meet threshold
-            
+
+            # Use primary category from LLM if available and confidence is high enough
+            primary_category = llm_result.get('primary_category', '')
+            if primary_category and primary_category in labels:
+                # Move primary category to front
+                labels = [primary_category] + [cat for cat in labels if cat != primary_category]
+
             # Calculate overall confidence
-            overall_confidence = max(all_scores.values()) if all_scores else 0.5
-            
+            overall_confidence = max(all_scores.values()) if all_scores else 0.0
+
             result = {
                 "domain": domain_info["domain"],
                 "labels": labels,
                 "confidence": overall_confidence,
                 "category_scores": [{"category": cat, "score": score} for cat, score in sorted_categories],
-                "content_summary": '',
+                "content_summary": content[:200] + "..." if content and len(content) > 200 else content or "",
                 "success": True,
-                "reasoning": llm_result.get('reasoning', '')
+                "reasoning": llm_result.get('reasoning', ''),
+                "primary_category": primary_category
             }
-            
+
+            logger.info(f"Domain classified: {domain} -> {labels} (confidence: {overall_confidence:.2f})")
             return result
-            
+
         except Exception as e:
             logger.error(f"Domain classification error for {domain}: {e}")
             return {
@@ -202,7 +187,8 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
                 "category_scores": [],
                 "content_summary": "",
                 "success": False,
-                "error": str(e)
+                "error": str(e),
+                "primary_category": ""
             }
 
     def DomainClassify(self, request, context):

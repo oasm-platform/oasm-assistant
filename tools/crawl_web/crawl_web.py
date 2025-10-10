@@ -227,36 +227,94 @@ class CrawlWeb:
         return '\n'.join(result)
 
     def _extract_metadata(self, soup) -> Dict[str, str]:
-        """Extract metadata from page"""
+        """Extract comprehensive metadata from page"""
         metadata = {}
-        
+
         # Title
         if soup.title and soup.title.string:
             metadata['title'] = self._clean_text(soup.title.string)
-        
+
         # Meta description
         meta_desc = soup.find('meta', attrs={'name': 'description'})
         if meta_desc and meta_desc.get('content'):
             metadata['description'] = self._clean_text(meta_desc.get('content'))
-        
+
         # Meta keywords
         meta_keywords = soup.find('meta', attrs={'name': 'keywords'})
         if meta_keywords and meta_keywords.get('content'):
             metadata['keywords'] = self._clean_text(meta_keywords.get('content'))
-        
+
+        # Meta author
+        meta_author = soup.find('meta', attrs={'name': 'author'})
+        if meta_author and meta_author.get('content'):
+            metadata['author'] = self._clean_text(meta_author.get('content'))
+
+        # Meta generator (can indicate CMS/platform)
+        meta_generator = soup.find('meta', attrs={'name': 'generator'})
+        if meta_generator and meta_generator.get('content'):
+            metadata['generator'] = self._clean_text(meta_generator.get('content'))
+
+        # Meta robots
+        meta_robots = soup.find('meta', attrs={'name': 'robots'})
+        if meta_robots and meta_robots.get('content'):
+            metadata['robots'] = self._clean_text(meta_robots.get('content'))
+
+        # Meta viewport (indicates mobile optimization)
+        meta_viewport = soup.find('meta', attrs={'name': 'viewport'})
+        if meta_viewport and meta_viewport.get('content'):
+            metadata['viewport'] = self._clean_text(meta_viewport.get('content'))
+
         # Open Graph tags
         og_title = soup.find('meta', attrs={'property': 'og:title'})
         if og_title and og_title.get('content'):
             metadata['og_title'] = self._clean_text(og_title.get('content'))
-        
+
         og_description = soup.find('meta', attrs={'property': 'og:description'})
         if og_description and og_description.get('content'):
             metadata['og_description'] = self._clean_text(og_description.get('content'))
-        
+
+        og_type = soup.find('meta', attrs={'property': 'og:type'})
+        if og_type and og_type.get('content'):
+            metadata['og_type'] = self._clean_text(og_type.get('content'))
+
+        og_site_name = soup.find('meta', attrs={'property': 'og:site_name'})
+        if og_site_name and og_site_name.get('content'):
+            metadata['og_site_name'] = self._clean_text(og_site_name.get('content'))
+
+        # Twitter Card tags
+        twitter_card = soup.find('meta', attrs={'name': 'twitter:card'})
+        if twitter_card and twitter_card.get('content'):
+            metadata['twitter_card'] = self._clean_text(twitter_card.get('content'))
+
+        twitter_title = soup.find('meta', attrs={'name': 'twitter:title'})
+        if twitter_title and twitter_title.get('content'):
+            metadata['twitter_title'] = self._clean_text(twitter_title.get('content'))
+
+        # Schema.org JSON-LD
+        json_ld_scripts = soup.find_all('script', {'type': 'application/ld+json'})
+        if json_ld_scripts:
+            metadata['schema_types'] = []
+            for script in json_ld_scripts[:3]:  # Limit to first 3
+                try:
+                    import json
+                    data = json.loads(script.string)
+                    if isinstance(data, dict) and '@type' in data:
+                        metadata['schema_types'].append(data['@type'])
+                    elif isinstance(data, list):
+                        for item in data:
+                            if isinstance(item, dict) and '@type' in item:
+                                metadata['schema_types'].append(item['@type'])
+                except:
+                    pass
+            if metadata['schema_types']:
+                metadata['schema_types'] = ', '.join(set(metadata['schema_types']))
+            else:
+                del metadata['schema_types']
+
         return metadata
 
     def _clean_vietnamese_text(self, text: str) -> str:
-        """Clean Vietnamese text"""
+        """Clean Vietnamese and unicode text"""
         if not text:
             return ""
         
@@ -370,20 +428,19 @@ class CrawlWeb:
 
         # Format final output
         result_parts = []
-        
-        # Add metadata
-        if metadata.get('title'):
-            result_parts.append(f"Title: {metadata['title']}")
-        
+
+        # Add basic info
         result_parts.append(f"URL: {url}")
-        
-        if metadata.get('description'):
-            result_parts.append(f"Description: {metadata['description']}")
-        
-        if metadata.get('keywords'):
-            result_parts.append(f"Keywords: {metadata['keywords']}")
-        
-        # Add main content
+
+        # Add metadata section
+        if metadata:
+            result_parts.append("\n=== METADATA ===")
+            for key, value in metadata.items():
+                if value:
+                    result_parts.append(f"{key.replace('_', ' ').title()}: {value}")
+
+        # Add content section
+        result_parts.append("\n=== CONTENT ===")
         if content:
             result_parts.append(content)
         else:
