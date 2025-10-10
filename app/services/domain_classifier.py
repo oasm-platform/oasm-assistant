@@ -200,7 +200,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
                 context.set_details("Domain is required")
                 return assistant_pb2.DomainClassifyResponse(
-                    label=[]
+                    labels=[]
                 )
             
             result = self.classify_domain(domain)
@@ -209,7 +209,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             labels = result.get("labels", [])
             
             response = assistant_pb2.DomainClassifyResponse(
-                label=labels
+                labels=labels
             )
             
             logger.info(f"Domain classification completed for {domain}: {labels}")
@@ -219,5 +219,5 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             logger.error(f"Domain classification error for {request.domain}: {e}")
             
             return assistant_pb2.DomainClassifyResponse(
-                label=[]
+                labels=[]
             )

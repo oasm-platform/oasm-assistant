@@ -26,7 +26,7 @@ message DomainClassifyRequest {
   string domain = 1;
 }
 message DomainClassifyResponse {
-  repeated string label = 1;
+  repeated string labels = 1;
 }
 
 // ----------------

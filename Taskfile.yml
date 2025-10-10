@@ -14,3 +14,7 @@ tasks:
   dev:
     cmds:
       - python -m app.main
+
+  test:
+    cmds:
+      - pytest tests/ -v
