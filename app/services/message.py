@@ -5,7 +5,7 @@ from grpc import StatusCode
 from data.database.models import Message, Conversation
 from app.interceptors import get_metadata_interceptor
 from agents.workflows.security_coordinator import SecurityCoordinator
-from llms.prompts import CONVERSATION_TITLE_PROMPT
+from llms.prompts import ConversationPrompts
 from llms import llm_manager
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
@@ -75,7 +75,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
             with self.db.get_session() as session:
                 if is_create_conversation:
-                    title_response = self.llm.invoke(CONVERSATION_TITLE_PROMPT.format(question=question))
+                    title_response = self.llm.invoke(ConversationPrompts.get_conversation_title_prompt(question=question))
                     conversation = Conversation(
                     workspace_id=workspace_id,
                     user_id=user_id,
