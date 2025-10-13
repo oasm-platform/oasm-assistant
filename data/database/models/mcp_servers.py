@@ -17,8 +17,9 @@ class MCPServer(BaseEntity):
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
 
-    # Workspace
+    # Workspace and user association
     workspace_id = Column(UUID(as_uuid=True), nullable=False)
+    user_id = Column(UUID(as_uuid=True), nullable=False)
     
     # Basic information
     name = Column(String(255), nullable=False, unique=True, index=True)
