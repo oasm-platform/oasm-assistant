@@ -42,6 +42,9 @@ python-json-logger
 aiohttp
 asyncio
 
+# MCP (Model Context Protocol)
+mcp
+
 # Web Search
 google-api-python-client
 requests
@@ -52,3 +55,8 @@ google-generativeai
 mistralai
 sentence-transformers
 openai
+
+
+# test
+pytest
+pytest-asyncio
