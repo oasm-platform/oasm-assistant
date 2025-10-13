@@ -5,7 +5,7 @@ from typing import List, Tuple, Optional, Dict, Any
 import numpy as np
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from data.database import db
+from data.database import postgres_db as db
 from common.logger import logger
 
 

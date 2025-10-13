@@ -1,5 +1,5 @@
 from app.protos import assistant_pb2, assistant_pb2_grpc
-from data.database import db as database_instance
+from data.database import postgres_db 
 from common.logger import logger
 from grpc import StatusCode
 from data.database.models import Conversation
@@ -7,7 +7,7 @@ from app.interceptors import get_metadata_interceptor
 
 class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
     def __init__(self):
-        self.db = database_instance
+        self.db = postgres_db
 
     def _conversation_to_proto(self, conversation):
         """Chuyển đổi từ SQLAlchemy model sang protobuf message"""

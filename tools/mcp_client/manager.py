@@ -1,12 +1,8 @@
-"""
-MCP Server Manager - Simplified
-"""
-
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
 from common.logger import logger
-from data.database.database import PostgresDatabase
+from data.database import postgres_db, PostgresDatabase
 from data.database.models.mcp_servers import MCPServer
 from tools.mcp_client.client import MCPClient
 
@@ -52,17 +48,23 @@ class MCPManager:
         except Exception as e:
             logger.error(f"Connect failed {server.name}: {e}")
 
-    # Tool operations
     async def call_tool(self, server: str, tool: str, args: Dict = None) -> Optional[Dict]:
         """Call a tool"""
         client = self.clients.get(server)
-        return await client.call_tool(tool, args) if client else None
+        if not client or not client.is_connected():
+            return None
+        return await client.call_tool(tool, args)
 
     async def get_all_tools(self) -> Dict[str, List[Dict]]:
-        """Get all tools from all servers"""
-        return {name: await client.list_tools() for name, client in self.clients.items()}
+        result = {}
+        for name, client in self.clients.items():
+            try:
+                result[name] = await client.list_tools()
+            except Exception as e:
+                logger.error(f"Failed to get tools from {name}: {e}")
+                result[name] = []
+        return result
 
-    # Resource operations
     async def read_resource(self, server: str, uri: str) -> Optional[Dict]:
         """Read a resource"""
         client = self.clients.get(server)
@@ -72,7 +74,6 @@ class MCPManager:
         """Get all resources"""
         return {name: await client.list_resources() for name, client in self.clients.items()}
 
-    # Prompt operations
     async def get_prompt(self, server: str, prompt: str, args: Dict = None) -> Optional[Dict]:
         """Get a prompt"""
         client = self.clients.get(server)
@@ -82,7 +83,6 @@ class MCPManager:
         """Get all prompts"""
         return {name: await client.list_prompts() for name, client in self.clients.items()}
 
-    # Server info
     def get_server_info(self, name: str) -> Optional[Dict]:
         """Get server info"""
         client = self.clients.get(name)
@@ -92,7 +92,6 @@ class MCPManager:
         """Get all server info"""
         return {name: client.get_info() for name, client in self.clients.items()}
 
-    # Server management
     async def add_server(self, config: Dict[str, Any]) -> bool:
         """Add a new server"""
         try:

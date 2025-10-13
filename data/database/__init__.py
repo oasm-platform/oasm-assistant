@@ -1,6 +1,6 @@
 from .database import PostgresDatabase
 from common.config import configs as settings
 
-db = PostgresDatabase(settings.postgres.url)
+postgres_db = PostgresDatabase(settings.postgres.url)
 
-__all__ = ["db"]
+__all__ = ["postgres_db", "PostgresDatabase"]

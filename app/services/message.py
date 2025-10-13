@@ -1,5 +1,5 @@
 from app.protos import assistant_pb2, assistant_pb2_grpc
-from data.database import db as database_instance
+from data.database import postgres_db as database_instance
 from common.logger import logger
 from grpc import StatusCode
 from data.database.models import Message, Conversation

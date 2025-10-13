@@ -8,6 +8,24 @@ from mcp.client.sse import sse_client
 from common.logger import logger
 from data.database.models.mcp_servers import MCPServer, TransportType
 
+"""
+Example MCP Client Implementation
+
+from ... import MCPClient, create_client
+
+server = MCPServer.create_sse(
+        name="oasm",
+        display_name="OASM Platform",
+        url="http://localhost:3000/api/mcp",
+        headers={"mcp-api-key": "i9Zqtk6bDvWhJArjpfHwUtZ1JzZkD7zD9OM5"},
+        is_active=True
+    )
+async with create_client(server) as client:
+    print(f"✓ Connected: {client.get_info()}")
+        tools = await client.list_tools()
+        resources = await client.list_resources()
+        prompts = await client.list_prompts()
+"""
 
 class MCPClient:
     """
@@ -126,11 +144,21 @@ class MCPClient:
         try:
             if self.session:
                 await self.session.__aexit__(None, None, None)
+                self.session = None
             if self._context:
                 await self._context.__aexit__(None, None, None)
+                self._context = None
+
+            self._read = None
+            self._write = None
+
             logger.info(f"Disconnected: {self.server.name}")
         except Exception as e:
             logger.error(f"Disconnect error: {e}")
+            self.session = None
+            self._context = None
+            self._read = None
+            self._write = None
 
     def is_connected(self) -> bool:
         """Check connection status"""
