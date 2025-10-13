@@ -17,9 +17,13 @@ def mock_mcp_database():
     mock_session = Mock()
     mock_db.get_session.return_value.__enter__ = Mock(return_value=mock_session)
     mock_db.get_session.return_value.__exit__ = Mock(return_value=None)
+
+    # Setup mock query chain
     mock_query = Mock()
     mock_query.all.return_value = []
+    mock_query.filter.return_value = mock_query  # Allow chaining .filter().all()
     mock_session.query.return_value = mock_query
+
     return mock_db
 
 
@@ -30,9 +34,17 @@ def real_database():
 
 
 @pytest.fixture
-def test_server():
+def workspace_id():
+    """Test workspace ID"""
+    from uuid import uuid4
+    return uuid4()
+
+
+@pytest.fixture
+def test_server(workspace_id):
     """Reusable test server"""
     return MCPServer(
+        workspace_id=workspace_id,
         name="test_server",
         display_name="Test Server",
         transport_type=TransportType.SSE,
@@ -43,10 +55,11 @@ def test_server():
 
 
 @pytest.fixture
-def test_servers():
+def test_servers(workspace_id):
     """Multiple test servers"""
     return [
         MCPServer(
+            workspace_id=workspace_id,
             name=f"test_server_{i}",
             display_name=f"Test Server {i}",
             transport_type=TransportType.SSE,
@@ -97,38 +110,42 @@ class TestMCPManager:
         'get_all_info', 'get_all_tools', 'get_all_resources',
         'get_all_prompts', 'call_tool'
     ])
-    def test_manager_has_methods(self, mock_mcp_database, method):
+    def test_manager_has_methods(self, mock_mcp_database, workspace_id, method):
         """Test manager has required methods"""
-        manager = MCPManager(mock_mcp_database)
+        manager = MCPManager(mock_mcp_database, workspace_id)
         assert hasattr(manager, method)
 
     @pytest.mark.asyncio
-    async def test_manager_initialize(self, mock_mcp_database, test_servers):
-        """Test manager initialization"""
+    async def test_manager_initialize(self, mock_mcp_database, workspace_id, test_servers):
+        """Test manager initialization with workspace filter"""
         mock_session = mock_mcp_database.get_session.return_value.__enter__.return_value
-        mock_session.query.return_value.all.return_value = test_servers
+        mock_query = Mock()
+        mock_query.filter.return_value.all.return_value = test_servers
+        mock_query.all.return_value = test_servers
+        mock_session.query.return_value = mock_query
 
-        manager = MCPManager(mock_mcp_database)
+        manager = MCPManager(mock_mcp_database, workspace_id)
         with patch.object(MCPClient, 'connect', new_callable=AsyncMock):
             await manager.initialize()
 
         assert mock_session.query.called
 
     @pytest.mark.asyncio
-    async def test_manager_context_manager(self, mock_mcp_database):
+    async def test_manager_context_manager(self, mock_mcp_database, workspace_id):
         """Test manager context manager"""
-        async with create_manager(mock_mcp_database) as manager:
+        async with create_manager(mock_mcp_database, workspace_id) as manager:
             assert isinstance(manager, MCPManager)
+            assert manager.workspace_id == workspace_id
 
     @pytest.mark.asyncio
-    async def test_manager_operations(self, mock_mcp_database):
+    async def test_manager_operations(self, mock_mcp_database, workspace_id):
         """Test manager add/remove/query operations"""
-        manager = MCPManager(mock_mcp_database)
+        manager = MCPManager(mock_mcp_database, workspace_id)
         await manager.initialize()
 
-        # Test add_server
+        # Test add_server with workspace_id
         with patch.object(manager, 'add_server', new_callable=AsyncMock, return_value=True) as mock_add:
-            assert await manager.add_server({"name": "new_server"})
+            assert await manager.add_server({"name": "new_server", "workspace_id": workspace_id})
             mock_add.assert_called_once()
 
         # Test remove_server
@@ -169,9 +186,13 @@ class TestMCPDatabaseIntegration:
     """Integration tests with real database"""
 
     @pytest.fixture
-    def db_server(self):
+    def db_server(self, workspace_id):
         """Helper to create/update test server"""
         def _create_or_update(session, name, **kwargs):
+            # Add workspace_id if not provided
+            if 'workspace_id' not in kwargs:
+                kwargs['workspace_id'] = workspace_id
+
             existing = session.query(MCPServer).filter_by(name=name).first()
             if existing:
                 for key, value in kwargs.items():
@@ -185,11 +206,12 @@ class TestMCPDatabaseIntegration:
             return server
         return _create_or_update
 
-    def test_crud_operations(self, real_database, db_server):
+    def test_crud_operations(self, real_database, db_server, workspace_id):
         """Test create, read, update, delete operations"""
         # Create
         with real_database.get_session() as session:
             server = db_server(session, "test_crud_server",
+                              workspace_id=workspace_id,
                               display_name="CRUD Test",
                               transport_type=TransportType.SSE,
                               url="http://localhost:9999/mcp",

@@ -1,4 +1,5 @@
 from typing import Dict, List, Optional, Any
+from uuid import UUID
 from contextlib import asynccontextmanager
 
 from common.logger import logger
@@ -10,8 +11,17 @@ from tools.mcp_client.client import MCPClient
 class MCPManager:
     """Manager for multiple MCP servers"""
 
-    def __init__(self, database: PostgresDatabase):
+    def __init__(self, database: PostgresDatabase, workspace_id: Optional[UUID] = None):
+        """
+        Initialize MCP Manager
+
+        Args:
+            database: Database instance
+            workspace_id: Optional workspace ID to filter servers.
+                         If None, loads all servers.
+        """
         self.database = database
+        self.workspace_id = workspace_id
         self.clients: Dict[str, MCPClient] = {}
 
     async def initialize(self):
@@ -32,9 +42,12 @@ class MCPManager:
         logger.info(f"✓ Connected {len(self.clients)} servers")
 
     def _load_servers(self) -> List[MCPServer]:
-        """Load servers from database"""
+        """Load servers from database, optionally filtered by workspace"""
         with self.database.get_session() as session:
-            return session.query(MCPServer).all()
+            query = session.query(MCPServer)
+            if self.workspace_id:
+                query = query.filter(MCPServer.workspace_id == self.workspace_id)
+            return query.all()
 
     async def _connect(self, server: MCPServer):
         """Connect to a server"""
@@ -93,8 +106,21 @@ class MCPManager:
         return {name: client.get_info() for name, client in self.clients.items()}
 
     async def add_server(self, config: Dict[str, Any]) -> bool:
-        """Add a new server"""
+        """
+        Add a new server
+
+        Args:
+            config: Server configuration dict. Must include 'workspace_id'.
+
+        Returns:
+            True if successful, False otherwise
+        """
         try:
+            # Validate workspace_id
+            if 'workspace_id' not in config:
+                logger.error("workspace_id is required in config")
+                return False
+
             with self.database.get_session() as session:
                 server = MCPServer(**config)
                 session.add(server)
@@ -139,15 +165,19 @@ class MCPManager:
 
 
 @asynccontextmanager
-async def create_manager(database: PostgresDatabase):
+async def create_manager(database: PostgresDatabase, workspace_id: Optional[UUID] = None):
     """
     Context manager for MCP manager
 
+    Args:
+        database: Database instance
+        workspace_id: Optional workspace ID to filter servers
+
     Usage:
-        async with create_manager(db) as manager:
+        async with create_manager(db, workspace_id) as manager:
             tools = await manager.get_all_tools()
     """
-    manager = MCPManager(database)
+    manager = MCPManager(database, workspace_id)
     try:
         await manager.initialize()
         yield manager
