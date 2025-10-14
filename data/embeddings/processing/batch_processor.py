@@ -20,8 +20,8 @@ import math
 from collections import defaultdict
 
 from .text_preprocessor import TextPreprocessor
-from .chunk_processor import SentenceChunker, Chunk
-from .quality_assessor import EmbeddingQualityAssessor 
+from .chunk_processor import SentenceChunker, Chunk, SentenceChunkerConfig
+from .quality_assessor import EmbeddingQualityAssessor
 from .metadata_extractor import MetadataExtractor
 
 @dataclass
@@ -41,6 +41,12 @@ class TFIDFEmbedding:
         self.idf: Dict[str, float] = {}
         self.vocab_size = 0
         self.doc_count = 0
+        # Thêm bộ đệm để tăng hiệu suất
+        self._word_cache: Dict[str, List[float]] = {}
+        # Thêm hệ số để tăng sự phân biệt giữa các vector
+        self.use_sublinear_tf = True  # Sử dụng log(tf) thay vì tf tuyến tính
+        self.use_inverse_doc_freq = True  # Sử dụng IDF để giảm trọng số của từ phổ biến
+        self.use_l2_normalization = True  # Sử dụng chuẩn hóa L2 để cải thiện chất lượng vector
         
     def fit(self, documents: List[Any]) -> None:
         """
@@ -116,15 +122,40 @@ class TFIDFEmbedding:
         for word, count in word_counts.items():
             if word in self.vocab:
                 idx = self.vocab[word] % self.dimension
-                tf = count / max(1, total_words)
-                idf = self.idf.get(word, 1.0)
-                vector[idx] += tf * idf
+                # Sử dụng TF logarit thay vì TF tuyến tính để giảm ảnh hưởng của từ xuất hiện nhiều
+                if self.use_sublinear_tf:
+                    tf = 1 + math.log(count) if count > 0 else 0
+                else:
+                    tf = count / max(1, total_words)
+                
+                # Áp dụng IDF nếu được bật
+                if self.use_inverse_doc_freq:
+                    idf = self.idf.get(word, 1.0)
+                else:
+                    idf = 1.0
+                
+                # Áp dụng hệ số để tăng sự phân biệt giữa các vector
+                # Tăng trọng số cho các từ đặc trưng
+                weight = tf * idf
+                vector[idx] += weight
+        
+        # Cải thiện sự phân biệt bằng cách áp dụng hệ số điều chỉnh nhẹ
+        # để tăng sự khác biệt giữa các vector nhúng mà không làm mất ổn định
+        for i in range(len(vector)):
+            if vector[i] != 0:
+                # Áp dụng hệ số điều chỉnh nhẹ để khuếch đại sự khác biệt
+                # mà vẫn giữ được tính ổn định của mô hình
+                vector[i] = vector[i] * (1.0 + 0.05 * abs(vector[i]))  # Khuếch đại nhẹ tỷ lệ với giá trị tuyệt đối
+        
         return vector
 
     def _normalize_vector(self, vector: List[float]) -> List[float]:
         """L2 normalize vector"""
-        norm = math.sqrt(sum(x*x for x in vector)) or 1.0
-        return [x / norm for x in vector]
+        if self.use_l2_normalization:
+            norm = math.sqrt(sum(x*x for x in vector)) or 1.0
+            return [x / norm for x in vector]
+        else:
+            return vector
 
 class BatchProcessor:
     """Text processing pipeline with batch support"""
@@ -133,8 +164,9 @@ class BatchProcessor:
         self.embedding_dim = embedding_dim
         self.embedding_model = TFIDFEmbedding(dimension=embedding_dim)
         self.text_preprocessor = TextPreprocessor()
-        self.chunker = SentenceChunker()
-        self.quality_assessor = EmbeddingQualityAssessor()  
+        # Sử dụng cấu hình tối ưu cho hiệu suất
+        self.chunker = SentenceChunker(config=SentenceChunkerConfig(max_tokens=512, overlap_tokens=64))
+        self.quality_assessor = EmbeddingQualityAssessor()
         self.is_fitted = False
 
     def process_batch(

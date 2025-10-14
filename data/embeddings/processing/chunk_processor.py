@@ -79,9 +79,6 @@ def _split_paragraphs(text: str) -> List[str]:
     return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
 
-# ----------------------------- Data Models -----------------------------
-
-
 @dataclass
 class Chunk:
     """
@@ -114,8 +111,8 @@ class SentenceChunkerConfig:
             treated as standalone sentences.
         tiktoken_encoding: Optional name of tiktoken encoding to use.
     """
-    max_tokens: int = 3000
-    overlap_tokens: int = 60
+    max_tokens: int = 512 
+    overlap_tokens: int = 32  
     sentence_split_regex: str = r"(?<=[\.\!\?])\s+(?=[A-Z0-9])"
     bullet_line_regex: str = r"(?m)^\s*[-•\*]\s+"
     tiktoken_encoding: Optional[str] = "cl100k_base"

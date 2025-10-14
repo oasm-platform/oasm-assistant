@@ -9,17 +9,6 @@ from .models import (
 from common.logger import logger
 from common.config import EmbeddingConfigs
 from typing import List, Type
-"""
-Usage example:
-
-from .embeddings import Embeddings
-
-# Create an OpenAI embedding instance
-embedding = Embeddings.create_embedding('openai', api_key='your_api_key', model_name='text-embedding-3-small')
-
-# Get list of available providers
-providers = Embeddings.get_available_providers()
-"""
 
 class Embeddings:
     """Embedding usage pattern factory class"""

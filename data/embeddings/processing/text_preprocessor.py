@@ -75,14 +75,14 @@ class TextPreprocessor:
     def preprocess(self, text: str) -> str:
         """
         Run the configured preprocessing pipeline on input text.
-
+        
         The sequence (guarded by flags) is:
           normalize -> collapse spaces/newlines -> strip controls
-          -> dehyphenate -> merge hard wraps -> remove headers/footers -> final trim
-
+          -> dehyphenate -> merge hard wraps -> remove headers/footers -> improve paragraph handling -> final trim
+        
         Args:
             text: Raw text, typically from a PDF extractor.
-
+        
         Returns:
             Cleaned text suitable for chunking and embedding.
         """
@@ -109,6 +109,9 @@ class TextPreprocessor:
             s = self._remove_repeated_headers_footers(
                 s, min_len=self.config.min_header_len, max_line_len=self.config.max_header_line_len
             )
+
+        # Cải thiện xử lý đoạn văn để hỗ trợ chia đoạn tốt hơn
+        s = self._improve_paragraph_handling(s)
 
         # Final pass to remove accidental trailing spaces and compress newlines.
         s = self._final_trim(s)
@@ -287,6 +290,17 @@ class TextPreprocessor:
         res = "\n".join(out)
         res = re.sub(r"\n{3,}", "\n\n", res).strip()
         return res
+
+    def _improve_paragraph_handling(self, s: str) -> str:
+        """
+        Cải thiện việc xử lý các đoạn văn bằng cách thêm dấu ngắt rõ ràng
+        để hỗ trợ việc chia đoạn tốt hơn.
+        """
+        # Thay thế các chuỗi ký tự đặc biệt bằng dấu cách để cải thiện việc chia câu
+        s = re.sub(r'[•\u2022\u25E6\u25CF]', ' * ', s)  # Các ký tự đầu dòng đặc biệt
+        s = re.sub(r'[^\x00-\x7F]+', ' ', s)  # Loại bỏ các ký tự không phải ASCII
+        s = re.sub(r'\s+', ' ', s)  # Thay thế nhiều dấu cách bằng một dấu cách
+        return s
 
     def _final_trim(self, s: str) -> str:
         """
