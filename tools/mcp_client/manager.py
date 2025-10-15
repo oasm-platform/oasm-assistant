@@ -39,7 +39,7 @@ class MCPManager:
         # Connect by priority
         servers.sort(key=lambda s: s.priority, reverse=True)
         for server in servers:
-            if server.is_active:
+            if server.mcp_config.get('is_active', False):
                 await self._connect(server)
 
         logger.info(f"✓ Connected {len(self.clients)} servers")
@@ -125,10 +125,16 @@ class MCPManager:
             with self.database.get_session() as session:
                 server = MCPServer(**config)
                 session.add(server)
+                # Validate config before saving
+                is_valid, error_msg = server.validate_config()
+                if not is_valid:
+                    logger.error(f"Invalid server config: {error_msg}")
+                    return False
+
                 session.commit()
                 session.refresh(server)
 
-                if server.is_active:
+                if server.mcp_config.get('is_active', False):
                     await self._connect(server)
                 return True
         except Exception as e:
@@ -143,11 +149,16 @@ class MCPManager:
                 del self.clients[name]
 
             with self.database.get_session() as session:
-                server = session.query(MCPServer).filter(MCPServer.name == name).first()
-                if server:
-                    session.delete(server)
-                    session.commit()
-                    return True
+                servers = session.query(MCPServer).filter(
+                    MCPServer.workspace_id == self.workspace_id,
+                    MCPServer.user_id == self.user_id
+                ).all()
+
+                for server in servers:
+                    if server.name == name:
+                        session.delete(server)
+                        session.commit()
+                        return True
             return False
         except Exception as e:
             logger.error(f"Remove server failed: {e}")

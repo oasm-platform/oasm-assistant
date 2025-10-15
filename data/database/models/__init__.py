@@ -3,7 +3,7 @@ from .conversations import Conversation
 from .base import BaseEntity
 from .knowledgebase import KnowledgeBase
 from .nucleitemplate import NucleiTemplate
-from .mcp_servers import MCPServer, TransportType
+from .mcp_servers import MCPServer, ServerStatus
 
 __all__ = [
     "BaseEntity",
@@ -12,5 +12,5 @@ __all__ = [
     "KnowledgeBase",
     "NucleiTemplate",
     "MCPServer",
-    "TransportType"
+    "ServerStatus",
 ]

@@ -137,3 +137,92 @@ message DeleteMessageResponse {
   string message = 1;
   bool success = 2;
 }
+
+// ----------------
+// MCP Server
+// ----------------
+service MCPServerService {
+  rpc AddMCPServer(AddMCPServerRequest) returns (AddMCPServerResponse);
+  rpc ListMCPServers(ListMCPServersRequest) returns (ListMCPServersResponse);
+  rpc GetMCPServerStatus(GetMCPServerStatusRequest) returns (GetMCPServerStatusResponse);
+  rpc UpdateMCPServer(UpdateMCPServerRequest) returns (UpdateMCPServerResponse);
+  rpc DeleteMCPServer(DeleteMCPServerRequest) returns (DeleteMCPServerResponse);
+}
+
+enum MCPServerStatus {
+  UNKNOWN = 0;
+  RUNNING = 1;
+  STOPPED = 2;
+  ERROR = 3;
+  STARTING = 4;
+  STOPPING = 5;
+}
+
+message MCPServer {
+  string id = 1;
+  string workspace_id = 2;
+  string user_id = 3;
+  string mcp_config = 4;  // JSON string containing all MCP configuration
+  string server_status = 5;  // Server status: active, inactive, disabled
+  int32 latency = 6;  // Server latency in milliseconds
+  string created_at = 7;
+  string updated_at = 8;
+}
+
+message AddMCPServerRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  string mcp_config = 3;  // JSON string containing all MCP configuration
+}
+
+message AddMCPServerResponse {
+  MCPServer server = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message ListMCPServersRequest {
+  string workspace_id = 1;
+  string user_id = 2;
+  bool only_active = 3;
+}
+
+message ListMCPServersResponse {
+  repeated MCPServer servers = 1;
+  int32 total_count = 2;
+}
+
+message GetMCPServerStatusRequest {
+  string server_id = 1;
+}
+
+message GetMCPServerStatusResponse {
+  string server_id = 1;
+  string server_name = 2;
+  MCPServerStatus status = 3;
+  string status_message = 4;
+  bool is_connected = 5;
+  int64 uptime_seconds = 6;
+  string last_error = 7;
+  string last_ping = 8;
+}
+
+message UpdateMCPServerRequest {
+  string server_id = 1;
+  string mcp_config = 2;  // JSON string containing updated MCP configuration
+}
+
+message UpdateMCPServerResponse {
+  MCPServer server = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message DeleteMCPServerRequest {
+  string server_id = 1;
+}
+
+message DeleteMCPServerResponse {
+  bool success = 1;
+  string message = 2;
+}

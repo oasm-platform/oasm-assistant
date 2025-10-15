@@ -6,25 +6,28 @@ from mcp.client.stdio import stdio_client
 from mcp.client.sse import sse_client
 
 from common.logger import logger
-from data.database.models.mcp_servers import MCPServer, TransportType
+from data.database.models.mcp_servers import MCPServer
 
 """
 Example MCP Client Implementation
 
 from ... import MCPClient, create_client
 
+# Create server with workspace and user IDs
 server = MCPServer.create_sse(
-        name="oasm",
-        display_name="OASM Platform",
-        url="http://localhost:3000/api/mcp",
-        headers={"mcp-api-key": "i9Zqtk6bDvWhJArjpfHwUtZ1JzZkD7zD9OM5"},
-        is_active=True
-    )
+    workspace_id=workspace_uuid,
+    user_id=user_uuid,
+    name="oasm",
+    display_name="OASM Platform",
+    url="http://localhost:3000/api/mcp",
+    headers={"mcp-api-key": "i9Zqtk6bDvWhJArjpfHwUtZ1JzZkD7zD9OM5"}
+)
+
 async with create_client(server) as client:
     print(f"✓ Connected: {client.get_info()}")
-        tools = await client.list_tools()
-        resources = await client.list_resources()
-        prompts = await client.list_prompts()
+    tools = await client.list_tools()
+    resources = await client.list_resources()
+    prompts = await client.list_prompts()
 """
 
 class MCPClient:
@@ -46,18 +49,26 @@ class MCPClient:
         try:
             logger.info(f"Connecting: {self.server.name}")
 
-            # Create transport context
-            if self.server.transport_type == TransportType.STDIO:
+            # Create transport context based on transport type
+            transport_type = self.server.transport_type
+
+            if transport_type == 'stdio':
                 params = StdioServerParameters(
                     command=self.server.command,
-                    args=self.server.args or [],
-                    env=self.server.env
+                    args=self.server.args,
+                    env=self.server.env if self.server.env else None
                 )
                 self._context = stdio_client(params)
-            else:  # SSE
+            else:  # SSE or HTTP
+                headers = self.server.headers.copy() if self.server.headers else {}
+
+                # Add API key to headers if present
+                if self.server.api_key:
+                    headers['Authorization'] = f"Bearer {self.server.api_key}"
+
                 self._context = sse_client(
                     url=self.server.url,
-                    headers=self.server.headers or {}
+                    headers=headers
                 )
 
             # Connect
@@ -169,7 +180,7 @@ class MCPClient:
         return {
             "name": self.server.name,
             "connected": self.is_connected(),
-            "transport": self.server.transport_type.value,
+            "transport": self.server.transport_type,
         }
 
 

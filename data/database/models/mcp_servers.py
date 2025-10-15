@@ -1,183 +1,189 @@
-from sqlalchemy import Column, String, Integer, Boolean, JSON, Text, Enum as SQLEnum
+from sqlalchemy import Column, JSON, Index, Boolean, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from uuid import uuid4
 from data.database.models.base import BaseEntity
 from enum import Enum
 
 
-class TransportType(str, Enum):
-    STDIO = 'stdio'
-    SSE = 'sse'
-    HTTP = 'http'
+class ServerStatus(str, Enum):
+    """Server status enum"""
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    DISABLED = "disabled"    
 
 
 class MCPServer(BaseEntity):
+    """
+    Simplified MCP Server model - stores all configuration in JSON
+
+    mcp_config schema:
+    {
+        "name": "server-name",
+        "display_name": "Display Name",
+        "description": "Description",
+        "transport_type": "stdio|sse|http",
+        "command": "npx",  # For STDIO
+        "args": ["-y", "@modelcontextprotocol/server"],  # For STDIO
+        "env": {"KEY": "value"},  # For STDIO
+        "url": "https://api.example.com",  # For SSE/HTTP
+        "headers": {
+            "X-Custom": "value",
+            "api-key": "value"
+            },  # For SSE/HTTP
+        "version": "1.0.0",
+        "capabilities": {},
+        "is_active": true,
+        "is_default": false,
+        "priority": 0
+    }
+    """
     __tablename__ = "mcp_servers"
-    
+    __table_args__ = (
+        Index('idx_workspace_user', 'workspace_id', 'user_id'),
+        {'extend_existing': True}
+    )
     # Primary key
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
 
     # Workspace and user association
-    workspace_id = Column(UUID(as_uuid=True), nullable=False)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
-    
-    # Basic information
-    name = Column(String(255), nullable=False, unique=True, index=True)
-    display_name = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
-    
-    # Server type and configuration
-    transport_type = Column(
-        SQLEnum(TransportType, name='transport_type_enum', create_type=True),
-        nullable=False
-    )
-    
-    # STDIO configuration
-    command = Column(String(500), nullable=True)
-    args = Column(JSON, nullable=True)
-    env = Column(JSON, nullable=True)
-    
-    # SSE/HTTP configuration
-    url = Column(String(500), nullable=True)
-    api_key = Column(String(255), nullable=True)
-    headers = Column(JSON, nullable=True)
-    
-    # Metadata and capabilities
-    version = Column(String(50), nullable=True)
-    capabilities = Column(JSON, nullable=True)
-    config = Column(JSON, nullable=True)
-    
-    # Status and settings
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_default = Column(Boolean, default=False, nullable=False)
-    priority = Column(Integer, default=0, nullable=False)
-    
-    
-    def __repr__(self):
-        return f"<MCPServer(id={self.id}, name={self.name}, type={self.transport_type})>"
-    
-    def to_dict(self):
-        """Convert to dict with sensitive data hidden"""
-        result = super().to_dict()
-        
-        # Hide sensitive information
-        if result.get('api_key'):
-            result['api_key'] = '***HIDDEN***'
-            
-        return result
-    
-    def get_connection_config(self):
-        """Get connection config based on transport type"""
-        if self.transport_type == TransportType.STDIO:
-            return {
-                'type': 'stdio',
+    workspace_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+    # All configuration stored as JSON
+    mcp_config = Column(JSON, nullable=False)
+
+    server_status = Column(String(20), nullable=False, default=ServerStatus.INACTIVE.value)
+
+    latency = Column(Integer, nullable=False, default=1) # minutes
+
+    # Property helpers for easy access to mcp_config fields
+    @property
+    def name(self) -> str:
+        """Get server name from config"""
+        return self.mcp_config.get('name', '')
+
+    @property
+    def display_name(self) -> str:
+        """Get display name from config"""
+        return self.mcp_config.get('display_name', self.name)
+
+    @property
+    def description(self) -> str:
+        """Get description from config"""
+        return self.mcp_config.get('description', '')
+
+    @property
+    def transport_type(self) -> str:
+        """Get transport type from config"""
+        return self.mcp_config.get('transport_type', 'stdio')
+
+    @property
+    def command(self) -> str:
+        """Get command from config (for STDIO)"""
+        return self.mcp_config.get('command', '')
+
+    @property
+    def args(self) -> list:
+        """Get args from config (for STDIO)"""
+        return self.mcp_config.get('args', [])
+
+    @property
+    def env(self) -> dict:
+        """Get env from config (for STDIO)"""
+        return self.mcp_config.get('env', {})
+
+    @property
+    def url(self) -> str:
+        """Get URL from config (for SSE/HTTP)"""
+        return self.mcp_config.get('url', '')
+
+    @property
+    def headers(self) -> dict:
+        """Get headers from config (for SSE/HTTP)"""
+        return self.mcp_config.get('headers', {})
+
+    @property
+    def version(self) -> str:
+        """Get version from config"""
+        return self.mcp_config.get('version', '')
+
+    @property
+    def capabilities(self) -> dict:
+        """Get capabilities from config"""
+        return self.mcp_config.get('capabilities', {})
+
+    @property
+    def priority(self) -> int:
+        """Get priority from config"""
+        return self.mcp_config.get('priority', 0)
+
+    @property
+    def is_default(self) -> bool:
+        """Get is_default from config"""
+        return self.mcp_config.get('is_default', False)
+
+    @property
+    def api_key(self) -> str:
+        """Get API key from config (for SSE/HTTP)"""
+        return self.mcp_config.get('api_key', '')
+
+    def __repr__(self) -> str:
+        """String representation for debugging"""
+        return f"<MCPServer(id={self.id}, name='{self.name}', type={self.transport_type}, status={self.server_status})>"
+
+    def validate_config(self) -> tuple[bool, str]:
+        """
+        Validate mcp_config structure
+        Returns: (is_valid, error_message)
+        """
+        if not isinstance(self.mcp_config, dict):
+            return False, "mcp_config must be a dictionary"
+
+        # Check required fields
+        if not self.mcp_config.get('name'):
+            return False, "mcp_config must contain 'name' field"
+
+        transport_type = self.mcp_config.get('transport_type', 'stdio')
+
+        # Validate based on transport type
+        if transport_type == 'stdio':
+            if not self.mcp_config.get('command'):
+                return False, "STDIO server must have 'command' field"
+        elif transport_type in ['sse', 'http']:
+            if not self.mcp_config.get('url'):
+                return False, f"{transport_type.upper()} server must have 'url' field"
+        else:
+            return False, f"Invalid transport_type: {transport_type}. Must be 'stdio', 'sse', or 'http'"
+
+        return True, ""
+
+    def get_connection_config(self) -> dict:
+        """
+        Get connection config ready for MCP client
+        Returns config dict suitable for MCPManager._connect()
+        """
+        transport_type = self.transport_type
+
+        if transport_type == 'stdio':
+            config = {
+                'transport_type': 'stdio',
                 'command': self.command,
                 'args': self.args or [],
-                'env': self.env or {}
-            }
-        elif self.transport_type in [TransportType.SSE, TransportType.HTTP]:
-            config = {
-                'type': self.transport_type.value,
-                'url': self.url,
-                'headers': self.headers or {}
-            }
-            if self.api_key:
-                config['headers']['Authorization'] = f'Bearer {self.api_key}'
-            return config
-        return None
-    
-    def to_mcp_json(self):
-        """
-        Convert to standard MCP JSON format (Claude Desktop compatible)
-        Returns config ready to use with MCP client
-        """
-        if self.transport_type == TransportType.STDIO:
-            config = {
-                'command': self.command,
-                'args': self.args or []
             }
             if self.env:
                 config['env'] = self.env
             return config
-        else:  # SSE or HTTP
-            config = {'url': self.url}
+
+        elif transport_type in ['sse', 'http']:
+            config = {
+                'transport_type': transport_type,
+                'url': self.url,
+            }
             if self.headers or self.api_key:
                 headers = self.headers.copy() if self.headers else {}
                 if self.api_key:
                     headers['Authorization'] = f'Bearer {self.api_key}'
                 config['headers'] = headers
             return config
-    
-    @classmethod
-    def from_mcp_json(cls, name: str, display_name: str, config: dict, **kwargs):
-        """
-        Create MCPServer from MCP JSON config
-        
-        Example:
-            MCPServer.from_mcp_json(
-                "filesystem",
-                "File System",
-                {"command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem"]}
-            )
-        """
-        # Detect transport type
-        if 'command' in config:
-            return cls(
-                name=name,
-                display_name=display_name,
-                transport_type=TransportType.STDIO,
-                command=config.get('command'),
-                args=config.get('args', []),
-                env=config.get('env'),
-                **kwargs
-            )
-        elif 'url' in config:
-            headers = config.get('headers', {})
-            api_key = None
-            
-            # Extract API key from Authorization header
-            if 'Authorization' in headers:
-                auth = headers['Authorization']
-                if auth.startswith('Bearer '):
-                    api_key = auth[7:]
-                    headers = {k: v for k, v in headers.items() if k != 'Authorization'}
-            
-            return cls(
-                name=name,
-                display_name=display_name,
-                transport_type=TransportType.SSE,
-                url=config.get('url'),
-                api_key=api_key,
-                headers=headers if headers else None,
-                **kwargs
-            )
-        else:
-            raise ValueError("Invalid MCP config: must contain 'command' or 'url'")
-    
-    @classmethod
-    def create_stdio(cls, name: str, display_name: str, command: str, 
-                     args: list = None, env: dict = None, **kwargs):
-        """Convenience method to create STDIO server"""
-        return cls(
-            name=name,
-            display_name=display_name,
-            transport_type=TransportType.STDIO,
-            command=command,
-            args=args,
-            env=env,
-            **kwargs
-        )
-    
-    @classmethod
-    def create_sse(cls, name: str, display_name: str, url: str, 
-                   api_key: str = None, headers: dict = None, **kwargs):
-        """Convenience method to create SSE server"""
-        return cls(
-            name=name,
-            display_name=display_name,
-            transport_type=TransportType.SSE,
-            url=url,
-            api_key=api_key,
-            headers=headers,
-            **kwargs
-        )
+
+        return {}
