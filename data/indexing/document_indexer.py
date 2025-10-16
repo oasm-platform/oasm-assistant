@@ -64,8 +64,12 @@ class DocumentIndexer:
             if doc_id is None:
                 doc_id = hashlib.md5(content.encode()).hexdigest()
             
-            # Chunk the document
-            chunks = self.chunk_processor.chunk_text(content, chunk_size, chunk_overlap)
+            # Create a chunk processor with the specified parameters if they differ from the default
+            if chunk_size != 512 or chunk_overlap != 50:
+                temp_chunk_processor = ChunkProcessor(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+                chunks = temp_chunk_processor.chunk_text(content)
+            else:
+                chunks = self.chunk_processor.chunk_text(content)
             logger.info(f"Chunked document into {len(chunks)} pieces")
             
             # Generate embeddings for chunks

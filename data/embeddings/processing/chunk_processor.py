@@ -404,24 +404,17 @@ class ChunkProcessor:
         )
         self.chunker = SentenceChunker(config=config)
     
-    def chunk_text(self, text: str, chunk_size: int = 512, chunk_overlap: int = 50) -> List[str]:
+    def chunk_text(self, text: str) -> List[str]:
         """
-        Split text into chunks of specified size with overlap.
+        Split text into chunks using the configured chunker instance.
         
         Args:
             text: Input text to be chunked
-            chunk_size: Maximum number of tokens per chunk
-            chunk_overlap: Number of tokens to overlap between chunks
             
         Returns:
             List of text chunks
         """
-        # Create a temporary chunker with the specified parameters
-        config = SentenceChunkerConfig(
-            max_tokens=chunk_size,
-            overlap_tokens=chunk_overlap
-        )
-        chunker = SentenceChunker(config=config)
-        chunks = chunker.chunk(text)
+        # Use the pre-configured chunker instance
+        chunks = self.chunker.chunk(text)
             
         return [chunk.text for chunk in chunks]

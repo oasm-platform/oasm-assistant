@@ -298,8 +298,8 @@ class TextPreprocessor:
         """
         # Replace special character strings with spaces to improve sentence splitting
         s = re.sub(r'[•\u2022\u25E6\u25CF]', ' * ', s)  # Special bullet characters
-        s = re.sub(r'[^\x00-\x7F]+', ' ', s)  # Remove non-ASCII characters
-        s = re.sub(r'\s+', ' ', s)  # Replace multiple spaces with single space
+        # Replace multiple spaces with single space, but preserve international characters
+        s = re.sub(r'\s+', ' ', s)
         return s
 
     def _final_trim(self, s: str) -> str:

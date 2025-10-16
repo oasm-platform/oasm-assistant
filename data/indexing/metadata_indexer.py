@@ -2,11 +2,11 @@
 Metadata indexing for RAG system
 """
 from typing import List, Dict, Any, Optional
-import re
 from data.indexing.vector_store import PgVectorStore
 from common.logger import logger
 import json
 from datetime import datetime
+from common.utils.security import validate_identifier
 
 
 class MetadataIndexer:
@@ -14,9 +14,6 @@ class MetadataIndexer:
     Metadata indexing engine that handles indexing and querying of document metadata
     for the RAG system to improve search relevance and filtering capabilities.
     """
-
-    # SQL identifier validation pattern - only allow alphanumeric and underscore
-    _VALID_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
     def __init__(
         self,
@@ -29,34 +26,6 @@ class MetadataIndexer:
             vector_store: PgVectorStore instance for database operations
         """
         self.vector_store = vector_store or PgVectorStore()
-
-    def _validate_table_name(self, table_name: str) -> str:
-        """
-        Validate table name to prevent SQL injection.
-
-        Args:
-            table_name: Table name to validate
-
-        Returns:
-            Validated table name
-
-        Raises:
-            ValueError: If table name is invalid
-        """
-        if not table_name or not isinstance(table_name, str):
-            raise ValueError("Table name must be a non-empty string")
-
-        if not self._VALID_IDENTIFIER.match(table_name):
-            raise ValueError(
-                f"Invalid table name '{table_name}'. "
-                "Table names must start with a letter or underscore and contain only "
-                "alphanumeric characters and underscores."
-            )
-
-        if len(table_name) > 63:  # PostgreSQL identifier length limit
-            raise ValueError(f"Table name too long (max 63 characters): '{table_name}'")
-
-        return table_name
     
     def index_metadata(
         self,
@@ -77,7 +46,7 @@ class MetadataIndexer:
         """
         try:
             # Validate table name to prevent SQL injection
-            validated_table_name = self._validate_table_name(table_name)
+            validated_table_name = validate_identifier(table_name, "table name")
 
             # Create table if it doesn't exist
             if hasattr(self.vector_store, 'create_table'):
@@ -117,7 +86,7 @@ class MetadataIndexer:
                 self.vector_store.exec_sql(query, {
                     "doc_id": doc_id,
                     "metadata": json.dumps(prepared_metadata),
-                    "tags": "{" + ",".join([f'"{tag}"' for tag in tags]) + "}" if tags else "{}",
+                    "tags": tags,  # Pass tags list directly - let the database driver handle formatting
                     "category": category,
                     "source": source,
                     "created_date": created_date,
@@ -175,7 +144,7 @@ class MetadataIndexer:
         """
         try:
             # Validate table name to prevent SQL injection
-            validated_table_name = self._validate_table_name(table_name)
+            validated_table_name = validate_identifier(table_name, "table name")
 
             # Validate limit parameter
             if limit is not None:
@@ -194,7 +163,7 @@ class MetadataIndexer:
                         # Handle array tags
                         if isinstance(value, list):
                             where_clauses.append("tags && :tags")
-                            params["tags"] = "{" + ",".join([f'"{tag}"' for tag in value]) + "}"
+                            params["tags"] = value  # Pass tags list directly - let the database driver handle formatting
                         else:
                             where_clauses.append("tags @> ARRAY[:tag]")
                             params["tag"] = value
@@ -270,7 +239,7 @@ class MetadataIndexer:
         """
         try:
             # Validate table name to prevent SQL injection
-            validated_table_name = self._validate_table_name(table_name)
+            validated_table_name = validate_identifier(table_name, "table name")
 
             if hasattr(self.vector_store, 'text') and hasattr(self.vector_store, 'exec_sql'):
                 query = f"DELETE FROM {validated_table_name} WHERE doc_id = :doc_id"

@@ -10,8 +10,6 @@ from data.indexing.vector_store import PgVectorStore
 from data.embeddings.embeddings import Embeddings
 from common.logger import logger
 import re
-from data.database import postgres_db as db
-from sqlalchemy import text
 
 
 class QueryEngine:
@@ -163,43 +161,38 @@ class QueryEngine:
     def expand_query(self, query: str, query_type: str, conversation_id: Optional[str] = None) -> str:
         """
         Expand the query using various techniques based on query type.
-        
+
         Args:
             query: Original query string
             query_type: Type of query ('question', 'instruction', 'command', 'other')
             conversation_id: ID of the current conversation (for context)
-            
+
         Returns:
             Expanded query string
         """
-        # Get conversation context if available
+        # Get conversation context if available using the context_retriever
         context_text = ""
         if conversation_id:
-            # For simplicity, we'll just get the last few messages
-            # In a real implementation, we might call context_retriever._get_conversation_context
             try:
-                with db.get_session() as session:
-                    context_query = text("""
-                        SELECT question, answer
-                        FROM messages
-                        WHERE conversation_id = :conversation_id
-                        ORDER BY created_at DESC
-                        LIMIT 3
-                    """)
-                    
-                    result = session.execute(context_query, {"conversation_id": conversation_id})
-                    context_messages = []
-                    for row in result:
-                        if row.question:
-                            context_messages.append(f"Q: {row.question}")
-                        if row.answer:
-                            context_messages.append(f"A: {row.answer}")
-                    
-                    if context_messages:
-                        context_text = " ".join(reversed(context_messages))
+                # Use the existing _get_conversation_context method from context_retriever
+                context_messages = self.context_retriever._get_conversation_context(
+                    conversation_id=conversation_id,
+                    current_query=query,
+                    window_size=3
+                )
+
+                # Format context messages into a single string
+                if context_messages:
+                    formatted_messages = []
+                    for msg in context_messages:
+                        if msg.get('question'):
+                            formatted_messages.append(f"Q: {msg['question']}")
+                        if msg.get('answer'):
+                            formatted_messages.append(f"A: {msg['answer']}")
+                    context_text = " ".join(formatted_messages)
             except Exception as e:
                 logger.warning(f"Could not retrieve conversation context: {e}")
-        
+
         # Apply different expansion strategies based on query type
         if query_type == 'question':
             # For questions, we might want to expand with related concepts
@@ -213,7 +206,7 @@ class QueryEngine:
         else:
             # For other types, use general expansion
             expanded_query = self._expand_general(query, context_text)
-        
+
         return expanded_query
     
     def _expand_question(self, query: str, context: str = "") -> str:

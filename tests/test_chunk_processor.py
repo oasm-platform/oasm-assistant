@@ -59,8 +59,9 @@ class TestChunkProcessor:
         processor = ChunkProcessor()  # Default is 512, 50
         text = "This is a sample text. " * 20  # Create a longer text
         
-        # Use smaller chunk size to ensure multiple chunks
-        chunks = processor.chunk_text(text, chunk_size=40, chunk_overlap=5)
+        # Create a new processor with smaller chunk size to ensure multiple chunks
+        processor_small = ChunkProcessor(chunk_size=40, chunk_overlap=5)
+        chunks = processor_small.chunk_text(text)
         
         assert isinstance(chunks, list)
         assert len(chunks) > 0
@@ -80,7 +81,7 @@ class TestChunkProcessor:
         long_sentence = "word " * 50  # 50 words should exceed our 10 token limit
         text = long_sentence + ". This is another sentence."
         
-        chunks = processor.chunk_text(text, chunk_size=10, chunk_overlap=2)
+        chunks = processor.chunk_text(text)
         
         assert isinstance(chunks, list)
         assert len(chunks) > 0
@@ -91,7 +92,7 @@ class TestChunkProcessor:
         processor = ChunkProcessor(chunk_size=30, chunk_overlap=5)
         text = "This is a test sentence. " * 15  # Create multiple sentences
         
-        chunks = processor.chunk_text(text, chunk_size=30, chunk_overlap=5)
+        chunks = processor.chunk_text(text)
         
         assert len(chunks) > 1  # Should have multiple chunks with this setup
         # Verify chunks are strings and not empty
@@ -148,7 +149,7 @@ class TestChunkProcessorIntegration:
         quantization, compression, and distributed storage mechanisms to improve efficiency and scalability.
         """
         
-        chunks = processor.chunk_text(text, chunk_size=10, chunk_overlap=10)
+        chunks = processor.chunk_text(text)
         
         assert isinstance(chunks, list)
         assert len(chunks) > 0
@@ -163,8 +164,10 @@ class TestChunkProcessorIntegration:
         text = "This is a test sentence. " * 20
         
         # Test with different chunk sizes
-        small_chunks = ChunkProcessor(chunk_size=20, chunk_overlap=5).chunk_text(text, chunk_size=20, chunk_overlap=5)
-        large_chunks = ChunkProcessor(chunk_size=100, chunk_overlap=10).chunk_text(text, chunk_size=100, chunk_overlap=10)
+        small_processor = ChunkProcessor(chunk_size=20, chunk_overlap=5)
+        small_chunks = small_processor.chunk_text(text)
+        large_processor = ChunkProcessor(chunk_size=100, chunk_overlap=10)
+        large_chunks = large_processor.chunk_text(text)
         
         # Small chunks should result in more chunks than large chunks
         assert len(small_chunks) >= len(large_chunks)
@@ -176,7 +179,7 @@ class TestChunkProcessorIntegration:
         processor = ChunkProcessor(chunk_size=50, chunk_overlap=10)
         text = "This is a test sentence. " * 15  # Create enough text for multiple chunks
         
-        chunks = processor.chunk_text(text, chunk_size=50, chunk_overlap=10)
+        chunks = processor.chunk_text(text)
         
         assert len(chunks) > 1  # We expect multiple chunks
         for chunk in chunks:
