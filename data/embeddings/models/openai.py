@@ -15,7 +15,7 @@ class OpenAIEmbedding(APIBaseEmbedding):
         self,
         embedding_settings: EmbeddingConfigs,
     ):
-        # Kiểm tra xem openai có khả dụng không
+        # Check if the openai library is available
         if not OPENAI_AVAILABLE:
             raise ImportError("OpenAI library is not available. Please install it with 'pip install openai'")
             
