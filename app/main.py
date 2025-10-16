@@ -5,7 +5,7 @@ import traceback
 
 from .protos import assistant_pb2_grpc
 
-from .services import HealthService, DomainClassifier, ConversationService, MessageService
+from .services import HealthService, DomainClassifier, ConversationService, MessageService, MCPServerService
 
 from common.logger import logger
 from common.config import configs as settings 
@@ -31,6 +31,7 @@ def serve():
         assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifier(), server)
         assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationService(), server)
         assistant_pb2_grpc.add_MessageServiceServicer_to_server(MessageService(), server)
+        assistant_pb2_grpc.add_MCPServerServiceServicer_to_server(MCPServerService(), server)
         
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"

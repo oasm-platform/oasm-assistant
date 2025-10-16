@@ -18,21 +18,24 @@ services:
     networks:
       - oasm-network
 
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: oasm-backend
-    ports:
-      - "8080:8000"
-    env_file:
-      - .env
-    depends_on:
-      postgresql:
-        condition: service_healthy
+  searxng:
+    container_name: searxng
+    image: docker.io/searxng/searxng:latest
     restart: unless-stopped
     networks:
       - oasm-network
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./searxng:/etc/searxng:rw
+      - searxng-data:/var/cache/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=https://localhost:8080/
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
 
 networks:
   oasm-network:
@@ -40,3 +43,4 @@ networks:
 
 volumes:
   postgres_data:
+  searxng-data:

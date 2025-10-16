@@ -1,0 +1,21 @@
+[botdetection]
+ipv4_prefix = 32
+ipv6_prefix = 48
+trusted_proxies = [
+  '127.0.0.0/8',
+  '::1',
+  '172.16.0.0/12',
+  '10.0.0.0/8',
+  '0.0.0.0/0',
+]
+
+[botdetection.ip_limit]
+filter_link_local = false
+link_token = false
+
+[botdetection.ip_lists]
+pass_ip = [
+  '0.0.0.0/0',
+  '::/0',
+]
+pass_searxng_org = false

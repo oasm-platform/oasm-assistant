@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "searxng": {
+      "command": "npx",
+      "args": ["-y", "mcp-searxng"],
+      "env": {
+        "SEARXNG_URL": "http://localhost:8080"
+      },
+      "alwaysAllow": ["searxng_web_search", "web_url_read"]
+    }
+  }
+}
