@@ -1,19 +1,21 @@
 """
 Vector database management using pgvector for RAG system
 """
-from typing import List, Tuple, Optional, Dict, Any
-import numpy as np
+from typing import List, Optional, Dict, Any
+import re
+import json
 from sqlalchemy import text
-from sqlalchemy.orm import Session
 from data.database import postgres_db as db
 from common.logger import logger
-import json
-import sys
+from common.utils.security import validate_identifier
 
 
 class PgVectorStore:
     """Vector store implementation using PostgreSQL with pgvector extension for RAG system"""
-    
+
+    # SQL identifier validation pattern - only allow alphanumeric and underscore
+    _VALID_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
     def __init__(self, dimension: int = 1536, connection_string: Optional[str] = None):
         """
         Initialize vector store
@@ -23,49 +25,12 @@ class PgVectorStore:
         """
         self.dimension = dimension
         self.connection_string = connection_string
-        self._sqlalchemy_available = self._check_sqlalchemy()
-        self._db_module_available = self._check_db_module()
-        if self._sqlalchemy_available:
-            try:
-                from sqlalchemy import text
-                self.text = text
-            except ImportError:
-                self._sqlalchemy_available = False
-        if self._db_module_available:
-            try:
-                from data.database import db
-                self.db = db
-            except ImportError:
-                self._db_module_available = False
+        self.text = text
+        self.db = db
 
-    def _check_sqlalchemy(self):
-        try:
-            import sqlalchemy
-            return True
-        except ImportError:
-            logger.warning("sqlalchemy is not available, using mock functionality")
-            return False
-
-    def _check_db_module(self):
-        try:
-            from data.database import db
-            return True
-        except ImportError:
-            logger.warning("data.database module is not available, using mock functionality")
-            return False
-
-    def _ensure_dependencies(self):
-        if not self._sqlalchemy_available or not self._db_module_available:
-            logger.warning("Missing dependencies (sqlalchemy or data.database), functionality may be limited")
-            return False
-        return True
         
     def _ensure_vector_extension(self):
         """Ensure pgvector extension is enabled"""
-        if not self._ensure_dependencies():
-            logger.warning("Cannot ensure vector extension: missing dependencies")
-            return
-            
         try:
             with self.db.get_session() as session:
                 session.execute(self.text("CREATE EXTENSION IF NOT EXISTS vector"))
@@ -77,61 +42,68 @@ class PgVectorStore:
     def create_vector_index(self, table_name: str, column_name: str = "embedding", index_type: str = "hnsw"):
         """
         Create an index for vector similarity search
-        
+
         Args:
             table_name: Name of the table
             column_name: Name of the vector column (default: "embedding")
             index_type: Type of index ('hnsw' or 'ivfflat', default: 'hnsw')
         """
-        if not self._ensure_dependencies():
-            logger.warning("Cannot create vector index: missing dependencies")
-            return
-            
+
         try:
+            # Validate identifiers to prevent SQL injection
+            validated_table = validate_identifier(table_name, "table name")
+            validated_column = validate_identifier(column_name, "column name")
+
+            # Validate index type
+            if index_type not in ("hnsw", "ivfflat"):
+                raise ValueError(f"Unsupported index type: {index_type}. Must be 'hnsw' or 'ivfflat'")
+
             with self.db.get_session() as session:
                 if index_type == "hnsw":
                     # Create HNSW index for efficient similarity search
                     index_query = self.text(f"""
-                        CREATE INDEX IF NOT EXISTS {table_name}_{column_name}_hnsw_idx
-                        ON {table_name}
-                        USING hnsw ({column_name} vector_cosine_ops)
+                        CREATE INDEX IF NOT EXISTS {validated_table}_{validated_column}_hnsw_idx
+                        ON {validated_table}
+                        USING hnsw ({validated_column} vector_cosine_ops)
                     """)
                 elif index_type == "ivfflat":
                     # Create IVFFlat index (good for larger datasets)
                     index_query = self.text(f"""
-                        CREATE INDEX IF NOT EXISTS {table_name}_{column_name}_ivfflat_idx
-                        ON {table_name}
-                        USING ivfflat ({column_name} vector_cosine_ops)
+                        CREATE INDEX IF NOT EXISTS {validated_table}_{validated_column}_ivfflat_idx
+                        ON {validated_table}
+                        USING ivfflat ({validated_column} vector_cosine_ops)
                     """)
-                else:
-                    raise ValueError(f"Unsupported index type: {index_type}")
-                    
+
                 session.execute(index_query)
                 session.commit()
-                logger.info(f"Created {index_type} index on {table_name}.{column_name}")
+                logger.info(f"Created {index_type} index on {validated_table}.{validated_column}")
         except Exception as e:
             logger.error(f"Failed to create vector index: {e}")
             
     def create_table(self, table_name: str, schema: Dict[str, str] = None):
         """
         Create a table with vector column and optional metadata columns
-        
+
         Args:
             table_name: Name of the table to create
             schema: Optional schema definition with column names and types
                    Example: {"content": "TEXT", "title": "TEXT", "category": "TEXT"}
         """
-        if not self._ensure_dependencies():
-            logger.warning("Cannot create table: missing dependencies")
-            return
-            
+
         try:
+            # Validate table name to prevent SQL injection
+            validated_table = validate_identifier(table_name, "table name")
+
             with self.db.get_session() as session:
                 # Default schema with embedding column
                 columns = [f"embedding vector({self.dimension})"]
                 if schema:
+                    # Validate all column names
                     for col_name, col_type in schema.items():
-                        columns.append(f"{col_name} {col_type}")
+                        validated_col = validate_identifier(col_name, "column name")
+                        # Note: col_type is not validated as it's a SQL type definition
+                        # In production, you might want to whitelist allowed types
+                        columns.append(f"{validated_col} {col_type}")
                 else:
                     # Add default columns if no schema provided
                     columns.extend([
@@ -139,15 +111,15 @@ class PgVectorStore:
                         "content TEXT",
                         "metadata JSONB DEFAULT '{}'"
                     ])
-                
+
                 query = self.text(f"""
-                    CREATE TABLE IF NOT EXISTS {table_name} (
+                    CREATE TABLE IF NOT EXISTS {validated_table} (
                         {', '.join(columns)}
                     )
                 """)
                 session.execute(query)
                 session.commit()
-                logger.info(f"Created table {table_name} with vector column")
+                logger.info(f"Created table {validated_table} with vector column")
         except Exception as e:
             logger.error(f"Failed to create table: {e}")
             raise
@@ -163,11 +135,12 @@ class PgVectorStore:
             metadata: Optional metadata for each vector
             content_column: Name of the content column (default: "content")
         """
-        if not self._ensure_dependencies():
-            logger.warning("Cannot store vectors: missing dependencies")
-            return
             
         try:
+            # Validate identifiers to prevent SQL injection
+            validated_table = validate_identifier(table_name, "table name")
+            validated_content_column = validate_identifier(content_column, "column name")
+            
             with self.db.get_session() as session:
                 for i, vector in enumerate(vectors):
                     # Ensure vector is the right dimension
@@ -185,13 +158,13 @@ class PgVectorStore:
                     
                     # Insert vector and metadata
                     query = self.text(f"""
-                        INSERT INTO {table_name} (embedding, {content_column}, metadata)
+                        INSERT INTO {validated_table} (embedding, {validated_content_column}, metadata)
                         VALUES ('{vector_str}'::vector, :content, :metadata)
                     """)
                     session.execute(query, {"content": content, "metadata": meta_json})
                 
                 session.commit()
-                logger.info(f"Stored {len(vectors)} vectors in {table_name}")
+                logger.info(f"Stored {len(vectors)} vectors in {validated_table}")
         except Exception as e:
             logger.error(f"Failed to store vectors: {e}")
             raise
@@ -207,9 +180,6 @@ class PgVectorStore:
         Returns:
             List of rows as dictionaries
         """
-        if not self._ensure_dependencies():
-            logger.warning("Cannot execute query: missing dependencies")
-            return []
             
         try:
             with self.db.get_session() as session:
@@ -229,9 +199,6 @@ class PgVectorStore:
         Args:
             sql: SQL command to execute
         """
-        if not self._ensure_dependencies():
-            logger.warning("Cannot execute SQL: missing dependencies")
-            return
             
         try:
             with self.db.get_session() as session:
@@ -243,26 +210,29 @@ class PgVectorStore:
             
     def similarity_search(self, table_name: str, query_vector: List[float],
                          k: int = 10, column_name: str = "embedding",
-                         metric: str = "cosine", where: Optional[str] = None) -> List[Dict[str, Any]]:
+                         metric: str = "cosine", where: Optional[str] = None,
+                         where_params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         Perform similarity search using vector distance/similarity
-        
+
         Args:
             table_name: Name of the table to search
             query_vector: Query vector
             k: Number of results to return
             column_name: Name of the vector column (default: "embedding")
             metric: Distance metric ('cosine', 'l2', 'ip')
-            where: Optional WHERE clause to filter results
-            
+            where: Optional WHERE clause to filter results (use parameterized format like "col = :param")
+            where_params: Optional parameters for WHERE clause (use with parameterized where)
+
         Returns:
             List of result dictionaries with all columns from the table
         """
-        if not self._ensure_dependencies():
-            logger.warning("Cannot perform similarity search: missing dependencies")
-            return []
             
         try:
+            # Validate identifiers to prevent SQL injection
+            validated_table = validate_identifier(table_name, "table name")
+            validated_column = validate_identifier(column_name, "column name")
+            
             # Ensure vector is the right dimension
             if len(query_vector) != self.dimension:
                 raise ValueError(f"Query vector dimension mismatch: expected {self.dimension}, got {len(query_vector)}")
@@ -272,35 +242,41 @@ class PgVectorStore:
             
             # Select all columns from table and add distance/similarity
             where_clause = f"WHERE {where}" if where else ""
+
+            # Prepare query based on metric
             if metric == "cosine":
                 query = self.text(f"""
-                    SELECT *, (1 - ({column_name} <=> '{vector_str}'::vector)) AS similarity
-                    FROM {table_name}
+                    SELECT *, (1 - ({validated_column} <=> '{vector_str}'::vector)) AS similarity
+                    FROM {validated_table}
                     {where_clause}
-                    ORDER BY {column_name} <=> '{vector_str}'::vector
+                    ORDER BY {validated_column} <=> '{vector_str}'::vector
                     LIMIT {k}
                 """)
             elif metric == "l2":
                 query = self.text(f"""
-                    SELECT *, ({column_name} <-> '{vector_str}'::vector) AS distance
-                    FROM {table_name}
+                    SELECT *, ({validated_column} <-> '{vector_str}'::vector) AS distance
+                    FROM {validated_table}
                     {where_clause}
-                    ORDER BY {column_name} <-> '{vector_str}'::vector
+                    ORDER BY {validated_column} <-> '{vector_str}'::vector
                     LIMIT {k}
                 """)
             elif metric == "ip":
                 query = self.text(f"""
-                    SELECT *, ({column_name} <#> '{vector_str}'::vector) AS distance
-                    FROM {table_name}
+                    SELECT *, ({validated_column} <#> '{vector_str}'::vector) AS distance
+                    FROM {validated_table}
                     {where_clause}
-                    ORDER BY {column_name} <#> '{vector_str}'::vector
+                    ORDER BY {validated_column} <#> '{vector_str}'::vector
                     LIMIT {k}
                 """)
             else:
                 raise ValueError(f"Unsupported metric: {metric}")
-            
+
+            # Execute query with parameters if provided
             with self.db.get_session() as session:
-                result = session.execute(query)
+                if where_params:
+                    result = session.execute(query, where_params)
+                else:
+                    result = session.execute(query)
                 matches = [dict(row._mapping) for row in result]
                 return matches
         except Exception as e:

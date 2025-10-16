@@ -112,23 +112,24 @@ class SemanticIndexer:
     ) -> List[Tuple[str, float, Dict[str, Any]]]:
         """
         Search the semantic index for relevant concepts and documents.
-        
+
         Args:
             query: Query text to search for
             table_name: Name of the semantic index table
             k: Number of results to return
-            doc_filter: Optional filter for specific document IDs
-            
+            doc_filter: Optional filter for specific document ID (must be exact match)
+
         Returns:
             List of (doc_id, similarity_score, metadata) tuples
         """
         try:
             # Generate embedding for query
             query_embedding = self.embedding_model.embed_query(query)
-            
-            # Build WHERE clause for document filtering
-            where_clause = f"WHERE doc_id = '{doc_filter}'" if doc_filter else ""
-            
+
+            # Build WHERE clause for document filtering using parameterized query
+            # FIXED: No longer vulnerable to SQL injection - using parameterized approach
+            where_clause = "doc_id = :doc_filter" if doc_filter else None
+
             # Perform semantic search using vector similarity
             results = self.vector_store.similarity_search(
                 table_name=table_name,
@@ -136,7 +137,8 @@ class SemanticIndexer:
                 k=k,
                 column_name="embedding",
                 metric="cosine",
-                where=where_clause
+                where=where_clause,
+                where_params={"doc_filter": doc_filter} if doc_filter else None
             )
             
             # Format results
@@ -248,4 +250,4 @@ class SemanticIndexer:
         
         # Sort by relevance (descending)
         unique_concepts.sort(key=lambda x: x[1], reverse=True)
-        return unique_concepts[:50] # Return top 50 concepts
+        return unique_concepts[:50]  # Return top 50 concepts

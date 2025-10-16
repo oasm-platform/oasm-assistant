@@ -2,6 +2,7 @@
 Metadata indexing for RAG system
 """
 from typing import List, Dict, Any, Optional
+import re
 from data.indexing.vector_store import PgVectorStore
 from common.logger import logger
 import json
@@ -13,18 +14,49 @@ class MetadataIndexer:
     Metadata indexing engine that handles indexing and querying of document metadata
     for the RAG system to improve search relevance and filtering capabilities.
     """
-    
+
+    # SQL identifier validation pattern - only allow alphanumeric and underscore
+    _VALID_IDENTIFIER = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
+
     def __init__(
         self,
         vector_store: Optional[PgVectorStore] = None
     ):
         """
         Initialize the metadata indexer.
-        
+
         Args:
             vector_store: PgVectorStore instance for database operations
         """
         self.vector_store = vector_store or PgVectorStore()
+
+    def _validate_table_name(self, table_name: str) -> str:
+        """
+        Validate table name to prevent SQL injection.
+
+        Args:
+            table_name: Table name to validate
+
+        Returns:
+            Validated table name
+
+        Raises:
+            ValueError: If table name is invalid
+        """
+        if not table_name or not isinstance(table_name, str):
+            raise ValueError("Table name must be a non-empty string")
+
+        if not self._VALID_IDENTIFIER.match(table_name):
+            raise ValueError(
+                f"Invalid table name '{table_name}'. "
+                "Table names must start with a letter or underscore and contain only "
+                "alphanumeric characters and underscores."
+            )
+
+        if len(table_name) > 63:  # PostgreSQL identifier length limit
+            raise ValueError(f"Table name too long (max 63 characters): '{table_name}'")
+
+        return table_name
     
     def index_metadata(
         self,
@@ -34,19 +66,22 @@ class MetadataIndexer:
     ) -> bool:
         """
         Index metadata for a document in a dedicated metadata table.
-        
+
         Args:
             doc_id: ID of the document
             metadata: Metadata dictionary to index
             table_name: Name of the table to store metadata
-            
+
         Returns:
             True if indexing was successful, False otherwise
         """
         try:
+            # Validate table name to prevent SQL injection
+            validated_table_name = self._validate_table_name(table_name)
+
             # Create table if it doesn't exist
             if hasattr(self.vector_store, 'create_table'):
-                self.vector_store.create_table(table_name, {
+                self.vector_store.create_table(validated_table_name, {
                     "doc_id": "TEXT PRIMARY KEY",
                     "metadata": "JSONB",
                     "indexed_at": "TIMESTAMP DEFAULT NOW()",
@@ -70,7 +105,7 @@ class MetadataIndexer:
             # Insert or update metadata record if vector store supports SQL execution
             if hasattr(self.vector_store, 'text') and hasattr(self.vector_store, 'exec_sql'):
                 query = f"""
-                    INSERT INTO {table_name} (doc_id, metadata, tags, category, source, created_date, updated_date)
+                    INSERT INTO {validated_table_name} (doc_id, metadata, tags, category, source, created_date, updated_date)
                     VALUES (:doc_id, :metadata, :tags, :category, :source, :created_date, :updated_date)
                     ON CONFLICT (doc_id) DO UPDATE SET
                         metadata = :metadata,
@@ -129,16 +164,26 @@ class MetadataIndexer:
     ) -> List[Dict[str, Any]]:
         """
         Query metadata based on filters.
-        
+
         Args:
             filters: Dictionary of filter conditions
             table_name: Name of the metadata table
             limit: Maximum number of results to return
-            
+
         Returns:
             List of matching metadata records
         """
         try:
+            # Validate table name to prevent SQL injection
+            validated_table_name = self._validate_table_name(table_name)
+
+            # Validate limit parameter
+            if limit is not None:
+                if not isinstance(limit, int) or limit < 0:
+                    raise ValueError("Limit must be a non-negative integer")
+                if limit > 10000:  # Reasonable upper bound
+                    raise ValueError("Limit too large (max 10000)")
+
             # Build WHERE clause from filters
             where_clauses = []
             params = {}
@@ -170,11 +215,12 @@ class MetadataIndexer:
             
             # Build query
             where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
-            limit_clause = f"LIMIT {limit}" if limit else ""
-            
+            # Use parameterized limit for safety
+            limit_clause = f"LIMIT {int(limit)}" if limit else ""
+
             query = f"""
                 SELECT doc_id, metadata, tags, category, source, created_date, updated_date
-                FROM {table_name}
+                FROM {validated_table_name}
                 {where_clause}
                 ORDER BY indexed_at DESC
                 {limit_clause}
@@ -214,17 +260,20 @@ class MetadataIndexer:
     ) -> bool:
         """
         Delete metadata for a document.
-        
+
         Args:
             doc_id: ID of the document to delete metadata for
             table_name: Name of the metadata table
-            
+
         Returns:
             True if deletion was successful, False otherwise
         """
         try:
+            # Validate table name to prevent SQL injection
+            validated_table_name = self._validate_table_name(table_name)
+
             if hasattr(self.vector_store, 'text') and hasattr(self.vector_store, 'exec_sql'):
-                query = f"DELETE FROM {table_name} WHERE doc_id = :doc_id"
+                query = f"DELETE FROM {validated_table_name} WHERE doc_id = :doc_id"
                 self.vector_store.exec_sql(query, {"doc_id": doc_id})
                 logger.info(f"Deleted metadata for document {doc_id}")
                 return True

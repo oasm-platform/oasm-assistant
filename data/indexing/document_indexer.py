@@ -4,8 +4,9 @@ Document indexing engine for RAG system
 from typing import List, Dict, Any, Optional
 from data.indexing.vector_store import PgVectorStore
 from data.embeddings.embeddings import Embeddings
-from data.processors.chunk_processor import ChunkProcessor
+from data.embeddings.processing.chunk_processor import ChunkProcessor
 from common.logger import logger
+from common.utils.security import validate_identifier
 import hashlib
 
 
@@ -31,6 +32,8 @@ class DocumentIndexer:
         """
         self.vector_store = vector_store or PgVectorStore()
         self.embedding_model = embedding_model or Embeddings.create_embedding('sentence_transformer')
+        # Initialize with default chunk processor if none provided
+        # The actual chunking will be done with specific parameters in the methods
         self.chunk_processor = chunk_processor or ChunkProcessor()
     
     def index_document(
@@ -168,10 +171,13 @@ class DocumentIndexer:
             List of IDs of the newly indexed chunks
         """
         try:
+            # Validate table name to prevent SQL injection
+            validated_table_name = validate_identifier(table_name, "table name")
+            
             # Delete existing document chunks if vector store supports DB operations
             if hasattr(self.vector_store, 'db') and hasattr(self.vector_store.db, 'get_session') and hasattr(self.vector_store, 'text'):
                 with self.vector_store.db.get_session() as session:
-                    delete_query = self.vector_store.text(f"DELETE FROM {table_name} WHERE doc_id = :doc_id")
+                    delete_query = self.vector_store.text(f"DELETE FROM {validated_table_name} WHERE doc_id = :doc_id")
                     session.execute(delete_query, {"doc_id": doc_id})
                     session.commit()
                     logger.info(f"Deleted old chunks for document {doc_id}")
@@ -183,7 +189,7 @@ class DocumentIndexer:
                 content=new_content,
                 doc_id=doc_id,
                 metadata=metadata,
-                table_name=table_name,
+                table_name=validated_table_name,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap
             )
@@ -203,9 +209,12 @@ class DocumentIndexer:
             True if deletion was successful, False otherwise
         """
         try:
+            # Validate table name to prevent SQL injection
+            validated_table_name = validate_identifier(table_name, "table name")
+            
             if hasattr(self.vector_store, 'db') and hasattr(self.vector_store.db, 'get_session') and hasattr(self.vector_store, 'text'):
                 with self.vector_store.db.get_session() as session:
-                    delete_query = self.vector_store.text(f"DELETE FROM {table_name} WHERE doc_id = :doc_id")
+                    delete_query = self.vector_store.text(f"DELETE FROM {validated_table_name} WHERE doc_id = :doc_id")
                     result = session.execute(delete_query, {"doc_id": doc_id})
                     session.commit()
                     logger.info(f"Deleted {result.rowcount} chunks for document {doc_id}")
