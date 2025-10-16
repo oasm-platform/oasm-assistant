@@ -1,3 +1,0 @@
-"""
-Update knowledge base
-"""

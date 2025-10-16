@@ -1,3 +1,0 @@
-"""
-Backup system data
-"""
