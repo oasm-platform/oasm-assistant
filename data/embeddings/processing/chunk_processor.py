@@ -126,9 +126,6 @@ class SentenceChunkerConfig:
             object.__setattr__(self, "overlap_tokens", max(0, self.max_tokens - 1))
 
 
-# ----------------------------- Chunker -----------------------------
-
-
 class SentenceChunker:
     """
     Sentence-based greedy chunker with token overlap.
@@ -385,3 +382,46 @@ class SentenceChunker:
                 break
         tail.reverse()
         return tail
+
+
+class ChunkProcessor:
+    """
+    Adapter class to provide a simple chunk_text method that matches
+    the interface expected by DocumentIndexer.
+    """
+    
+    def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50):
+        """
+        Initialize the chunk processor with default configuration.
+        
+        Args:
+            chunk_size: Maximum number of tokens per chunk
+            chunk_overlap: Number of tokens to overlap between chunks
+        """
+        config = SentenceChunkerConfig(
+            max_tokens=chunk_size,
+            overlap_tokens=chunk_overlap
+        )
+        self.chunker = SentenceChunker(config=config)
+    
+    def chunk_text(self, text: str, chunk_size: int = 512, chunk_overlap: int = 50) -> List[str]:
+        """
+        Split text into chunks of specified size with overlap.
+        
+        Args:
+            text: Input text to be chunked
+            chunk_size: Maximum number of tokens per chunk
+            chunk_overlap: Number of tokens to overlap between chunks
+            
+        Returns:
+            List of text chunks
+        """
+        # Create a temporary chunker with the specified parameters
+        config = SentenceChunkerConfig(
+            max_tokens=chunk_size,
+            overlap_tokens=chunk_overlap
+        )
+        chunker = SentenceChunker(config=config)
+        chunks = chunker.chunk(text)
+            
+        return [chunk.text for chunk in chunks]

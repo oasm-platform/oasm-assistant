@@ -110,7 +110,7 @@ class TextPreprocessor:
                 s, min_len=self.config.min_header_len, max_line_len=self.config.max_header_line_len
             )
 
-        # Cải thiện xử lý đoạn văn để hỗ trợ chia đoạn tốt hơn
+        # Improve paragraph handling for better segmentation support
         s = self._improve_paragraph_handling(s)
 
         # Final pass to remove accidental trailing spaces and compress newlines.
@@ -293,13 +293,13 @@ class TextPreprocessor:
 
     def _improve_paragraph_handling(self, s: str) -> str:
         """
-        Cải thiện việc xử lý các đoạn văn bằng cách thêm dấu ngắt rõ ràng
-        để hỗ trợ việc chia đoạn tốt hơn.
+        Improve paragraph handling by adding clear breaks
+        to support better segmentation.
         """
-        # Thay thế các chuỗi ký tự đặc biệt bằng dấu cách để cải thiện việc chia câu
-        s = re.sub(r'[•\u2022\u25E6\u25CF]', ' * ', s)  # Các ký tự đầu dòng đặc biệt
-        s = re.sub(r'[^\x00-\x7F]+', ' ', s)  # Loại bỏ các ký tự không phải ASCII
-        s = re.sub(r'\s+', ' ', s)  # Thay thế nhiều dấu cách bằng một dấu cách
+        # Replace special character strings with spaces to improve sentence splitting
+        s = re.sub(r'[•\u2022\u25E6\u25CF]', ' * ', s)  # Special bullet characters
+        s = re.sub(r'[^\x00-\x7F]+', ' ', s)  # Remove non-ASCII characters
+        s = re.sub(r'\s+', ' ', s)  # Replace multiple spaces with single space
         return s
 
     def _final_trim(self, s: str) -> str:

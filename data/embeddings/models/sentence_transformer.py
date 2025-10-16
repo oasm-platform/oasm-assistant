@@ -3,6 +3,7 @@ import os
 from .base import BaseEmbedding
 from sentence_transformers import SentenceTransformer
 from common.config.configs import EmbeddingConfigs
+from common.logger import logger
 
 class SentenceTransformerEmbedding(BaseEmbedding):
     def __init__(self, embedding_settings: EmbeddingConfigs):
@@ -23,7 +24,7 @@ class SentenceTransformerEmbedding(BaseEmbedding):
         local_model_path = os.path.join("models", base_model_name)
         
         try:
-            print(f"Loading SentenceTransformer model: {model_name}")
+            logger.info(f"Loading SentenceTransformer model: {model_name}")
             # Increase timeout and configure retry settings
             self.embedding_model = SentenceTransformer(
                 model_name,
@@ -31,38 +32,38 @@ class SentenceTransformerEmbedding(BaseEmbedding):
                 # Try to use local model first if available
                 local_files_only=False
             )
-            print(f"Successfully loaded model: {model_name}")
+            logger.info(f"Successfully loaded model: {model_name}")
         except Exception as e:
-            print(f"Failed to load model '{model_name}': {e}")
+            logger.warning(f"Failed to load model '{model_name}': {e}")
             # Try loading from local path if it exists
             try:
                 if os.path.exists(local_model_path):
-                    print(f"Trying local model path: {local_model_path}")
+                    logger.info(f"Trying local model path: {local_model_path}")
                     self.embedding_model = SentenceTransformer(
                         local_model_path,
                         trust_remote_code=True,
                         local_files_only=True
                     )
-                    print("Successfully loaded local model")
+                    logger.info("Successfully loaded local model")
                 else:
                     # Try fallback to base model name
-                    print(f"Trying fallback model: {base_model_name}")
+                    logger.info(f"Trying fallback model: {base_model_name}")
                     self.embedding_model = SentenceTransformer(
                         base_model_name,
                         trust_remote_code=True,
                         local_files_only=False
                     )
-                    print("Successfully loaded fallback model")
+                    logger.info("Successfully loaded fallback model")
             except Exception as e2:
                 # Final fallback to a basic model that's likely cached
                 try:
-                    print("Trying final fallback to cached 'all-MiniLM-L6-v2' model")
+                    logger.info("Trying final fallback to cached 'all-MiniLM-L6-v2' model")
                     self.embedding_model = SentenceTransformer(
                         "all-MiniLM-L6-v2",
                         trust_remote_code=True,
                         local_files_only=True  # Only use cached/local version
                     )
-                    print("Successfully loaded cached fallback model")
+                    logger.info("Successfully loaded cached fallback model")
                 except Exception as e3:
                     raise ValueError(f"Failed to load model from primary source: {model_name}, local path: {local_model_path}, and all fallbacks: {e}, {e2}, {e3}")
 

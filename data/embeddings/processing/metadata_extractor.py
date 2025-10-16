@@ -5,16 +5,14 @@ import os
 from datetime import datetime
 from typing import Dict, Any
 from pathlib import Path
+from common.logger import logger
+import PyPDF2
 
 class MetadataExtractor:
 
     def __init__(self):
-        try:
-            import PyPDF2
             self.PyPDF2 = PyPDF2
-        except ImportError:
-            raise ImportError("PyPDF2 library is not installed. Please install it using command: pip install PyPDF2")
-    
+
     def extract_metadata(self, file_path: str) -> Dict[str, Any]:
         """
         Extract metadata from PDF file.
@@ -73,7 +71,7 @@ class MetadataExtractor:
                     ]
                     
         except Exception as e:
-            print(f"Warning: Cannot read metadata from PDF {file_path}: {str(e)}")
+            logger.warning(f"Cannot read metadata from PDF {file_path}: {str(e)}")
         
         return self._normalize_metadata(metadata)
     
