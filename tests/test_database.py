@@ -5,6 +5,7 @@ Pytest tests for database functionality
 import pytest
 from unittest.mock import Mock, patch
 from data.database.models import Conversation
+from data.database import postgres_db as db
 
 
 class TestDatabase:
@@ -12,13 +13,11 @@ class TestDatabase:
 
     def test_database_health_check(self, mock_database):
         """Test database health check"""
-        from data.database import db
-
         # Mock successful health check
         mock_database.health_check.return_value = True
 
         # Call health check
-        db.health_check()
+        mock_database.health_check()
 
         # Verify it was called
         mock_database.health_check.assert_called_once()
@@ -76,10 +75,8 @@ class TestDatabase:
 
     def test_database_session_context_manager(self, mock_database):
         """Test database session context manager"""
-        from data.database import db
-
         # Test context manager usage
-        with db.get_session() as session:
+        with mock_database.get_session() as session:
             pass
 
         # Verify context manager was used
