@@ -85,9 +85,9 @@ class PostgresDatabase:
             return False
     
     def _create_tables(self):
-        """Create all tables in the database"""
-        BaseEntity.metadata.create_all(self.engine)
-        logger.info("Database tables created successfully")
+        """Create all tables in the database if they don't exist"""
+        BaseEntity.metadata.create_all(self.engine, checkfirst=True)
+        logger.info("Database tables created successfully if they didn't exist")
 
     def close(self):
         """Close all connections and dispose engine"""

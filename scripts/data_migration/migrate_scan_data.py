@@ -1,3 +1,0 @@
-"""
-Migrate scan data
-"""

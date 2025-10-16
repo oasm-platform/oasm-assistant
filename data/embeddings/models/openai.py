@@ -1,6 +1,13 @@
 from typing import List
 from .base import APIBaseEmbedding
-import openai
+
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+    openai = None
+
 from common.config import EmbeddingConfigs
 
 class OpenAIEmbedding(APIBaseEmbedding):
@@ -8,6 +15,10 @@ class OpenAIEmbedding(APIBaseEmbedding):
         self,
         embedding_settings: EmbeddingConfigs,
     ):
+        # Check if the openai library is available
+        if not OPENAI_AVAILABLE:
+            raise ImportError("OpenAI library is not available. Please install it with 'pip install openai'")
+            
         self.embedding_settings = embedding_settings
 
         super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
@@ -23,6 +34,10 @@ class OpenAIEmbedding(APIBaseEmbedding):
             ) from e
 
     def encode(self, docs: List[str]) -> List[List[float]]:
+        # Check if the openai library is available
+        if not OPENAI_AVAILABLE:
+            raise ImportError("OpenAI library is not available. Please install it with 'pip install openai'")
+            
         try:
             response = self.client.embeddings.create(
                 model=self.embedding_settings.model_name,

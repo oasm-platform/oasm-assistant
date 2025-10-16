@@ -1,3 +1,0 @@
-"""
-Detect duplicate data
-"""

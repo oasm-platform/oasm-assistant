@@ -1,8 +1,8 @@
 from .messages import Message
 from .conversations import Conversation
 from .base import BaseEntity
-from .knowledgebase import KnowledgeBase
-from .nucleitemplate import NucleiTemplate
+from .knowledge_base import KnowledgeBase
+from .nuclei_templates import NucleiTemplates
 from .mcp_servers import MCPServer, ServerStatus
 
 __all__ = [
@@ -10,7 +10,7 @@ __all__ = [
     "Message",
     "Conversation",
     "KnowledgeBase",
-    "NucleiTemplate",
+    "NucleiTemplates",
     "MCPServer",
     "ServerStatus",
 ]

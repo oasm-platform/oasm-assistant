@@ -9,17 +9,6 @@ from .models import (
 from common.logger import logger
 from common.config import EmbeddingConfigs
 from typing import List, Type
-"""
-Usage example:
-
-from .embeddings import Embeddings
-
-# Create an OpenAI embedding instance
-embedding = Embeddings.create_embedding('openai', api_key='your_api_key', model_name='text-embedding-3-small')
-
-# Get list of available providers
-providers = Embeddings.get_available_providers()
-"""
 
 class Embeddings:
     """Embedding usage pattern factory class"""
@@ -41,10 +30,10 @@ class Embeddings:
     @classmethod
     def _create_embedding_settings(cls, **kwargs) -> EmbeddingConfigs:
         """Create EmbeddingConfigs from kwargs"""
-        print(f"_create_embedding_settings received kwargs: {kwargs}")
+        logger.debug(f"_create_embedding_settings received kwargs: {kwargs}")
         # Map common parameter names to EmbeddingConfigs fields (using aliases)
         settings_kwargs = {}
-        
+
         # Handle model name variations with defaults
         if 'model_name' in kwargs:
             settings_kwargs['EMBEDDING_MODEL_NAME'] = kwargs['model_name']
@@ -55,24 +44,24 @@ class Embeddings:
         else:
             # Set default model name if none provided
             settings_kwargs['EMBEDDING_MODEL_NAME'] = "all-MiniLM-L6-v2"
-            
+
         # Handle API key variations
         if 'api_key' in kwargs:
             settings_kwargs['EMBEDDING_API_KEY'] = kwargs['api_key']
-            
+
         # Handle other common settings
         if 'dimensions' in kwargs:
             settings_kwargs['EMBEDDING_DIMENSIONS'] = kwargs['dimensions']
 
         if 'base_url' in kwargs:
             settings_kwargs['EMBEDDING_BASE_URL'] = kwargs['base_url']
-        
-        print(f"Final settings_kwargs: {settings_kwargs}")
-        
+
+        logger.debug(f"Final settings_kwargs: {settings_kwargs}")
+
         # Create EmbeddingConfigs with explicit values to override env vars
         # Use _env_file=None to prevent reading from .env file
         result = EmbeddingConfigs(_env_file=None, **settings_kwargs)
-        print(f"Created EmbeddingConfigs: model_name='{result.model_name}'")
+        logger.debug(f"Created EmbeddingConfigs: model_name='{result.model_name}'")
         return result
     
     @classmethod

@@ -20,7 +20,7 @@ def project_root_path():
 @pytest.fixture
 def mock_database():
     """Mock database for testing"""
-    with patch('data.database.db') as mock_db:
+    with patch('data.database.postgres_db') as mock_db:
         mock_session = Mock()
         mock_db.get_session.return_value.__enter__.return_value = mock_session
         mock_db.get_session.return_value.__exit__.return_value = None

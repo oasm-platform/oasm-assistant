@@ -5,7 +5,7 @@ from .base import BaseEntity
 
 class KnowledgeBase(BaseEntity):
 
-    __tablename__ = "text_vectors"
+    __tablename__ = "knowledge_base"
     __table_args__ = {'extend_existing': True} 
 
     knowledge_base_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)

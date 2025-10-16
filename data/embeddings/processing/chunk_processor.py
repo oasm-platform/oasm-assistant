@@ -79,9 +79,6 @@ def _split_paragraphs(text: str) -> List[str]:
     return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
 
 
-# ----------------------------- Data Models -----------------------------
-
-
 @dataclass
 class Chunk:
     """
@@ -114,8 +111,8 @@ class SentenceChunkerConfig:
             treated as standalone sentences.
         tiktoken_encoding: Optional name of tiktoken encoding to use.
     """
-    max_tokens: int = 3000
-    overlap_tokens: int = 60
+    max_tokens: int = 512 
+    overlap_tokens: int = 32  
     sentence_split_regex: str = r"(?<=[\.\!\?])\s+(?=[A-Z0-9])"
     bullet_line_regex: str = r"(?m)^\s*[-•\*]\s+"
     tiktoken_encoding: Optional[str] = "cl100k_base"
@@ -127,9 +124,6 @@ class SentenceChunkerConfig:
             raise ValueError("overlap_tokens must be >= 0")
         if self.overlap_tokens >= self.max_tokens:
             object.__setattr__(self, "overlap_tokens", max(0, self.max_tokens - 1))
-
-
-# ----------------------------- Chunker -----------------------------
 
 
 class SentenceChunker:
@@ -388,3 +382,39 @@ class SentenceChunker:
                 break
         tail.reverse()
         return tail
+
+
+class ChunkProcessor:
+    """
+    Adapter class to provide a simple chunk_text method that matches
+    the interface expected by DocumentIndexer.
+    """
+    
+    def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50):
+        """
+        Initialize the chunk processor with default configuration.
+        
+        Args:
+            chunk_size: Maximum number of tokens per chunk
+            chunk_overlap: Number of tokens to overlap between chunks
+        """
+        config = SentenceChunkerConfig(
+            max_tokens=chunk_size,
+            overlap_tokens=chunk_overlap
+        )
+        self.chunker = SentenceChunker(config=config)
+    
+    def chunk_text(self, text: str) -> List[str]:
+        """
+        Split text into chunks using the configured chunker instance.
+        
+        Args:
+            text: Input text to be chunked
+            
+        Returns:
+            List of text chunks
+        """
+        # Use the pre-configured chunker instance
+        chunks = self.chunker.chunk(text)
+            
+        return [chunk.text for chunk in chunks]

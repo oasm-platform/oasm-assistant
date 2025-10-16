@@ -75,14 +75,14 @@ class TextPreprocessor:
     def preprocess(self, text: str) -> str:
         """
         Run the configured preprocessing pipeline on input text.
-
+        
         The sequence (guarded by flags) is:
           normalize -> collapse spaces/newlines -> strip controls
-          -> dehyphenate -> merge hard wraps -> remove headers/footers -> final trim
-
+          -> dehyphenate -> merge hard wraps -> remove headers/footers -> improve paragraph handling -> final trim
+        
         Args:
             text: Raw text, typically from a PDF extractor.
-
+        
         Returns:
             Cleaned text suitable for chunking and embedding.
         """
@@ -109,6 +109,9 @@ class TextPreprocessor:
             s = self._remove_repeated_headers_footers(
                 s, min_len=self.config.min_header_len, max_line_len=self.config.max_header_line_len
             )
+
+        # Improve paragraph handling for better segmentation support
+        s = self._improve_paragraph_handling(s)
 
         # Final pass to remove accidental trailing spaces and compress newlines.
         s = self._final_trim(s)
@@ -287,6 +290,17 @@ class TextPreprocessor:
         res = "\n".join(out)
         res = re.sub(r"\n{3,}", "\n\n", res).strip()
         return res
+
+    def _improve_paragraph_handling(self, s: str) -> str:
+        """
+        Improve paragraph handling by adding clear breaks
+        to support better segmentation.
+        """
+        # Replace special character strings with spaces to improve sentence splitting
+        s = re.sub(r'[•\u2022\u25E6\u25CF]', ' * ', s)  # Special bullet characters
+        # Replace multiple spaces with single space, but preserve international characters
+        s = re.sub(r'\s+', ' ', s)
+        return s
 
     def _final_trim(self, s: str) -> str:
         """

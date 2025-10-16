@@ -1,7 +1,7 @@
 from sqlalchemy import Column, JSON, Index, Boolean, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from uuid import uuid4
-from data.database.models.base import BaseEntity
+from .base import BaseEntity
 from enum import Enum
 
 

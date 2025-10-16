@@ -3,9 +3,9 @@ from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from uuid import uuid4
 from .base import BaseEntity
 
-class NucleiTemplate(BaseEntity):
+class NucleiTemplates(BaseEntity):
 
-    __tablename__ = "nuclei_template_vectors"
+    __tablename__ = "nuclei_templates"
     __table_args__ = {'extend_existing': True} 
 
     template_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)

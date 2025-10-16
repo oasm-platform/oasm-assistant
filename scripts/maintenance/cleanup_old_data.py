@@ -1,3 +1,0 @@
-"""
-Clean up old data
-"""

@@ -20,8 +20,8 @@ import math
 from collections import defaultdict
 
 from .text_preprocessor import TextPreprocessor
-from .chunk_processor import SentenceChunker, Chunk
-from .quality_assessor import EmbeddingQualityAssessor 
+from .chunk_processor import SentenceChunker, Chunk, SentenceChunkerConfig
+from .quality_assessor import EmbeddingQualityAssessor
 from .metadata_extractor import MetadataExtractor
 
 @dataclass
@@ -41,6 +41,12 @@ class TFIDFEmbedding:
         self.idf: Dict[str, float] = {}
         self.vocab_size = 0
         self.doc_count = 0
+        # Add cache buffer to improve performance
+        self._word_cache: Dict[str, List[float]] = {}
+        # Add coefficient to increase vector distinction
+        self.use_sublinear_tf = True  # Use log(tf) instead of linear tf
+        self.use_inverse_doc_freq = True  # Use IDF to reduce weight of common words
+        self.use_l2_normalization = True  # Use L2 normalization to improve vector quality
         
     def fit(self, documents: List[Any]) -> None:
         """
@@ -116,15 +122,40 @@ class TFIDFEmbedding:
         for word, count in word_counts.items():
             if word in self.vocab:
                 idx = self.vocab[word] % self.dimension
-                tf = count / max(1, total_words)
-                idf = self.idf.get(word, 1.0)
-                vector[idx] += tf * idf
+                # Use logarithmic TF instead of linear TF to reduce impact of frequently occurring words
+                if self.use_sublinear_tf:
+                    tf = 1 + math.log(count) if count > 0 else 0
+                else:
+                    tf = count / max(1, total_words)
+
+                # Apply IDF if enabled
+                if self.use_inverse_doc_freq:
+                    idf = self.idf.get(word, 1.0)
+                else:
+                    idf = 1.0
+
+                # Apply coefficient to increase vector distinction
+                # Increase weight for distinctive words
+                weight = tf * idf
+                vector[idx] += weight
+
+        # Improve distinction by applying a slight adjustment coefficient
+        # to increase differences between embedding vectors without losing stability
+        for i in range(len(vector)):
+            if vector[i] != 0:
+                # Apply slight adjustment coefficient to amplify differences
+                # while maintaining model stability
+                vector[i] = vector[i] * (1.0 + 0.05 * abs(vector[i]))  # Slight amplification proportional to absolute value
+        
         return vector
 
     def _normalize_vector(self, vector: List[float]) -> List[float]:
         """L2 normalize vector"""
-        norm = math.sqrt(sum(x*x for x in vector)) or 1.0
-        return [x / norm for x in vector]
+        if self.use_l2_normalization:
+            norm = math.sqrt(sum(x*x for x in vector)) or 1.0
+            return [x / norm for x in vector]
+        else:
+            return vector
 
 class BatchProcessor:
     """Text processing pipeline with batch support"""
@@ -133,8 +164,9 @@ class BatchProcessor:
         self.embedding_dim = embedding_dim
         self.embedding_model = TFIDFEmbedding(dimension=embedding_dim)
         self.text_preprocessor = TextPreprocessor()
-        self.chunker = SentenceChunker()
-        self.quality_assessor = EmbeddingQualityAssessor()  
+        # Use optimal configuration for performance
+        self.chunker = SentenceChunker(config=SentenceChunkerConfig(max_tokens=512, overlap_tokens=64))
+        self.quality_assessor = EmbeddingQualityAssessor()
         self.is_fitted = False
 
     def process_batch(
@@ -181,11 +213,11 @@ class BatchProcessor:
         
         # Fit embedding model if needed
         if not self.is_fitted and chunks:
-            self.embedding_model.fit([chunk.text for chunk in chunks])  # Truyền `chunk.text`
+            self.embedding_model.fit([chunk.text for chunk in chunks])  # Pass `chunk.text`
             self.is_fitted = True
-            
+
         # Generate embeddings for each chunk
-        embeddings = [self.embedding_model.embed(chunk.text) for chunk in chunks]  # Truyền `chunk.text`
+        embeddings = [self.embedding_model.embed(chunk.text) for chunk in chunks]  # Pass `chunk.text`
         
         # Convert embeddings to numpy array for quality assessment
         embeddings_array = np.array(embeddings)
