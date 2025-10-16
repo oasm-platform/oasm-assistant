@@ -49,7 +49,7 @@ class HybridRetriever:
         self.keyword_weight = float(keyword_weight)
         self.vector_weight  = float(vector_weight)
         if abs(self.keyword_weight + self.vector_weight - 1.0) > 1e-6:
-            logger.warning("keyword_weight + vector_weight != 1.0; sẽ dùng như đã cho.")
+            logger.warning("keyword_weight + vector_weight != 1.0; using as provided.")
         self.ft_lang = ft_lang
         self.ranker = ranker or SimpleRanker(threshold=0.0)
 
@@ -88,9 +88,9 @@ class HybridRetriever:
         where_txt = f"AND ({where})"   if where else ""
 
         # NOTE:
-        #  - vector vscore = 1 - distance (cosine) -> [0..1] (xấp xỉ)
-        #  - FTS dùng ts_rank(tsv, plainto_tsquery(ft_lang, $2))
-        #  - Chuẩn hoá min-max trong batch union để cân bằng thang điểm
+        #  - vector vscore = 1 - distance (cosine) -> [0..1] (approximate)
+        #  - FTS uses ts_rank(tsv, plainto_tsquery(ft_lang, $2))
+        #  - Min-max normalization in batch union to balance score scales
         sql = f"""
         WITH vec AS (
           SELECT {id_col} AS id,
@@ -160,7 +160,7 @@ class HybridRetriever:
         for r in rows:
             raw_results.append({
                 "id": r["id"],
-                "score": float(r["hybrid_score"]),     # cao hơn = tốt hơn
+                "score": float(r["hybrid_score"]),     # higher = better
                 "vec_score": float(r["vec_score"]),
                 "text_score": float(r["text_score"]),
                 "metadata": {
@@ -168,20 +168,20 @@ class HybridRetriever:
                     "content": r.get("content"),
                 },
             })
-        
-        # Sử dụng ranker để xếp hạng kết quả
+
+        # Use ranker to rank results
         ranked_results = self.ranker.rank(raw_results, qtext)
         return ranked_results[:k]
 
     def set_ranker(self, ranker: Ranker):
-        """Thiết lập ranker mới để kiểm soát mức độ tương thích"""
+        """Set a new ranker to control relevance filtering"""
         self.ranker = ranker
 
     def get_ranker(self) -> Ranker:
-        """Lấy ranker hiện tại"""
+        """Get the current ranker"""
         return self.ranker
 
-    # ---------- FALLBACK----------
+    # ---------- FALLBACK ----------
     def fallback_hybrid(
         self,
         table: str, qtext: str, k: int = 10,

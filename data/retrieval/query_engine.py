@@ -10,7 +10,7 @@ from data.indexing.vector_store import PgVectorStore
 from data.embeddings.embeddings import Embeddings
 from common.logger import logger
 import re
-from data.database import db
+from data.database import postgres_db as db
 from sqlalchemy import text
 
 

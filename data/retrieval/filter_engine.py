@@ -5,9 +5,10 @@ from typing import List, Tuple, Dict, Any, Optional, Union
 from data.indexing.vector_store import PgVectorStore
 from data.embeddings.embeddings import Embeddings
 from common.logger import logger
-from data.database import db
+from data.database import postgres_db as db
 from sqlalchemy import text
 import re
+import math
 from datetime import datetime, timedelta
 
 
@@ -218,21 +219,24 @@ class FilterEngine:
             
             # Prepare text for matching
             search_text = text_content if case_sensitive else text_content.lower()
+
+            # Convert keywords to lowercase if case-insensitive
+            search_include = include_keywords
+            search_exclude = exclude_keywords
             if not case_sensitive:
-                search_text = search_text.lower()
                 if include_keywords:
-                    include_keywords = [kw.lower() for kw in include_keywords]
+                    search_include = [kw.lower() for kw in include_keywords]
                 if exclude_keywords:
-                    exclude_keywords = [kw.lower() for kw in exclude_keywords]
-            
+                    search_exclude = [kw.lower() for kw in exclude_keywords]
+
             # Check include keywords
-            if include_keywords:
-                if not all(keyword in search_text for keyword in include_keywords):
+            if search_include:
+                if not all(keyword in search_text for keyword in search_include):
                     continue
-            
+
             # Check exclude keywords
-            if exclude_keywords:
-                if any(keyword in search_text for keyword in exclude_keywords):
+            if search_exclude:
+                if any(keyword in search_text for keyword in search_exclude):
                     continue
             
             filtered_results.append((score, metadata))
@@ -323,30 +327,28 @@ class FilterEngine:
     def _cosine_similarity(self, vec1: List[float], vec2: List[float]) -> float:
         """
         Calculate cosine similarity between two vectors.
-        
+
         Args:
             vec1: First vector
             vec2: Second vector
-            
+
         Returns:
             Cosine similarity score between 0 and 1
         """
-        import math
-        
         # Calculate dot product
         dot_product = sum(a * b for a, b in zip(vec1, vec2))
-        
+
         # Calculate magnitudes
         magnitude1 = math.sqrt(sum(a * a for a in vec1))
         magnitude2 = math.sqrt(sum(b * b for b in vec2))
-        
+
         # Handle zero magnitude
         if magnitude1 == 0 or magnitude2 == 0:
             return 0.0
-        
+
         # Calculate cosine similarity
         similarity = dot_product / (magnitude1 * magnitude2)
-        
+
         # Ensure similarity is in [0, 1] range (though should naturally be in [-1, 1])
         return max(0.0, min(1.0, (similarity + 1) / 2))
     

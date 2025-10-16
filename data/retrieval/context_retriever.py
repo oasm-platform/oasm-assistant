@@ -1,15 +1,13 @@
 """
 Context-aware retrieval with multiple context modes
 """
-from typing import List, Tuple, Dict, Any, Optional, Union, Literal
+from typing import List, Tuple, Dict, Any, Optional
 from data.retrieval.similarity_searcher import SimilaritySearcher
 from data.retrieval.hybrid_retriever import HybridRetriever, Ranker
 from data.indexing.vector_store import PgVectorStore
 from data.embeddings.embeddings import Embeddings
 from common.logger import logger
-from data.database import db
-from data.database.models.conversations import Conversation
-from data.database.models.messages import Message
+from data.database import postgres_db as db
 from sqlalchemy import text
 import datetime
 from enum import Enum
@@ -17,7 +15,7 @@ from enum import Enum
 
 class ContextMode(Enum):
     """
-    Các chế độ lấy ngữ cảnh khác nhau
+    Different modes for context retrieval:
     """
     WINDOW = "window"           
     FULL_CHAT = "full_chat"     
@@ -69,7 +67,7 @@ class ContextRetriever:
         )
         self.context_window_size = context_window_size
         self.conversation_weight = conversation_weight
-        self.metadata_weight = metadata_weight
+        self.metadata_weight = metadata_weight  # Reserved for future metadata-based scoring
         self.context_mode = context_mode
     
     def _get_conversation_context(
@@ -129,11 +127,11 @@ class ContextRetriever:
                         SELECT question, answer, created_at, id
                         FROM messages
                         WHERE conversation_id = :conversation_id
-                        AND created_at > :time_threshold 
+                        AND created_at > :time_threshold
                         ORDER BY created_at ASC
                     """)
-                    
-                    time_threshold = datetime.datetime.utcnow() - datetime.timedelta(hours=1)
+
+                    time_threshold = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=1)
                     
                     result = session.execute(
                         query,

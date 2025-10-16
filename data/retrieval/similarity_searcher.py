@@ -5,7 +5,7 @@ from typing import List, Dict, Any, Optional, Literal, Tuple
 from data.indexing.vector_store import PgVectorStore
 from data.embeddings.embeddings import Embeddings
 from common.config import EmbeddingConfigs
-from common.logger import logger
+from common.utils.security import validate_identifier
 
 Metric = Literal["cosine", "ip", "l2"]
 OPS = {"cosine": "<=>", "ip": "<#>", "l2": "<->"}
@@ -15,7 +15,7 @@ class SimilaritySearcher:
     """
     HNSW similarity search (pgvector).
     Provides vector similarity search capabilities for the RAG system.
-    Trả về CHUẨN: List[{"id": ..., "distance": float, "metadata": {...}}]
+    Returns: List[{"id": ..., "distance": float, "metadata": {...}}]
     """
     def __init__(self,
                  vector_store: Optional[PgVectorStore] = None,
@@ -38,15 +38,19 @@ class SimilaritySearcher:
         self.ef_search = ef_search
 
     def _ensure_index(self, table: str, col: str, metric: Metric):
+        # Validate identifiers to prevent SQL injection
+        validated_table = validate_identifier(table, "table name")
+        validated_col = validate_identifier(col, "column name")
+        
         sql = f"""
         DO $$
         BEGIN
           IF NOT EXISTS (
             SELECT 1 FROM pg_indexes
-            WHERE tablename = '{table}' AND indexname = 'idx_{table}_{col}_hnsw'
+            WHERE tablename = '{validated_table}' AND indexname = 'idx_{validated_table}_{validated_col}_hnsw'
           ) THEN
-            EXECUTE 'CREATE INDEX idx_{table}_{col}_hnsw
-                     ON {table} USING hnsw ({col} {OPCLASS[metric]})
+            EXECUTE 'CREATE INDEX idx_{validated_table}_{validated_col}_hnsw
+                     ON {validated_table} USING hnsw ({validated_col} {OPCLASS[metric]})
                      WITH (m = 16, ef_construction = 200)';
           END IF;
         END$$;
@@ -65,8 +69,19 @@ class SimilaritySearcher:
                meta_cols: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Top-k HNSW search (no threshold).
-        Output chuẩn: [{"id": <id>, "distance": <float>, "metadata": {...}}]
+        Returns: [{"id": <id>, "distance": <float>, "metadata": {...}}]
         """
+        # Validate identifiers to prevent SQL injection
+        validated_table = validate_identifier(table, "table name")
+        validated_column = validate_identifier(column, "column name")
+        validated_id_col = validate_identifier(id_col, "column name")
+        validated_meta_cols = []
+        if meta_cols:
+            for col in meta_cols:
+                validated_meta_cols.append(validate_identifier(col, "column name"))
+        else:
+            validated_meta_cols = ["content"]  # depends on your schema
+
         met = metric or self.metric
         op = OPS[met]
         if query_vector is None:
@@ -75,16 +90,15 @@ class SimilaritySearcher:
             query_vector = self.embedding_model.embed_query(query)
 
         self.vector_store.exec_sql(f"SET hnsw.ef_search = {int(self.ef_search)};")
-        self._ensure_index(table, column, met)
+        self._ensure_index(validated_table, validated_column, met)
 
-        meta_cols = meta_cols or ["content"]  # tuỳ schema của bạn
-        select_cols = ", ".join([id_col] + meta_cols)
-        dist_expr = f"{column} {op} %s"
+        select_cols = ", ".join([validated_id_col] + validated_meta_cols)
+        dist_expr = f"{validated_column} {op} %s"
         where_sql = f"WHERE ({where})" if where else ""
 
         sql = f"""
         SELECT {select_cols}, {dist_expr} AS distance
-        FROM {table}
+        FROM {validated_table}
         {where_sql}
         ORDER BY {dist_expr} ASC
         LIMIT %s;
@@ -96,9 +110,9 @@ class SimilaritySearcher:
 
         results: List[Dict[str, Any]] = []
         for r in rows:
-            meta = {c: r[c] for c in meta_cols if c in r}
+            meta = {c: r[c] for c in validated_meta_cols if c in r}
             results.append({
-                "id": r[id_col],
+                "id": r[validated_id_col],
                 "distance": float(r["distance"]),
                 "metadata": meta
             })
