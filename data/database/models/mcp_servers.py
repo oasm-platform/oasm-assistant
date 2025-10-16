@@ -53,9 +53,7 @@ class MCPServer(BaseEntity):
     mcp_config = Column(JSON, nullable=False)
 
     server_status = Column(String(20), nullable=False, default=ServerStatus.INACTIVE.value)
-
-    latency = Column(Integer, nullable=False, default=1) # minutes
-
+    
     # Property helpers for easy access to mcp_config fields
     @property
     def name(self) -> str:
