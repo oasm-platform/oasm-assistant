@@ -79,7 +79,13 @@ class HybridRetriever:
         ]: _assert_ident(val, name)
 
         # Prepare inputs
-        qvec = self.similarity_searcher.embedding_model.embed_query(qtext)
+        qvec = self.similarity_searcher.embedding_model.encode(qtext)
+        # Convert numpy array to list for PostgreSQL
+        if hasattr(qvec, 'tolist'):
+            qvec = qvec.tolist()
+        # Format as PostgreSQL vector literal string
+        qvec_str = '[' + ','.join(str(float(x)) for x in qvec) + ']'
+
         op   = self.similarity_searcher.OPS[self.similarity_searcher.metric]  # '<=>', '<#>', '<->'
         self.vector_store.exec_sql(f"SET hnsw.ef_search = {int(self.similarity_searcher.ef_search)};")
 
@@ -94,20 +100,22 @@ class HybridRetriever:
         sql = f"""
         WITH vec AS (
           SELECT {id_col} AS id,
-                 (1 - ({embedding_col} {op} %s)) AS vscore
+                 (1 - ({embedding_col} {op} CAST(:qvec AS vector))) AS vscore,
+                 0.0 AS tscore
           FROM {table}
           {where_vec}
-          ORDER BY {embedding_col} {op} %s
-          LIMIT %s
+          ORDER BY {embedding_col} {op} CAST(:qvec AS vector)
+          LIMIT :limit_each
         ),
         txt AS (
           SELECT {id_col} AS id,
-                 ts_rank({tsv_col}, plainto_tsquery(%s, %s)) AS tscore
+                 0.0 AS vscore,
+                 ts_rank({tsv_col}, plainto_tsquery(:ft_lang, :qtext)) AS tscore
           FROM {table}
-          WHERE {tsv_col} @@ plainto_tsquery(%s, %s)
+          WHERE {tsv_col} @@ plainto_tsquery(:ft_lang, :qtext)
           {where_txt}
           ORDER BY tscore DESC
-          LIMIT %s
+          LIMIT :limit_each
         ),
         u AS (
           SELECT id,
@@ -141,18 +149,22 @@ class HybridRetriever:
                d.{content_col} AS content,
                norm.vnorm AS vec_score,
                norm.tnorm AS text_score,
-               (%s * norm.vnorm + %s * norm.tnorm) AS hybrid_score
+               (:vec_weight * norm.vnorm + :key_weight * norm.tnorm) AS hybrid_score
         FROM norm
         JOIN {table} d ON d.{id_col} = norm.id
         ORDER BY hybrid_score DESC
-        LIMIT %s;
+        LIMIT :k;
         """
 
-        params = [
-            qvec, qvec, int(candidates_each),     # vec
-            self.ft_lang, qtext, self.ft_lang, qtext, int(candidates_each),  # txt
-            float(self.vector_weight), float(self.keyword_weight), int(k)     # fusion + limit
-        ]
+        params = {
+            "qvec": qvec_str,
+            "qtext": qtext,
+            "limit_each": int(candidates_each),
+            "ft_lang": self.ft_lang,
+            "vec_weight": float(self.vector_weight),
+            "key_weight": float(self.keyword_weight),
+            "k": int(k)
+        }
         rows = self.vector_store.query(sql, params=params)
 
         # Pre-allocate list for efficiency

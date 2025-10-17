@@ -1,10 +1,9 @@
 from contextlib import contextmanager
-
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from common.logger import logger
-from data.database.models import BaseEntity 
+from data.database.models import BaseEntity
 
 class PostgresDatabase:
     """PostgreSQL database connection manager with raw SQL support"""
@@ -48,6 +47,9 @@ class PostgresDatabase:
             
             # Create tables
             self._create_tables()
+
+            # Run initial migrations
+            self._run_migrations()
             
             self.retries = retries
             self.retry_delay = retry_delay
@@ -88,6 +90,16 @@ class PostgresDatabase:
         """Create all tables in the database if they don't exist"""
         BaseEntity.metadata.create_all(self.engine, checkfirst=True)
         logger.info("Database tables created successfully if they didn't exist")
+
+    def _run_migrations(self):
+        """Run initial database migrations, like creating extensions."""
+        try:
+            with self.get_session() as session:
+                session.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
+                session.commit()
+            logger.info("Successfully ran database migrations (CREATE EXTENSION vector).")
+        except Exception as e:
+            logger.warning(f"Could not run database migrations: {e}. This might be fine if the user does not have superuser privileges.")
 
     def close(self):
         """Close all connections and dispose engine"""

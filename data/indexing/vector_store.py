@@ -169,13 +169,13 @@ class PgVectorStore:
             logger.error(f"Failed to store vectors: {e}")
             raise
             
-    def query(self, query: str, params: Optional[List] = None) -> List[Dict[str, Any]]:
+    def query(self, query: str, params: Optional[Dict] = None) -> List[Dict[str, Any]]:
         """
         Execute a custom query against the database
         
         Args:
-            query: SQL query string with placeholders (e.g., %s)
-            params: Parameters to substitute in the query
+            query: SQL query string with named placeholders (e.g., :my_param)
+            params: Dictionary of parameters to substitute in the query.
             
         Returns:
             List of rows as dictionaries
@@ -183,9 +183,7 @@ class PgVectorStore:
             
         try:
             with self.db.get_session() as session:
-                # Replace %s with PostgreSQL placeholders
-                query = query.replace('%s', '{}').format(*(['%s'] * query.count('%s')))
-                result = session.execute(self.text(query), params or ())
+                result = session.execute(self.text(query), params or {})
                 rows = [dict(row._mapping) for row in result]
                 return rows
         except Exception as e:
