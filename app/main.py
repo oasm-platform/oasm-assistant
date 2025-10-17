@@ -2,19 +2,34 @@ import grpc
 from concurrent import futures
 import sys
 import traceback
+import atexit
 
 from .protos import assistant_pb2_grpc
 
 from .services import (
-    HealthService, DomainClassifier, ConversationService, MessageService, 
-    MCPServerService, NucleiTemplateService )
+    HealthService, DomainClassifier, ConversationService, MessageService,
+    MCPServerService, NucleiTemplateService, get_scheduler )
 
 from common.logger import logger
-from common.config import configs as settings 
+from common.config import configs as settings
 
 def serve():
-    """Start gRPC server"""
+    """Start gRPC server with scheduler"""
+    scheduler = None
+
     try:
+        # Start Nuclei templates scheduler
+        scheduler = get_scheduler()
+        scheduler.start()
+        logger.info("Nuclei templates scheduler started")
+
+        # Register cleanup handler
+        def cleanup():
+            if scheduler:
+                logger.info("Stopping scheduler...")
+                scheduler.stop()
+        atexit.register(cleanup)
+
         # Create server
         server = grpc.server(
             futures.ThreadPoolExecutor(max_workers=settings.max_workers),
@@ -27,7 +42,7 @@ def serve():
                 ('grpc.http2.min_ping_interval_without_data_ms', 300000)
             ]
         )
-        
+
         # Add servicer
         assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthService(), server)
         assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifier(), server)
@@ -39,24 +54,29 @@ def serve():
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"
         server.add_insecure_port(listen_addr)
-        
+
         # Start server
         server.start()
         logger.info(f"gRPC server started on {listen_addr}")
         logger.info(f"Service: {settings.service_name} v{settings.version}")
-        
+        logger.info(f"Nuclei templates will sync daily at {settings.scheduler.nuclei_templates_sync_time}")
+
         try:
             server.wait_for_termination()
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         finally:
             logger.info("Shutting down server...")
+            if scheduler:
+                scheduler.stop()
             server.stop(grace=5)
             logger.info("Server stopped")
-            
+
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
         logger.error(traceback.format_exc())
+        if scheduler:
+            scheduler.stop()
         sys.exit(1)
 
 if __name__ == "__main__":
