@@ -10,7 +10,6 @@ class BaseEmbedding:
     def encode(self, docs: List[str]) -> List[List[float]]:
         raise NotImplementedError("The encode method must be implemented by subclasses")
 
-
 class APIBaseEmbedding(BaseEmbedding):
     baseUrl: str
     apiKey: str
