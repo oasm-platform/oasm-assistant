@@ -30,6 +30,19 @@ message DomainClassifyResponse {
 }
 
 // ----------------
+// Nuclei template gen 
+// ----------------
+service NucleiTemplateService {
+  rpc CreateTemplate(CreateTemplateRequest) returns (CreateTemplateResponse);
+}
+message CreateTemplateRequest {
+  string question = 1;
+}
+message CreateTemplateResponse {
+  string answer = 1;
+}
+
+// ----------------
 // Conversation
 // ----------------
 service ConversationService {
