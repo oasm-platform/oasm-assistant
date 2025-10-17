@@ -24,7 +24,11 @@ class Embeddings:
 
     @classmethod
     def _normalize_provider(cls, provider: str) -> str:
+        """Normalize provider name to match internal keys"""
         p = provider.lower().strip()
+        # Handle common variations
+        if p == 'sentence_transformers':
+            p = 'sentence_transformer'
         return p
 
     @classmethod

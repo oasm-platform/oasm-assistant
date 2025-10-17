@@ -67,16 +67,20 @@ class SentenceTransformerEmbedding(BaseEmbedding):
                 except Exception as e3:
                     raise ValueError(f"Failed to load model from primary source: {model_name}, local path: {local_model_path}, and all fallbacks: {e}, {e2}, {e3}")
 
-    def encode(self, docs: List[str]) -> List[List[float]]:
+    def encode(self, docs: List[str] | str) -> List[List[float]] | List[float]:
         if self.embedding_model is None:
             raise ValueError("SentenceTransformer model is not properly initialized")
         
-        embeddings = self.embedding_model.encode(docs)
+        is_single_string = isinstance(docs, str)
+        embeddings = self.embedding_model.encode(docs if not is_single_string else [docs])
+        
         if hasattr(embeddings, 'tolist'):
-            return embeddings.tolist()
+            result = embeddings.tolist()
         else:
-            return embeddings.astype(float).tolist()
-    
+            result = embeddings.astype(float).tolist()
+            
+        return result[0] if is_single_string else result
+
     @property
     def dim(self) -> int:
         return self.embedding_model.get_sentence_embedding_dimension()
