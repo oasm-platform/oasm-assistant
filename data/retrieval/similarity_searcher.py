@@ -36,6 +36,7 @@ class SimilaritySearcher:
 
         self.metric: Metric = default_metric
         self.ef_search = ef_search
+        self.OPS = OPS
 
     def _ensure_index(self, table: str, col: str, metric: Metric):
         # Validate identifiers to prevent SQL injection
@@ -87,13 +88,18 @@ class SimilaritySearcher:
         if query_vector is None:
             if not query:
                 raise ValueError("Provide either query text or query_vector")
-            query_vector = self.embedding_model.embed_query(query)
+            query_vector = self.embedding_model.encode(query)
+
+        # Convert numpy array to list and format as PostgreSQL vector literal
+        if hasattr(query_vector, 'tolist'):
+            query_vector = query_vector.tolist()
+        query_vector_str = '[' + ','.join(str(float(x)) for x in query_vector) + ']'
 
         self.vector_store.exec_sql(f"SET hnsw.ef_search = {int(self.ef_search)};")
         self._ensure_index(validated_table, validated_column, met)
 
         select_cols = ", ".join([validated_id_col] + validated_meta_cols)
-        dist_expr = f"{validated_column} {op} %s"
+        dist_expr = f"{validated_column} {op} CAST(:qvec AS vector)"
         where_sql = f"WHERE ({where})" if where else ""
 
         sql = f"""
@@ -101,10 +107,10 @@ class SimilaritySearcher:
         FROM {validated_table}
         {where_sql}
         ORDER BY {dist_expr} ASC
-        LIMIT %s;
+        LIMIT :k;
         """
 
-        params = [query_vector, int(k)]
+        params = {"qvec": query_vector_str, "k": int(k)}
 
         rows = self.vector_store.query(sql, params=params)
 
@@ -151,4 +157,5 @@ class SimilaritySearcher:
                 result["metadata"]
             ))
         return converted_results
+
 

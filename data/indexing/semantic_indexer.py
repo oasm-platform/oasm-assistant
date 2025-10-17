@@ -73,7 +73,7 @@ class SemanticIndexer:
             concept_metadata = []
             
             for concept, relevance in concepts:
-                embedding = self.embedding_model.embed_text(concept)
+                embedding = self.embedding_model.encode(concept)
                 embeddings.append(embedding)
                 
                 concept_meta = metadata.copy() if metadata else {}
@@ -124,7 +124,7 @@ class SemanticIndexer:
         """
         try:
             # Generate embedding for query
-            query_embedding = self.embedding_model.embed_query(query)
+            query_embedding = self.embedding_model.encode(query)
 
             # Build WHERE clause for document filtering using parameterized query
             # FIXED: No longer vulnerable to SQL injection - using parameterized approach

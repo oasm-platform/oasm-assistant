@@ -77,7 +77,7 @@ class DocumentIndexer:
             chunk_metadata = []
             
             for i, chunk in enumerate(chunks):
-                embedding = self.embedding_model.embed_text(chunk)
+                embedding = self.embedding_model.encode(chunk)
                 embeddings.append(embedding)
                 
                 # Create metadata for this chunk

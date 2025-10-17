@@ -30,6 +30,7 @@ langchain-community
 
 # Document Processing
 pypdf
+PyPDF2
 python-docx
 
 # LangGraph for agent workflow
@@ -56,6 +57,12 @@ mistralai
 sentence-transformers
 openai
 
+
+# Git operations
+GitPython
+
+# YAML parsing
+PyYAML
 
 # test
 pytest

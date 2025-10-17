@@ -1,6 +1,7 @@
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from typing import Dict, List, Any, Optional
+import os
 
 
 class PostgresConfigs(BaseSettings):
@@ -48,7 +49,7 @@ class EmbeddingConfigs(BaseSettings):
     api_key: str = Field("", alias="EMBEDDING_API_KEY")
     model_name: str = Field("", alias="EMBEDDING_MODEL_NAME")
     dimensions: Optional[int] = Field(None, alias="EMBEDDING_DIMENSIONS")
-    token_limit: int = Field(8192, alias="EMBEDDING_TOKEN_LIMIT")
+    token_limit: Optional[int] = Field(8192, alias="EMBEDDING_TOKEN_LIMIT")
     org_id: str = Field("", alias="EMBEDDING_ORG_ID")
     base_url: str = Field("", alias="EMBEDDING_BASE_URL")
 
@@ -114,20 +115,39 @@ class WebSearchConfigs(BaseSettings):
     validate_search_sources: bool = Field(True, alias="VALIDATE_SEARCH_SOURCES")
 
 
+class SchedulerConfigs(BaseSettings):
+    """Scheduler configurations for periodic tasks"""
+    nuclei_templates_sync_time: str = Field("02:00", alias="NUCLEI_TEMPLATES_SYNC_TIME")
+    nuclei_templates_repo_url: str = Field(
+        "https://github.com/projectdiscovery/nuclei-templates.git",
+        alias="NUCLEI_TEMPLATES_REPO_URL"
+    )
+    nuclei_templates_clone_dir: str = Field(
+        "C:\\nuclei-templates" if os.name == 'nt' else "/tmp/nuclei-templates",
+        alias="NUCLEI_TEMPLATES_CLONE_DIR"
+    )
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
+
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
     app: AppConfigs = AppConfigs()
     web_search: WebSearchConfigs = WebSearchConfigs()
     llm: LlmConfigs = LlmConfigs()
     embedding: EmbeddingConfigs = EmbeddingConfigs()
-    
+    scheduler: SchedulerConfigs = SchedulerConfigs()
+
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
     port: int = Field(8000, alias="PORT")
     max_workers: int = Field(10, alias="MAX_WORKERS")
     service_name: str = Field("oasm-assistant", alias="SERVICE_NAME")
     version: str = Field("1.0.0", alias="VERSION")
-    
+
     # Add missing fields used in domain_classifier.py
     crawl_timeout: int = Field(10, alias="CRAWL_TIMEOUT")
     crawl_max_retries: int = Field(3, alias="CRAWL_MAX_RETRIES")
