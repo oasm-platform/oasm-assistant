@@ -2,9 +2,10 @@ from .embeddings import Embeddings
 from common.config import configs
 from typing import Optional
 import threading
+from .models import BaseEmbedding
 
 # Singleton instance
-_embedding_model: Optional[any] = None
+_embedding_model: Optional[BaseEmbedding] = None
 _lock = threading.RLock()
 
 def get_embedding_model():

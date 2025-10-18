@@ -66,6 +66,7 @@ class HybridRetriever:
         tsv_col: str = "tsv",
         where: Optional[str] = None,
         candidates_each: int = 50,
+        meta_cols: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         One-shot hybrid search (vector + FTS). Returns sorted top-k using ranker.
@@ -77,6 +78,11 @@ class HybridRetriever:
             ("content_col", content_col), ("embedding_col", embedding_col),
             ("tsv_col", tsv_col),
         ]: _assert_ident(val, name)
+
+        # Validate meta_cols if provided
+        if meta_cols:
+            for col in meta_cols:
+                _assert_ident(col, "meta_col")
 
         # Prepare inputs
         qvec = self.similarity_searcher.embedding_model.encode(qtext)
@@ -92,6 +98,11 @@ class HybridRetriever:
         # where clause pieces
         where_vec = f"WHERE ({where})" if where else ""
         where_txt = f"AND ({where})"   if where else ""
+
+        # Build SELECT columns for metadata
+        meta_select = ""
+        if meta_cols:
+            meta_select = ", " + ", ".join(f"d.{col} AS {col}" for col in meta_cols)
 
         # NOTE:
         #  - vector vscore = 1 - distance (cosine) -> [0..1] (approximate)
@@ -146,7 +157,7 @@ class HybridRetriever:
         )
         SELECT d.{id_col} AS id,
                d.{title_col} AS title,
-               d.{content_col} AS content,
+               d.{content_col} AS content{meta_select},
                norm.vnorm AS vec_score,
                norm.tnorm AS text_score,
                (:vec_weight * norm.vnorm + :key_weight * norm.tnorm) AS hybrid_score
@@ -170,15 +181,21 @@ class HybridRetriever:
         # Pre-allocate list for efficiency
         raw_results = []
         for r in rows:
+            metadata = {
+                "title": r.get("title"),
+                "content": r.get("content"),
+            }
+            # Add meta_cols to metadata
+            if meta_cols:
+                for col in meta_cols:
+                    metadata[col] = r.get(col)
+
             raw_results.append({
                 "id": r["id"],
                 "score": float(r["hybrid_score"]),     # higher = better
                 "vec_score": float(r["vec_score"]),
                 "text_score": float(r["text_score"]),
-                "metadata": {
-                    "title": r.get("title"),
-                    "content": r.get("content"),
-                },
+                "metadata": metadata,
             })
 
         # Use ranker to rank results

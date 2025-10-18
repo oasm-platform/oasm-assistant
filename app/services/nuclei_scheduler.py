@@ -129,8 +129,21 @@ class NucleiTemplatesScheduler:
 
             # Extract basic info
             template_id = template_data.get('id', '')
-            name = template_data.get('info', {}).get('name', '')
-            description = template_data.get('info', {}).get('description', '')
+            info = template_data.get('info', {})
+            name = info.get('name', '')
+            description = info.get('description', '')
+
+            # Extract metadata for better embedding
+            tags = info.get('tags', [])
+            severity = info.get('severity', '')
+            author = info.get('author', '')
+            reference = info.get('reference', [])
+            classification = info.get('classification', {})
+
+            # Extract technical details
+            cve_id = classification.get('cve-id', '')
+            cwe_id = classification.get('cwe-id', '')
+            cvss_metrics = classification.get('cvss-metrics', '')
 
             # Read raw template content
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -142,7 +155,16 @@ class NucleiTemplatesScheduler:
             return {
                 'name': name,
                 'description': description or name,
-                'template': template_content
+                'template': template_content,
+                'metadata': {
+                    'tags': tags if isinstance(tags, list) else [],
+                    'severity': severity,
+                    'author': author,
+                    'cve_id': cve_id,
+                    'cwe_id': cwe_id,
+                    'cvss_metrics': cvss_metrics,
+                    'reference': reference if isinstance(reference, list) else []
+                }
             }
         except Exception as e:
             logger.debug(f"Failed to parse template {file_path}: {e}")
@@ -162,6 +184,46 @@ class NucleiTemplatesScheduler:
             return ""
         # Remove NUL characters that PostgreSQL doesn't accept
         return text.replace('\x00', '').replace('\u0000', '')
+
+    def _extract_template_keywords(self, template_content: str) -> str:
+        """
+        Extract key technical terms from template for better semantic matching
+
+        Args:
+            template_content: Raw YAML template content
+
+        Returns:
+            Space-separated keywords extracted from template
+        """
+        import re
+
+        keywords = []
+
+        try:
+            # Extract paths (common indicators of what's being tested)
+            paths = re.findall(r'path:\s*\n\s*-\s*["\']?([^"\']+)["\']?', template_content)
+            for path in paths[:3]:  # Limit to first 3 paths
+                # Extract meaningful parts (remove {{BaseURL}} etc)
+                clean_path = re.sub(r'\{\{.*?\}\}', '', path).strip('/')
+                if clean_path:
+                    keywords.append(clean_path)
+
+            # Extract matcher words (what patterns it looks for)
+            words = re.findall(r'words?:\s*\n\s*-\s*["\']?([^"\']+)["\']?', template_content)
+            keywords.extend(words[:5])  # Limit to first 5 words
+
+            # Extract common vulnerability patterns
+            vuln_patterns = re.findall(r'\b(SQL|XSS|SSRF|LFI|RFI|XXE|CSRF|RCE|injection|bypass|disclosure)\b',
+                                      template_content, re.IGNORECASE)
+            keywords.extend(set(vuln_patterns[:5]))  # Unique patterns, max 5
+
+            # Return as space-separated string, limit total length
+            keyword_str = ' '.join(keywords)
+            return keyword_str[:200] if keyword_str else ""  # Limit to 200 chars
+
+        except Exception:
+            # Silently fail - keyword extraction is optional
+            return ""
 
     def _clear_database(self):
         """Clear all existing Nuclei templates from database"""
@@ -207,9 +269,46 @@ class NucleiTemplatesScheduler:
                 name = self._clean_text(template_data['name'])
                 description = self._clean_text(template_data['description'])
                 template_content = self._clean_text(template_data['template'])
+                metadata = template_data.get('metadata', {})
 
-                # Create embedding for template content
-                text_to_embed = f"{name} {description}"
+                # Create RICH embedding text with comprehensive metadata for better RAG matching
+                tags_str = ', '.join(metadata.get('tags', [])) if metadata.get('tags') else ''
+                severity = metadata.get('severity', '')
+                author = metadata.get('author', '')
+                cve_id = metadata.get('cve_id', '')
+                cwe_id = metadata.get('cwe_id', '')
+
+                # Extract technical keywords from template content for better semantic search
+                # This helps match user queries about specific vulnerabilities, endpoints, etc.
+                template_keywords = self._extract_template_keywords(template_content)
+
+                # Build COMPREHENSIVE embedding text with weighted importance
+                # Name and description get highest priority (mentioned multiple times)
+                embedding_parts = [
+                    f"Template: {name}",  # Primary identifier
+                    f"Purpose: {description}",  # What it detects
+                    name,  # Repeat for emphasis
+                    description,  # Repeat for emphasis
+                ]
+
+                # Add metadata context
+                if tags_str:
+                    embedding_parts.append(f"Tags: {tags_str}")
+                    embedding_parts.append(tags_str)  # Repeat tags for importance
+                if severity:
+                    embedding_parts.append(f"Severity: {severity}")
+                if cve_id:
+                    embedding_parts.append(f"CVE Identifier: {cve_id}")
+                    embedding_parts.append(cve_id)  # CVE IDs are important search terms
+                if cwe_id:
+                    embedding_parts.append(f"CWE Category: {cwe_id}")
+
+                # Add extracted keywords (paths, matchers, etc.)
+                if template_keywords:
+                    embedding_parts.append(f"Detection patterns: {template_keywords}")
+
+                text_to_embed = ' '.join(filter(None, embedding_parts))  # Remove empty strings
+
                 # Use encode() which returns List[List[float]], take first element
                 embedding = self.embedding_model.encode([text_to_embed])[0]
 

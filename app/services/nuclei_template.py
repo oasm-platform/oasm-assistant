@@ -31,39 +31,49 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         )
 
         # Create hybrid retriever with shared similarity searcher
+        # OPTIMIZED WEIGHTS for Nuclei template generation:
+        # - Vector search (0.7) is MORE important for semantic similarity
+        #   (e.g., "SQL injection" should match templates about database attacks)
+        # - Keyword search (0.3) helps with exact CVE IDs, specific tech names
         self.hybrid_retriever = HybridRetriever(
             vector_store=self.vector_store,
             config=configs.embedding,
             similarity_searcher=self.similarity_searcher,
-            keyword_weight=0.3,
-            vector_weight=0.7
+            keyword_weight=0.3,  # For exact matches (CVE IDs, product names)
+            vector_weight=0.7    # For semantic similarity (vulnerability types)
         )
 
         logger.info("NucleiTemplateService initialized with RAG support")
 
-    def _retrieve_similar_templates(self, question: str, k: int = 5) -> str:
+    def _retrieve_similar_templates(self, question: str, k: int = 5, similarity_threshold: float = 0.55) -> str:
         """
-        Retrieve similar templates from database using RAG
+        Retrieve similar templates from database using RAG with quality filtering
 
         Args:
             question: User's request
             k: Number of similar templates to retrieve
+            similarity_threshold: Minimum similarity score (0-1). Only templates above this are included.
 
         Returns:
             Formatted context string with similar templates
         """
         try:
+            # Retrieve more candidates than needed for filtering
+            candidates_k = min(k * 3, 15)  # Get 3x candidates for filtering, max 15
+
             # Try hybrid search first (requires tsv column)
             try:
                 results = self.hybrid_retriever.hybrid_search(
                     table="nuclei_templates",
                     qtext=question,
-                    k=k,
+                    k=candidates_k,
                     id_col="template_id",
                     title_col="name",
                     content_col="description",
                     embedding_col="embedding",
-                    tsv_col="tsv"
+                    tsv_col="tsv",
+                    meta_cols=["template", "tags"],  # Include template content and tags
+                    candidates_each=100  # Increase candidate pool for better results
                 )
             except Exception as hybrid_error:
                 # Fallback to vector-only search if tsv column doesn't exist
@@ -71,30 +81,57 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                 results = self.hybrid_retriever.similarity_searcher.search(
                     table="nuclei_templates",
                     query=question,
-                    k=k,
+                    k=candidates_k,
                     column="embedding",
                     id_col="template_id",
-                    meta_cols=["name", "description"]
+                    meta_cols=["name", "description", "template", "tags"]  # Include template content and tags
                 )
 
             if not results:
+                logger.info("No similar templates found in database")
                 return ""
 
-            # Format retrieved templates as context
-            context_parts = ["Here are some similar Nuclei templates for reference:\n"]
-            for idx, result in enumerate(results, 1):
+            # Filter by similarity threshold to ensure quality
+            filtered_results = [
+                r for r in results
+                if r.get('score', r.get('similarity', 0)) >= similarity_threshold
+            ]
+
+            if not filtered_results:
+                logger.info(f"No templates above similarity threshold {similarity_threshold}")
+                return ""
+
+            # Take top k after filtering
+            top_results = filtered_results[:k]
+
+            logger.info(f"Retrieved {len(top_results)} high-quality templates (threshold: {similarity_threshold})")
+
+            # Format retrieved templates as clean context for LLM
+            context_parts = []
+            for idx, result in enumerate(top_results, 1):
                 # Handle both hybrid search and vector search result formats
                 metadata = result.get('metadata', {})
                 name = metadata.get('title') or metadata.get('name', 'Unknown')
                 description = metadata.get('content') or metadata.get('description', '')
+                template_content = metadata.get('template', '')
+                tags = metadata.get('tags', '')
 
-                context_parts.append(f"\n{idx}. Template: {name}")
-                if description:
-                    context_parts.append(f"   Description: {description}")
-
-                # Score format may differ
                 score = result.get('score', result.get('similarity', 0))
-                context_parts.append(f"   Similarity Score: {score:.3f}")
+
+                # Build clean context entry
+                context_parts.append(f"--- Reference Template {idx} ---")
+                context_parts.append(f"Name: {name}")
+                if description:
+                    context_parts.append(f"Description: {description}")
+                if tags:
+                    context_parts.append(f"Tags: {tags}")
+                context_parts.append(f"Relevance: {score:.2%}")  # Show as percentage
+
+                # Add actual template YAML (most important part)
+                if template_content:
+                    context_parts.append(f"\nTemplate YAML:\n{template_content}")
+
+                context_parts.append("")  # Empty line separator
 
             return "\n".join(context_parts)
 
@@ -116,16 +153,30 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             llm = self.llm_manager.get_llm()
 
             # Retrieve similar templates using RAG
-            rag_context = self._retrieve_similar_templates(question, k=3)
+            # k=3 is optimal (not too many to confuse, not too few to lack context)
+            # threshold=0.55 ensures only relevant templates are included
+            rag_context = self._retrieve_similar_templates(
+                question=question,
+                k=3,
+                similarity_threshold=0.55
+            )
 
-            # Get prompt from prompts module with RAG context
+            # Debug logging (visible in service logs)
             if rag_context:
-                enhanced_question = f"{question}\n\n{rag_context}"
+                logger.info(f"RAG: Found {len([l for l in rag_context.split('---') if l.strip()])} relevant templates")
+                print("=" * 80)
+                print("RAG CONTEXT BEING SENT TO LLM:")
+                print("=" * 80)
+                print(rag_context[:500] + "..." if len(rag_context) > 500 else rag_context)
+                print("=" * 80)
             else:
-                enhanced_question = question
+                logger.info("RAG: No relevant templates found, generating from base knowledge")
+                print("No RAG context - generating template from LLM base knowledge only")
 
+            # Pass RAG context directly to prompt (NEW: proper parameter)
             prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(
-                question=enhanced_question
+                question=question,
+                rag_context=rag_context  # Properly structured now
             )
 
             # Invoke LLM to generate template
@@ -144,6 +195,8 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                 template = template[:-3]  # Remove trailing ```
 
             template = template.strip()
+
+            logger.info(f"Successfully generated template (length: {len(template)} chars)")
 
             return template
 
