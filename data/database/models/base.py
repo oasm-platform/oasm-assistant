@@ -10,12 +10,12 @@ Base = declarative_base()
 class BaseEntity(Base):
     __abstract__ = True
     
-    created_at = Column("createdAt", TIMESTAMP(timezone=True),
+    created_at = Column("created_at", TIMESTAMP(timezone=True),
          nullable=False,
          server_default=func.now())
          
     updated_at = Column(
-        "updatedAt",
+        "updated_at",
         TIMESTAMP(timezone=True),
         nullable=False,
         server_default=func.now(),
