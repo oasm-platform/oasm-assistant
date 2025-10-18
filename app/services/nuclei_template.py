@@ -5,118 +5,126 @@ from llms import llm_manager
 from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
 from llms.prompts import NucleiGenerationPrompts
-from data.retrieval import HybridRetriever
-from data.indexing.vector_store import PgVectorStore
-from data.embeddings import get_embedding_model
-from data.retrieval import SimilaritySearcher
+from data.retrieval import HybridSearchEngine
+from data.database import postgres_db
+from data.database.models.nuclei_templates import NucleiTemplates
 
 
 class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
-    """Service for generating Nuclei security templates using LLM with RAG"""
+    """Service for generating Nuclei security templates using LLM with LlamaIndex RAG"""
 
     def __init__(self):
-        """Initialize the Nuclei template service"""
+        """Initialize the Nuclei template service with LlamaIndex"""
         self.llm_manager = llm_manager
+        self.db = postgres_db
 
-        # Initialize RAG components with shared embedding model (singleton)
-        self.vector_store = PgVectorStore()
-        shared_embedding = get_embedding_model()
-
-        # Create similarity searcher with shared embedding
-        self.similarity_searcher = SimilaritySearcher(
-            vector_store=self.vector_store,
-            embedding_model=shared_embedding,
-            default_metric="cosine",
-            ef_search=64
-        )
-
-        # Create hybrid retriever with shared similarity searcher
+        # Initialize LlamaIndex Hybrid Retriever with HNSW (semantic) + BM25 (keyword)
         # OPTIMIZED WEIGHTS for Nuclei template generation:
         # - Vector search (0.7) is MORE important for semantic similarity
         #   (e.g., "SQL injection" should match templates about database attacks)
         # - Keyword search (0.3) helps with exact CVE IDs, specific tech names
-        self.hybrid_retriever = HybridRetriever(
-            vector_store=self.vector_store,
-            config=configs.embedding,
-            similarity_searcher=self.similarity_searcher,
-            keyword_weight=0.3,  # For exact matches (CVE IDs, product names)
-            vector_weight=0.7    # For semantic similarity (vulnerability types)
+        self.search_engine = HybridSearchEngine(
+            table_name="nuclei_templates",
+            embedding_model_name=configs.embedding.model_name,
+            vector_weight=0.7,  # Semantic similarity (HNSW)
+            keyword_weight=0.3,  # Exact keyword matches (BM25)
+            embed_dim=configs.embedding.dimensions or 384
         )
 
-        logger.info("NucleiTemplateService initialized with RAG support")
+        # Load existing index from database
+        try:
+            self.search_engine.load_vector_index()
+            # Load BM25 data from database
+            self._load_bm25_index()
+            logger.info("Hybrid search engine initialized and loaded from database")
+        except Exception as e:
+            logger.warning(f"Failed to load existing index: {e}. Will create new index when needed.")
+
+        logger.info("NucleiTemplateService initialized with Hybrid RAG (Vector + Keyword search)")
+
+    def _load_bm25_index(self):
+        """Load all documents from database to build BM25 index"""
+        try:
+            with self.db.get_session() as session:
+                templates = session.query(NucleiTemplates).all()
+
+                if not templates:
+                    logger.info("No templates found in database for BM25 indexing")
+                    return
+
+                # Convert to document format for BM25
+                documents = []
+                for template in templates:
+                    # Combine name, description, and template content for better search
+                    text = f"{template.name}\n{template.description or ''}\n{template.template or ''}"
+                    metadata = {
+                        'id': str(template.template_id),
+                        'template_id': str(template.template_id),
+                        'name': template.name,
+                        'description': template.description or '',
+                        'template': template.template or '',
+                        'tags': getattr(template, 'tags', '')
+                    }
+                    documents.append({
+                        'text': text,
+                        'metadata': metadata
+                    })
+
+                # Build BM25 index
+                logger.info(f"Indexing {len(documents)} templates for BM25...")
+                self.search_engine.keyword_retriever_documents = [doc['text'] for doc in documents]
+                self.search_engine.keyword_retriever_metadata = [doc['metadata'] for doc in documents]
+
+                from rank_bm25 import BM25Okapi
+                tokenized_docs = [doc['text'].lower().split() for doc in documents]
+                self.search_engine.keyword_retriever_index = BM25Okapi(tokenized_docs)
+
+                logger.info(f"BM25 index built with {len(documents)} documents")
+
+        except Exception as e:
+            logger.error(f"Failed to load BM25 index: {e}")
 
     def _retrieve_similar_templates(self, question: str, k: int = 5, similarity_threshold: float = 0.55) -> str:
         """
-        Retrieve similar templates from database using RAG with quality filtering
+        Retrieve similar templates from database using hybrid search (vector + keyword) (HNSW + BM25)
 
         Args:
             question: User's request
             k: Number of similar templates to retrieve
-            similarity_threshold: Minimum similarity score (0-1). Only templates above this are included.
+            similarity_threshold: Minimum similarity score (0-1)
 
         Returns:
             Formatted context string with similar templates
         """
         try:
-            # Retrieve more candidates than needed for filtering
-            candidates_k = min(k * 3, 15)  # Get 3x candidates for filtering, max 15
-
-            # Try hybrid search first (requires tsv column)
-            try:
-                results = self.hybrid_retriever.hybrid_search(
-                    table="nuclei_templates",
-                    qtext=question,
-                    k=candidates_k,
-                    id_col="template_id",
-                    title_col="name",
-                    content_col="description",
-                    embedding_col="embedding",
-                    tsv_col="tsv",
-                    meta_cols=["template", "tags"],  # Include template content and tags
-                    candidates_each=100  # Increase candidate pool for better results
-                )
-            except Exception as hybrid_error:
-                # Fallback to vector-only search if tsv column doesn't exist
-                logger.debug(f"Hybrid search failed, using vector-only search: {hybrid_error}")
-                results = self.hybrid_retriever.similarity_searcher.search(
-                    table="nuclei_templates",
-                    query=question,
-                    k=candidates_k,
-                    column="embedding",
-                    id_col="template_id",
-                    meta_cols=["name", "description", "template", "tags"]  # Include template content and tags
-                )
+            # Use hybrid search (vector + keyword) (HNSW + BM25)
+            results = self.search_engine.search(
+                query=question,
+                k=k,
+                vector_k=50,  # Get more candidates for better results
+                keyword_k=50,
+                min_score=similarity_threshold
+            )
 
             if not results:
-                logger.info("No similar templates found in database")
+                logger.info("No similar templates found")
                 return ""
 
-            # Filter by similarity threshold to ensure quality
-            filtered_results = [
-                r for r in results
-                if r.get('score', r.get('similarity', 0)) >= similarity_threshold
-            ]
-
-            if not filtered_results:
-                logger.info(f"No templates above similarity threshold {similarity_threshold}")
-                return ""
-
-            # Take top k after filtering
-            top_results = filtered_results[:k]
-
-            logger.info(f"Retrieved {len(top_results)} high-quality templates (threshold: {similarity_threshold})")
+            logger.info(f"Retrieved {len(results)} high-quality templates (threshold: {similarity_threshold})")
 
             # Format retrieved templates as clean context for LLM
             context_parts = []
-            for idx, result in enumerate(top_results, 1):
-                # Handle both hybrid search and vector search result formats
+            for idx, result in enumerate(results, 1):
                 metadata = result.get('metadata', {})
-                name = metadata.get('title') or metadata.get('name', 'Unknown')
-                description = metadata.get('content') or metadata.get('description', '')
+                name = metadata.get('name', 'Unknown')
+                description = metadata.get('description', '')
                 template_content = metadata.get('template', '')
                 tags = metadata.get('tags', '')
 
-                score = result.get('score', result.get('similarity', 0))
+                score = result.get('score', 0)
+                vector_score = result.get('vector_score', 0)
+                keyword_score = result.get('keyword_score', 0)
+                sources = result.get('sources', [])
 
                 # Build clean context entry
                 context_parts.append(f"--- Reference Template {idx} ---")
@@ -125,7 +133,8 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                     context_parts.append(f"Description: {description}")
                 if tags:
                     context_parts.append(f"Tags: {tags}")
-                context_parts.append(f"Relevance: {score:.2%}")  # Show as percentage
+                context_parts.append(f"Relevance: {score:.2%} (Vector: {vector_score:.2f}, Keyword: {keyword_score:.2f})")
+                context_parts.append(f"Match Sources: {', '.join(sources)}")
 
                 # Add actual template YAML (most important part)
                 if template_content:
@@ -152,7 +161,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         try:
             llm = self.llm_manager.get_llm()
 
-            # Retrieve similar templates using RAG
+            # Retrieve similar templates using hybrid search (vector + keyword)
             # k=3 is optimal (not too many to confuse, not too few to lack context)
             # threshold=0.55 ensures only relevant templates are included
             rag_context = self._retrieve_similar_templates(
@@ -165,7 +174,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             if rag_context:
                 logger.info(f"RAG: Found {len([l for l in rag_context.split('---') if l.strip()])} relevant templates")
                 print("=" * 80)
-                print("RAG CONTEXT BEING SENT TO LLM:")
+                print("RAG CONTEXT (Hybrid Search: Vector/HNSW + Keyword/BM25):")
                 print("=" * 80)
                 print(rag_context[:500] + "..." if len(rag_context) > 500 else rag_context)
                 print("=" * 80)
