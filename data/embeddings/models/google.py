@@ -6,20 +6,19 @@ import google.generativeai as genai
 
 class GoogleEmbedding(APIBaseEmbedding):
     """Google embedding model wrapper"""
-    
+
     def __init__(
         self,
         embedding_settings: EmbeddingConfigs,
     ):
-        self.embedding_settings = embedding_settings
+        # Initialize parent class (sets self.embedding_settings, self.api_key, etc.)
+        super().__init__(embedding_settings)
 
-        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
-
-        if not self.embedding_settings.api_key:
+        if not self.api_key:
             raise ValueError("Google API key must not be None")
 
         try:
-            genai.configure(api_key=self.embedding_settings.api_key)
+            genai.configure(api_key=self.api_key)
             self.client = genai
         except ImportError:
             raise ImportError(
