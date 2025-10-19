@@ -46,18 +46,18 @@ def mock_postgres_db():
 
 @pytest.fixture
 def mock_hybrid_retriever():
-    """Mock LlamaIndex hybrid retriever"""
-    with patch('app.services.nuclei_template.LlamaIndexHybridRetriever') as mock_hr:
+    """Mock HybridSearchEngine"""
+    with patch('app.services.nuclei_template.HybridSearchEngine') as mock_hr:
         mock_instance = Mock()
 
-        # Mock successful hybrid search (HNSW + BM25)
-        mock_instance.hybrid_search.return_value = [
+        # Mock successful hybrid search (Vector + Keyword)
+        mock_instance.search.return_value = [
             {
                 'id': 'template-1',
                 'score': 0.95,
                 'vector_score': 0.92,
-                'bm25_score': 0.88,
-                'sources': ['vector', 'bm25'],
+                'keyword_score': 0.88,
+                'sources': ['vector', 'keyword'],
                 'metadata': {
                     'name': 'SQL Injection Detection',
                     'description': 'Detects SQL injection vulnerabilities',
@@ -69,8 +69,8 @@ def mock_hybrid_retriever():
                 'id': 'template-2',
                 'score': 0.87,
                 'vector_score': 0.85,
-                'bm25_score': 0.82,
-                'sources': ['vector', 'bm25'],
+                'keyword_score': 0.82,
+                'sources': ['vector', 'keyword'],
                 'metadata': {
                     'name': 'XSS Detection',
                     'description': 'Detects cross-site scripting',
@@ -82,7 +82,7 @@ def mock_hybrid_retriever():
                 'id': 'template-3',
                 'score': 0.78,
                 'vector_score': 0.75,
-                'bm25_score': 0.72,
+                'keyword_score': 0.72,
                 'sources': ['vector'],
                 'metadata': {
                     'name': 'Command Injection',
@@ -93,11 +93,10 @@ def mock_hybrid_retriever():
             }
         ]
 
-        # Mock load_index
-        mock_instance.load_index.return_value = Mock()
-        mock_instance.bm25_index = Mock()
-        mock_instance.bm25_documents = []
-        mock_instance.bm25_metadata = []
+        # Mock load_vector_index
+        mock_instance.load_vector_index.return_value = Mock()
+        mock_instance.keyword_retriever = Mock()
+        mock_instance.keyword_retriever.index_documents = Mock()
 
         mock_hr.return_value = mock_instance
         yield mock_instance
@@ -122,7 +121,7 @@ class TestNucleiTemplateService:
 
         assert service.llm_manager is not None
         assert service.db is not None
-        assert service.retriever is not None
+        assert service.search_engine is not None
 
     def test_retrieve_similar_templates_success(
         self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
@@ -136,7 +135,7 @@ class TestNucleiTemplateService:
         assert "SQL Injection Detection" in context
         assert "XSS Detection" in context
         assert "Command Injection" in context
-        assert "95%" in context or "0.95" in context  # Check score is included
+        assert "95" in context  # Check score is included (matches "95%", "0.95", or "95.00%")
 
     def test_retrieve_similar_templates_no_results(
         self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
@@ -145,7 +144,7 @@ class TestNucleiTemplateService:
         service = NucleiTemplateService()
 
         # Mock empty results
-        service.retriever.hybrid_search = Mock(return_value=[])
+        service.search_engine.search = Mock(return_value=[])
 
         context = service._retrieve_similar_templates("test query", k=3)
 
@@ -158,7 +157,7 @@ class TestNucleiTemplateService:
         service = NucleiTemplateService()
 
         # Mock error
-        service.retriever.hybrid_search = Mock(side_effect=Exception("Database error"))
+        service.search_engine.search = Mock(side_effect=Exception("Database error"))
 
         context = service._retrieve_similar_templates("test query", k=3)
 
@@ -173,7 +172,7 @@ class TestNucleiTemplateService:
         template = service._generate_template_with_llm("Create SQL injection template")
 
         # Verify RAG was used
-        assert service.retriever.hybrid_search.called
+        assert service.search_engine.search.called
 
         # Verify LLM was invoked
         assert mock_llm.get_llm.return_value.invoke.called
@@ -190,7 +189,7 @@ class TestNucleiTemplateService:
         service = NucleiTemplateService()
 
         # Mock empty RAG results
-        service.retriever.hybrid_search.return_value = []
+        service.search_engine.search.return_value = []
 
         template = service._generate_template_with_llm("Create test template")
 
@@ -293,8 +292,8 @@ class TestNucleiTemplateService:
         service._retrieve_similar_templates("test query", k=5)
 
         # Check that hybrid_search was called (parameters changed with LlamaIndex)
-        assert service.retriever.hybrid_search.called
-        call_kwargs = service.retriever.hybrid_search.call_args.kwargs
+        assert service.search_engine.search.called
+        call_kwargs = service.search_engine.search.call_args.kwargs
         assert call_kwargs.get('query') == 'test query'
         assert call_kwargs.get('k') == 5
 
@@ -319,7 +318,7 @@ class TestNucleiTemplateServiceIntegration:
 
         # Verify workflow
         # 1. RAG retrieval was attempted
-        assert service.retriever.hybrid_search.called
+        assert service.search_engine.search.called
 
         # 2. LLM was invoked with enhanced context
         llm_call = mock_llm.get_llm.return_value.invoke.call_args
@@ -340,7 +339,7 @@ class TestNucleiTemplateServiceIntegration:
         service = NucleiTemplateService()
 
         # Mock RAG failure
-        service.retriever.hybrid_search.side_effect = Exception("DB error")
+        service.search_engine.search.side_effect = Exception("DB error")
 
         request = assistant_pb2.CreateTemplateRequest(
             question="Create test template"
