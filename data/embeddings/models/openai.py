@@ -18,16 +18,15 @@ class OpenAIEmbedding(APIBaseEmbedding):
         # Check if the openai library is available
         if not OPENAI_AVAILABLE:
             raise ImportError("OpenAI library is not available. Please install it with 'pip install openai'")
-            
-        self.embedding_settings = embedding_settings
 
-        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
+        # Initialize parent class (sets self.embedding_settings, self.api_key, etc.)
+        super().__init__(embedding_settings)
 
-        if not self.embedding_settings.api_key:
+        if not self.api_key:
             raise ValueError("The OpenAI API key must not be 'None'.")
 
         try:
-            self.client = openai.OpenAI(api_key=self.embedding_settings.api_key)
+            self.client = openai.OpenAI(api_key=self.api_key)
         except Exception as e:
             raise ValueError(
                 f"OpenAI client failed to initialize. Error: {e}"

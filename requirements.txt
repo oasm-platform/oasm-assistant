@@ -57,6 +57,17 @@ mistralai
 sentence-transformers
 openai
 
+# LlamaIndex - RAG framework
+llama-index
+llama-index-vector-stores-postgres
+llama-index-embeddings-huggingface
+rank-bm25
+
+# Git operations
+GitPython
+
+# YAML parsing
+PyYAML
 
 # Git operations
 GitPython

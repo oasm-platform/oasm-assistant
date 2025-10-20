@@ -7,9 +7,8 @@ from common.logger import logger
 
 class SentenceTransformerEmbedding(BaseEmbedding):
     def __init__(self, embedding_settings: EmbeddingConfigs):
-        # Initialize parent class with the correct name
-        super().__init__("sentence_transformer")
-        self.embedding_settings = embedding_settings
+        # Initialize parent class with embedding settings
+        super().__init__(embedding_settings)
         self.embedding_model = None
         
         # Extract model name without namespace for fallback

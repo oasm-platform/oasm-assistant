@@ -8,15 +8,14 @@ class MistralEmbedding(APIBaseEmbedding):
             self,
             embedding_settings: EmbeddingConfigs,
         ):
-        self.embedding_settings = embedding_settings
+        # Initialize parent class (sets self.embedding_settings, self.api_key, etc.)
+        super().__init__(embedding_settings)
 
-        super().__init__(name=self.embedding_settings.model_name, apiKey=self.embedding_settings.api_key)
-        
-        if not self.embedding_settings.api_key:
+        if not self.api_key:
             raise ValueError("The Mistral API key must not be 'None'.")
         
         try:
-            self.client = MistralClient(api_key=self.embedding_settings.api_key)
+            self.client = MistralClient(api_key=self.api_key)
         except Exception as e:
             raise ValueError(
                 f"Mistral API client failed to initialize. Error: {e}"
