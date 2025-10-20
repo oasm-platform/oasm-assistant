@@ -133,6 +133,32 @@ class SchedulerConfigs(BaseSettings):
         extra = "ignore"
 
 
+class RAGConfigs(BaseSettings):
+    """RAG (Retrieval-Augmented Generation) configurations for template search"""
+    # Hybrid search weights
+    vector_weight: float = Field(0.7, alias="RAG_VECTOR_WEIGHT")
+    keyword_weight: float = Field(0.3, alias="RAG_KEYWORD_WEIGHT")
+
+    # Search parameters
+    top_k: int = Field(3, alias="RAG_TOP_K")
+    candidates_multiplier: int = Field(3, alias="RAG_CANDIDATES_MULTIPLIER")
+    max_candidates: int = Field(15, alias="RAG_MAX_CANDIDATES")
+    vector_k: int = Field(50, alias="RAG_VECTOR_K")
+    keyword_k: int = Field(50, alias="RAG_KEYWORD_K")
+
+    # Quality thresholds
+    similarity_threshold: float = Field(0.55, alias="RAG_SIMILARITY_THRESHOLD")
+    min_score: float = Field(0.0, alias="RAG_MIN_SCORE")
+
+    # Database table
+    table_name: str = Field("nuclei_templates", alias="RAG_TABLE_NAME")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
+
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
     app: AppConfigs = AppConfigs()
@@ -140,6 +166,7 @@ class Configs(BaseSettings):
     llm: LlmConfigs = LlmConfigs()
     embedding: EmbeddingConfigs = EmbeddingConfigs()
     scheduler: SchedulerConfigs = SchedulerConfigs()
+    rag: RAGConfigs = RAGConfigs()
 
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
