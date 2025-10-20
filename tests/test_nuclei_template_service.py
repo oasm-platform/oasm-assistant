@@ -34,69 +34,53 @@ requests:
 
 
 @pytest.fixture
-def mock_postgres_db():
-    """Mock postgres database"""
-    with patch('app.services.nuclei_template.postgres_db') as mock_db:
-        mock_session = Mock()
-        mock_db.get_session.return_value.__enter__.return_value = mock_session
-        mock_db.get_session.return_value.__exit__.return_value = None
-        mock_session.query.return_value.all.return_value = []
-        yield mock_db
+def mock_vector_store():
+    """Mock vector store"""
+    with patch('app.services.nuclei_template.PgVectorStore') as mock_vs:
+        mock_instance = Mock()
+        mock_vs.return_value = mock_instance
+        yield mock_instance
 
 
 @pytest.fixture
 def mock_hybrid_retriever():
-    """Mock HybridSearchEngine"""
-    with patch('app.services.nuclei_template.HybridSearchEngine') as mock_hr:
+    """Mock hybrid retriever"""
+    with patch('app.services.nuclei_template.HybridRetriever') as mock_hr:
         mock_instance = Mock()
 
-        # Mock successful hybrid search (Vector + Keyword)
-        mock_instance.search.return_value = [
+        # Mock successful retrieval
+        mock_instance.hybrid_search.return_value = [
             {
                 'id': 'template-1',
                 'score': 0.95,
-                'vector_score': 0.92,
-                'keyword_score': 0.88,
-                'sources': ['vector', 'keyword'],
+                'vec_score': 0.92,
+                'text_score': 0.88,
                 'metadata': {
-                    'name': 'SQL Injection Detection',
-                    'description': 'Detects SQL injection vulnerabilities',
-                    'template': 'yaml content here',
-                    'tags': 'sqli,injection'
+                    'title': 'SQL Injection Detection',
+                    'content': 'Detects SQL injection vulnerabilities'
                 }
             },
             {
                 'id': 'template-2',
                 'score': 0.87,
-                'vector_score': 0.85,
-                'keyword_score': 0.82,
-                'sources': ['vector', 'keyword'],
+                'vec_score': 0.85,
+                'text_score': 0.82,
                 'metadata': {
-                    'name': 'XSS Detection',
-                    'description': 'Detects cross-site scripting',
-                    'template': 'yaml content here',
-                    'tags': 'xss,injection'
+                    'title': 'XSS Detection',
+                    'content': 'Detects cross-site scripting'
                 }
             },
             {
                 'id': 'template-3',
                 'score': 0.78,
-                'vector_score': 0.75,
-                'keyword_score': 0.72,
-                'sources': ['vector'],
+                'vec_score': 0.75,
+                'text_score': 0.72,
                 'metadata': {
-                    'name': 'Command Injection',
-                    'description': 'Detects command injection vulnerabilities',
-                    'template': 'yaml content here',
-                    'tags': 'cmdi'
+                    'title': 'Command Injection',
+                    'content': 'Detects command injection vulnerabilities'
                 }
             }
         ]
-
-        # Mock load_vector_index
-        mock_instance.load_vector_index.return_value = Mock()
-        mock_instance.keyword_retriever = Mock()
-        mock_instance.keyword_retriever.index_documents = Mock()
 
         mock_hr.return_value = mock_instance
         yield mock_instance
@@ -115,56 +99,56 @@ def mock_configs():
 class TestNucleiTemplateService:
     """Test suite for NucleiTemplateService"""
 
-    def test_service_initialization(self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs):
+    def test_service_initialization(self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs):
         """Test service initialization"""
         service = NucleiTemplateService()
 
         assert service.llm_manager is not None
-        assert service.db is not None
-        assert service.search_engine is not None
+        assert service.vector_store is not None
+        assert service.hybrid_retriever is not None
 
     def test_retrieve_similar_templates_success(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test successful retrieval of similar templates"""
         service = NucleiTemplateService()
 
         context = service._retrieve_similar_templates("SQL injection detection", k=3)
 
-        assert "Reference Template" in context
+        assert "Here are some similar Nuclei templates for reference:" in context
         assert "SQL Injection Detection" in context
         assert "XSS Detection" in context
         assert "Command Injection" in context
-        assert "95" in context  # Check score is included (matches "95%", "0.95", or "95.00%")
+        assert "0.950" in context  # Check score is included
 
     def test_retrieve_similar_templates_no_results(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test retrieval when no similar templates found"""
         service = NucleiTemplateService()
 
         # Mock empty results
-        service.search_engine.search = Mock(return_value=[])
+        mock_hybrid_retriever.hybrid_search.return_value = []
 
         context = service._retrieve_similar_templates("test query", k=3)
 
         assert context == ""
 
     def test_retrieve_similar_templates_error(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test retrieval when error occurs"""
         service = NucleiTemplateService()
 
         # Mock error
-        service.search_engine.search = Mock(side_effect=Exception("Database error"))
+        mock_hybrid_retriever.hybrid_search.side_effect = Exception("Database error")
 
         context = service._retrieve_similar_templates("test query", k=3)
 
         assert context == ""
 
     def test_generate_template_with_rag(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test template generation with RAG context"""
         service = NucleiTemplateService()
@@ -172,7 +156,7 @@ class TestNucleiTemplateService:
         template = service._generate_template_with_llm("Create SQL injection template")
 
         # Verify RAG was used
-        assert service.search_engine.search.called
+        assert mock_hybrid_retriever.hybrid_search.called
 
         # Verify LLM was invoked
         assert mock_llm.get_llm.return_value.invoke.called
@@ -183,13 +167,13 @@ class TestNucleiTemplateService:
         assert "id: test-template" in template
 
     def test_generate_template_without_rag(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test template generation when RAG returns empty"""
         service = NucleiTemplateService()
 
         # Mock empty RAG results
-        service.search_engine.search.return_value = []
+        mock_hybrid_retriever.hybrid_search.return_value = []
 
         template = service._generate_template_with_llm("Create test template")
 
@@ -197,7 +181,7 @@ class TestNucleiTemplateService:
         assert "id: test-template" in template
 
     def test_create_template_grpc_endpoint_success(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test successful gRPC endpoint call"""
         service = NucleiTemplateService()
@@ -214,7 +198,7 @@ class TestNucleiTemplateService:
         assert not context.set_code.called  # No error
 
     def test_create_template_grpc_empty_question(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test gRPC endpoint with empty question"""
         service = NucleiTemplateService()
@@ -229,7 +213,7 @@ class TestNucleiTemplateService:
         context.set_details.assert_called_once_with("Question is required and cannot be empty")
 
     def test_create_template_grpc_llm_error(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test gRPC endpoint when LLM fails"""
         service = NucleiTemplateService()
@@ -248,7 +232,7 @@ class TestNucleiTemplateService:
         context.set_code.assert_called_once_with(grpc.StatusCode.INTERNAL)
 
     def test_template_cleanup_various_formats(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test template cleanup with various markdown formats"""
         service = NucleiTemplateService()
@@ -270,39 +254,44 @@ class TestNucleiTemplateService:
             assert result.strip() == expected.strip()
 
     def test_rag_context_formatting(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test RAG context is properly formatted"""
         service = NucleiTemplateService()
 
         context = service._retrieve_similar_templates("test", k=2)
 
-        # Check formatting (updated for new LlamaIndex format)
-        assert "Reference Template" in context
-        assert "Name:" in context
+        # Check formatting
+        assert "Here are some similar Nuclei templates for reference:" in context
+        assert "1. Template:" in context
         assert "Description:" in context
-        assert "Relevance:" in context
+        assert "Similarity Score:" in context
 
     def test_hybrid_search_parameters(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test hybrid search is called with correct parameters"""
         service = NucleiTemplateService()
 
         service._retrieve_similar_templates("test query", k=5)
 
-        # Check that hybrid_search was called (parameters changed with LlamaIndex)
-        assert service.search_engine.search.called
-        call_kwargs = service.search_engine.search.call_args.kwargs
-        assert call_kwargs.get('query') == 'test query'
-        assert call_kwargs.get('k') == 5
+        mock_hybrid_retriever.hybrid_search.assert_called_once_with(
+            table="nuclei_templates",
+            qtext="test query",
+            k=5,
+            id_col="template_id",
+            title_col="name",
+            content_col="description",
+            embedding_col="embedding",
+            tsv_col="tsv"
+        )
 
 
 class TestNucleiTemplateServiceIntegration:
     """Integration tests for the full workflow"""
 
     def test_full_workflow_with_rag(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test complete workflow from gRPC request to response with RAG"""
         service = NucleiTemplateService()
@@ -318,7 +307,7 @@ class TestNucleiTemplateServiceIntegration:
 
         # Verify workflow
         # 1. RAG retrieval was attempted
-        assert service.search_engine.search.called
+        assert mock_hybrid_retriever.hybrid_search.called
 
         # 2. LLM was invoked with enhanced context
         llm_call = mock_llm.get_llm.return_value.invoke.call_args
@@ -333,13 +322,13 @@ class TestNucleiTemplateServiceIntegration:
         assert not context.set_code.called
 
     def test_degradation_when_rag_fails(
-        self, mock_llm, mock_postgres_db, mock_hybrid_retriever, mock_configs
+        self, mock_llm, mock_vector_store, mock_hybrid_retriever, mock_configs
     ):
         """Test service still works when RAG fails"""
         service = NucleiTemplateService()
 
         # Mock RAG failure
-        service.search_engine.search.side_effect = Exception("DB error")
+        mock_hybrid_retriever.hybrid_search.side_effect = Exception("DB error")
 
         request = assistant_pb2.CreateTemplateRequest(
             question="Create test template"
@@ -355,7 +344,7 @@ class TestNucleiTemplateServiceIntegration:
 
     @patch('app.services.nuclei_template.NucleiGenerationPrompts')
     def test_prompt_enhancement_with_rag(
-        self, mock_prompts, mock_llm, mock_postgres_db,
+        self, mock_prompts, mock_llm, mock_vector_store,
         mock_hybrid_retriever, mock_configs
     ):
         """Test that prompt is enhanced with RAG context"""
@@ -366,5 +355,10 @@ class TestNucleiTemplateServiceIntegration:
 
         service._generate_template_with_llm("Create SQL injection template")
 
-        # Verify prompt was called
-        assert mock_prompts.get_nuclei_template_generation_prompt.called
+        # Verify prompt was called with enhanced question
+        call_args = mock_prompts.get_nuclei_template_generation_prompt.call_args
+        enhanced_question = call_args.kwargs['question']
+
+        # Should contain original question + RAG context
+        assert "Create SQL injection template" in enhanced_question
+        assert "Here are some similar Nuclei templates for reference:" in enhanced_question

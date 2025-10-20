@@ -35,17 +35,6 @@ class BaseEmbedding:
         """
         raise NotImplementedError("The encode method must be implemented by subclasses")
 
-    @property
-    def dim(self) -> int:
-        """
-        Get embedding dimension.
-
-        Returns:
-            Dimension of embedding vectors
-        """
-        raise NotImplementedError("The dim property must be implemented by subclasses")
-
-
 class APIBaseEmbedding(BaseEmbedding):
     """
     Base class for API-based embedding models (OpenAI, Google, Mistral, etc.)
