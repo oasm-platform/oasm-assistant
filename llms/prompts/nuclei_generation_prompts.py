@@ -13,86 +13,149 @@ class NucleiGenerationPrompts:
         Returns:
             Complete prompt for LLM
         """
-        # Base prompt with user request
-        base_prompt = f"""You are an expert security researcher specializing in creating Nuclei templates for vulnerability detection and security testing.
+        # System role and user request
+        base_prompt = f"""You are an expert Nuclei template developer with deep expertise in:
+- Web application security testing and vulnerability detection
+- Nuclei YAML template syntax and best practices
+- Crafting precise matchers to minimize false positives/negatives
+- Security standards (OWASP, CVE, CWE)
 
-USER REQUEST:
+# USER REQUEST
 {question}
 """
 
-        # Add RAG examples section if context is available
+        # Add RAG examples section if context is available (THIS IS CRITICAL!)
         if rag_context and rag_context.strip():
             rag_section = f"""
-REFERENCE TEMPLATES FROM DATABASE:
-Below are high-quality Nuclei templates from our database that are similar to your request. These are REAL, PRODUCTION templates that you should learn from.
+# REFERENCE TEMPLATES (High-Quality Production Examples)
+The following templates from our verified database are relevant to your request. Use them as authoritative examples of proper structure, syntax, and detection patterns.
 
 {rag_context}
 
-CRITICAL INSTRUCTIONS FOR USING REFERENCES:
-1. STUDY the reference templates above carefully - they show proven patterns and best practices
-2. ANALYZE their structure: how they define IDs, matchers, extractors, and detection logic
-3. LEARN from their syntax, naming conventions, and organization
-4. ADAPT relevant patterns to create your template - DO NOT copy verbatim
-5. If your request is similar to a reference, use it as inspiration but customize for the specific vulnerability
-6. Pay attention to how references handle edge cases, false positives, and detection accuracy
-7. Maintain the same level of quality and thoroughness as the references
+## How to Use These References:
+1. **Analyze Structure**: Study the ID format, info section, request configuration, and matcher logic
+2. **Learn Patterns**: Notice how matchers combine (status + word + regex) for accuracy
+3. **Adopt Best Practices**: Use similar tag conventions, severity assessment, and documentation style
+4. **Adapt, Don't Copy**: Customize the patterns for your specific use case - DO NOT copy verbatim
+5. **Maintain Quality**: Match or exceed the thoroughness and precision of these references
+
+---
 
 """
             base_prompt += rag_section
 
         # Add task description and requirements
         task_prompt = """
-YOUR TASK:
-Generate a complete, production-ready Nuclei template based on the user's request. The template should follow Nuclei's YAML syntax and best practices.
+# YOUR TASK
+Generate a **complete, production-ready Nuclei template** that follows official syntax and security best practices.
 
-NUCLEI TEMPLATE STRUCTURE:
-A Nuclei template typically includes:
-1. id: Unique identifier (lowercase, hyphenated, descriptive)
-2. info: Metadata section with:
-   - name: Clear, descriptive name of the vulnerability/check
-   - author: Template author (use your name or team)
-   - severity: info/low/medium/high/critical (choose appropriately)
-   - description: Detailed explanation of what this detects and why it matters
-   - tags: Relevant tags for categorization (e.g., cve, exposure, misconfiguration)
-   - reference: URLs to CVE details, advisories, or documentation (if applicable)
-   - metadata: Additional context like CVE IDs, affected products, etc.
-3. requests: HTTP/Network requests configuration with:
-   - method: GET/POST/PUT/DELETE/PATCH etc.
-   - path: Target paths/endpoints to test (use variables like {{BaseURL}})
-   - headers: Custom headers if needed
-   - body: Request body for POST/PUT (if applicable)
-   - matchers-condition: and/or - how to combine matchers
-   - matchers: Detection conditions (word, regex, status, dsl, binary)
-   - extractors: Data extraction rules (optional, for gathering info)
+# NUCLEI TEMPLATE ANATOMY
 
-BEST PRACTICES:
-1. Create specific, accurate matchers to minimize false positives
-2. Use multiple matcher types together (e.g., status + word) for reliability
-3. Include multiple path variations to improve coverage
-4. Add meaningful tags that help categorization and searching
-5. Write clear descriptions that explain the security impact
-6. Use regex matchers for flexible pattern matching when needed
-7. Test for specific error messages or response patterns unique to the vulnerability
-8. Consider different HTTP methods if the vulnerability can be triggered multiple ways
-9. Use DSL matchers for complex logic (e.g., response time, size checks)
-10. Include extractors to pull out useful information like versions, tokens, etc.
+## Required Components:
 
-COMMON TEMPLATE PATTERNS:
+### 1. ID Field
+```yaml
+id: descriptive-component-vuln-name
+```
+- Lowercase with hyphens
+- Format: `[type]-[component]-[description]` or `cve-YYYY-NNNNN-component`
+- Examples: `apache-struts-rce`, `cve-2021-44228-log4j`
 
-For CVE/Vulnerability Detection:
+### 2. Info Section
+```yaml
+info:
+  name: "Clear Vulnerability/Check Name"
+  author: security-team
+  severity: critical|high|medium|low|info
+  description: |
+    Comprehensive explanation of:
+    - What vulnerability/issue is detected
+    - Security impact and risk
+    - Affected versions/components
+  reference:
+    - https://nvd.nist.gov/vuln/detail/CVE-YYYY-NNNNN
+    - https://vendor-advisory.com
+  tags: cve,cve-yyyy,product,category
+  metadata:
+    verified: true
+    max-request: 1
+```
+
+### 3. Requests Section
+```yaml
+requests:
+  - method: GET
+    path:
+      - "{{{{BaseURL}}}}/path/to/test"
+      - "{{{{BaseURL}}}}/alternative/path"
+
+    headers:
+      User-Agent: "Custom-Agent"
+
+    matchers-condition: and  # or 'or'
+    matchers:
+      - type: status
+        status: [200, 201]
+
+      - type: word
+        words:
+          - "error_signature"
+          - "vulnerable_version"
+        condition: and
+        part: body
+
+      - type: regex
+        regex:
+          - 'vulnerability_pattern_\d+'
+        part: body
+```
+
+# QUALITY GUIDELINES
+
+## Matcher Best Practices:
+✅ **DO:**
+- Combine multiple matcher types (status + word + regex) for high accuracy
+- Use specific, unique error signatures to avoid false positives
+- Include multiple path variations for better coverage
+- Set `matchers-condition: and` for stricter matching (preferred)
+- Test status codes, response bodies, AND headers when applicable
+- Use `part: body|header|all` to specify where to match
+
+❌ **DON'T:**
+- Rely on single generic matchers (e.g., only status 200)
+- Use overly broad regex patterns that match unrelated content
+- Forget to specify matcher conditions when using multiple matchers
+- Create templates without understanding the vulnerability being detected
+
+## Severity Assessment:
+- **Critical**: RCE, authentication bypass, direct data exposure
+- **High**: SQL injection, XSS (stored), privilege escalation
+- **Medium**: CSRF, XSS (reflected), information disclosure
+- **Low**: Minor misconfigurations, verbose errors
+- **Info**: Version detection, non-security checks
+
+# TEMPLATE PATTERNS BY TYPE
+
+## Pattern 1: CVE Vulnerability Detection
 ```yaml
 id: cve-YYYY-NNNNN-component
 
 info:
-  name: Component - Vulnerability Description
-  author: researcher-name
-  severity: critical/high/medium/low
+  name: Component Version - Specific Vulnerability Name
+  author: security-team
+  severity: critical
   description: |
-    Detailed description of the vulnerability, impact, and affected versions.
+    Detects CVE-YYYY-NNNNN in ComponentName affecting versions X.X to Y.Y.
+    This vulnerability allows [attack vector] leading to [impact].
+    Successful exploitation can result in [consequences].
   reference:
     - https://nvd.nist.gov/vuln/detail/CVE-YYYY-NNNNN
-    - https://vendor-advisory-url
-  tags: cve,cve-yyyy,component-name,severity-level
+    - https://vendor-advisory.com/CVE-YYYY-NNNNN
+  tags: cve,cve-yyyy,component,rce
+  classification:
+    cvss-metrics: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+    cvss-score: 9.8
+    cve-id: CVE-YYYY-NNNNN
   metadata:
     verified: true
     max-request: 2
@@ -100,72 +163,121 @@ info:
 requests:
   - method: GET
     path:
-      - "{{{{BaseURL}}}}/vulnerable/path"
-      - "{{{{BaseURL}}}}/alternative/path"
+      - "{{{{BaseURL}}}}/vulnerable/endpoint"
+      - "{{{{BaseURL}}}}/api/vulnerable/path"
 
     matchers-condition: and
     matchers:
       - type: status
-        status:
-          - 200
+        status: [200, 500]
 
       - type: word
         words:
-          - "unique_error_identifier"
-          - "version_indicator"
-        condition: and
+          - "unique_error_string"
+          - "stack_trace_indicator"
+        condition: or
+        part: body
 
       - type: regex
         regex:
-          - 'pattern_specific_to_vulnerability'
+          - 'ComponentName[/\s]+(v)?[0-9]+\.[0-9]+\.[0-9]+'
+        part: body
 ```
 
-For Exposure/Misconfiguration Detection:
+## Pattern 2: Exposed Panel/Resource Detection
 ```yaml
-id: exposed-resource-panel
+id: exposed-admin-panel
 
 info:
-  name: Exposed Resource Panel
-  author: researcher-name
+  name: Exposed Administration Panel
+  author: security-team
   severity: medium
   description: |
-    Detects publicly accessible administration/sensitive panel.
-  tags: exposure,misconfig,panel
+    Detects publicly accessible administration panels that should be protected.
+    Exposure increases attack surface and may lead to unauthorized access attempts.
+  tags: exposure,panel,misconfig
+  metadata:
+    max-request: 3
 
 requests:
   - method: GET
     path:
       - "{{{{BaseURL}}}}/admin"
-      - "{{{{BaseURL}}}}/dashboard"
+      - "{{{{BaseURL}}}}/admin/login"
+      - "{{{{BaseURL}}}}/administrator"
 
-    matchers-condition: or
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: [200]
+
+      - type: word
+        words:
+          - "Admin Login"
+          - "Administration Panel"
+          - "Dashboard Login"
+        condition: or
+        part: body
+        case-insensitive: true
+```
+
+## Pattern 3: Configuration/Disclosure Issue
+```yaml
+id: service-info-disclosure
+
+info:
+  name: Service Information Disclosure
+  author: security-team
+  severity: low
+  description: |
+    Detects verbose error messages or debug information leaking sensitive details
+    about the application's configuration, versions, or internal structure.
+  tags: exposure,info-disclosure,config
+  metadata:
+    max-request: 1
+
+requests:
+  - method: GET
+    path:
+      - "{{{{BaseURL}}}}/debug"
+      - "{{{{BaseURL}}}}/actuator/env"
+
     matchers:
       - type: word
         words:
-          - "Login Panel"
-          - "Administration"
+          - "Database Connection"
+          - "API Key"
+          - "Secret"
+        condition: or
         part: body
+        case-insensitive: true
 
       - type: status
-        status:
-          - 200
+        status: [200]
 ```
 
-REQUIREMENTS:
-1. Generate ONLY the YAML template code, no additional explanations before or after
-2. Use proper YAML syntax with correct indentation (2 spaces)
-3. Include appropriate matchers based on the vulnerability type
-4. Set realistic severity levels based on actual security impact
-5. Add relevant, searchable tags
-6. Use {{{{BaseURL}}}} for dynamic URL construction
-7. Include multiple path variations when applicable
-8. Use appropriate matcher types: word, regex, status, dsl, binary
-9. Add clear descriptions that explain what the template detects and why it matters
-10. Follow the patterns shown in reference templates (if provided)
+# CRITICAL OUTPUT REQUIREMENTS
 
-OUTPUT FORMAT:
-Return ONLY the complete YAML template code, properly formatted and ready to use with Nuclei.
-Do not include markdown code blocks (no ```yaml or ```) or any explanations - just the raw YAML content starting with 'id:'.
+⚠️ **IMPORTANT**: Your response must contain ONLY the YAML template code.
+
+**Format Rules:**
+1. ✅ Start directly with `id:` (no explanation before)
+2. ✅ Use 2-space indentation (not tabs)
+3. ✅ End with the last line of YAML (no explanation after)
+4. ❌ NO markdown code blocks (no \`\`\`yaml or \`\`\`)
+5. ❌ NO explanatory text or comments outside the YAML
+6. ✅ Use `{{{{BaseURL}}}}` with 4 curly braces for URL variables
+7. ✅ Follow exact YAML syntax from reference templates (if provided)
+
+**Quality Checklist:**
+- [ ] ID is descriptive and follows naming convention
+- [ ] Severity matches the actual security impact
+- [ ] Description explains what, why, and impact
+- [ ] Matchers are specific enough to avoid false positives
+- [ ] Multiple matcher types used together (status + word/regex)
+- [ ] Tags are relevant and searchable
+- [ ] References included (for CVEs)
+- [ ] Paths include common variations
 """
 
         return base_prompt + task_prompt

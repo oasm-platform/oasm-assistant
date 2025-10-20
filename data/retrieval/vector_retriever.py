@@ -51,8 +51,9 @@ class VectorRetriever:
 
         # Set global settings for LlamaIndex
         Settings.embed_model = self.embed_model
-        Settings.chunk_size = 512
-        Settings.chunk_overlap = 50
+        # Use larger chunk size to handle large metadata (especially for templates with long YAML content)
+        Settings.chunk_size = 2048
+        Settings.chunk_overlap = 100
 
         # Initialize PostgreSQL vector store
         self.vector_store = self._create_vector_store()

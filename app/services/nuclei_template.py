@@ -34,13 +34,9 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         # Load existing index from database
         try:
             self.search_engine.load_vector_index()
-            # Load BM25 data from database
             self._load_bm25_index()
-            logger.info("Hybrid search engine initialized and loaded from database")
         except Exception as e:
             logger.warning(f"Failed to load existing index: {e}. Will create new index when needed.")
-
-        logger.info("NucleiTemplateService initialized with Hybrid RAG (Vector + Keyword search)")
 
     def _load_bm25_index(self):
         """Load all documents from database to build BM25 index"""
@@ -49,7 +45,6 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                 templates = session.query(NucleiTemplates).all()
 
                 if not templates:
-                    logger.info("No templates found in database for BM25 indexing")
                     return
 
                 # Convert to document format for BM25
@@ -70,16 +65,8 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                         'metadata': metadata
                     })
 
-                # Build BM25 index
-                logger.info(f"Indexing {len(documents)} templates for BM25...")
-                self.search_engine.keyword_retriever_documents = [doc['text'] for doc in documents]
-                self.search_engine.keyword_retriever_metadata = [doc['metadata'] for doc in documents]
-
-                from rank_bm25 import BM25Okapi
-                tokenized_docs = [doc['text'].lower().split() for doc in documents]
-                self.search_engine.keyword_retriever_index = BM25Okapi(tokenized_docs)
-
-                logger.info(f"BM25 index built with {len(documents)} documents")
+                # Build BM25 index using proper API
+                self.search_engine.keyword_retriever.index_documents(documents)
 
         except Exception as e:
             logger.error(f"Failed to load BM25 index: {e}")
@@ -107,10 +94,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             )
 
             if not results:
-                logger.info("No similar templates found")
                 return ""
-
-            logger.info(f"Retrieved {len(results)} high-quality templates (threshold: {similarity_threshold})")
 
             # Format retrieved templates as clean context for LLM
             context_parts = []
@@ -145,7 +129,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             return "\n".join(context_parts)
 
         except Exception as e:
-            logger.warning(f"Failed to retrieve similar templates: {e}", exc_info=True)
+            logger.error(f"Failed to retrieve similar templates: {e}")
             return ""
 
     def _generate_template_with_llm(self, question: str) -> str:
@@ -161,31 +145,17 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         try:
             llm = self.llm_manager.get_llm()
 
-            # Retrieve similar templates using hybrid search (vector + keyword)
-            # k=3 is optimal (not too many to confuse, not too few to lack context)
-            # threshold=0.55 ensures only relevant templates are included
+            # Retrieve similar templates using hybrid search
             rag_context = self._retrieve_similar_templates(
                 question=question,
                 k=3,
                 similarity_threshold=0.55
             )
 
-            # Debug logging (visible in service logs)
-            if rag_context:
-                logger.info(f"RAG: Found {len([l for l in rag_context.split('---') if l.strip()])} relevant templates")
-                print("=" * 80)
-                print("RAG CONTEXT (Hybrid Search: Vector/HNSW + Keyword/BM25):")
-                print("=" * 80)
-                print(rag_context[:500] + "..." if len(rag_context) > 500 else rag_context)
-                print("=" * 80)
-            else:
-                logger.info("RAG: No relevant templates found, generating from base knowledge")
-                print("No RAG context - generating template from LLM base knowledge only")
-
-            # Pass RAG context directly to prompt (NEW: proper parameter)
+            # Generate prompt with RAG context
             prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(
                 question=question,
-                rag_context=rag_context  # Properly structured now
+                rag_context=rag_context
             )
 
             # Invoke LLM to generate template
@@ -204,8 +174,6 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                 template = template[:-3]  # Remove trailing ```
 
             template = template.strip()
-
-            logger.info(f"Successfully generated template (length: {len(template)} chars)")
 
             return template
 
