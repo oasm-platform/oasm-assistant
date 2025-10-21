@@ -3,6 +3,7 @@ grpcio==1.60.0
 grpcio-tools==1.60.0
 grpcio-status==1.60.0
 googleapis-common-protos==1.62.0
+watchfiles
 
 pydantic
 pydantic-settings
