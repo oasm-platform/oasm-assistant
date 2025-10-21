@@ -37,7 +37,7 @@ python-docx
 langgraph
 
 # Logging
-python-json-logger
+loguru
 
 # Utilities
 aiohttp

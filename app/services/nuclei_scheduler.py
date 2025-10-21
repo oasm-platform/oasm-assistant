@@ -8,7 +8,6 @@ import time
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
-import logging
 
 from common.logger import logger
 from common.config import configs
@@ -16,9 +15,7 @@ from data.database import postgres_db
 from data.database.models import NucleiTemplates
 from data.embeddings import get_embedding_model
 from sqlalchemy import delete, text
-
-# Disable progress bars from sentence_transformers
-logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+from common.logger import logger
 
 
 class NucleiTemplatesScheduler:

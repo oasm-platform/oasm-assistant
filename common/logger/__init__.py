@@ -1,5 +1,7 @@
 from .logger import setup_logging
+from loguru import logger
 
-logger = setup_logging()
+# Initialize logging configuration
+setup_logging()
 
-__all__ = ["logger"]
+__all__ = ["logger", "setup_logging"]

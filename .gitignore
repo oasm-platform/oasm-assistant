@@ -211,3 +211,7 @@ chroma_data/
 
 .claude/
 .vscode/
+
+# Log files
+logs/
+*.log

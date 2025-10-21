@@ -1,20 +1,20 @@
-import logging
 from pathlib import Path
 from typing import Dict
 from pypdf import PdfReader
 from .base_extractor import FileExtractor
+from common.logger import logger
 
 
 class PDFExtractor(FileExtractor):
     def __init__(self, base_folder: str = "knowledge/documents/pdfs"):
         """
         PDFExtractor: Extract text from PDF files or entire PDF folder
-        
+
         Args:
             base_folder: Directory containing PDF files
         """
         self.base_folder = Path(base_folder)
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger
         
         # Configuration
         self.max_file_size_mb = 100  # Maximum PDF file size in MB
