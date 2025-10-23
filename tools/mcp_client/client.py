@@ -171,15 +171,24 @@ class MCPClient:
             self._read = None
             self._write = None
 
-    def is_connected(self) -> bool:
-        """Check connection status"""
-        return self.session is not None
+    async def is_connected(self) -> bool:
+        """Check connection status with actual communication test"""
+        if not self.session:
+            return False
+        
+        try:
+            # Perform a lightweight operation to verify connection 
+            await self.session.list_tools()
+            return True
+        except Exception:
+            return False
 
     def get_info(self) -> Dict[str, Any]:
         """Get client info"""
+        # Return basic info about the client and connection status 
         return {
             "name": self.server.name,
-            "connected": self.is_connected(),
+            "connected": self.session is not None,
             "transport": self.server.transport_type,
         }
 

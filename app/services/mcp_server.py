@@ -7,7 +7,7 @@ from common.logger import logger
 from grpc import StatusCode
 from app.interceptors import get_metadata_interceptor
 from uuid import UUID
-import json
+from google.protobuf.json_format import MessageToDict, ParseDict
 import asyncio
 import threading
 from typing import Optional
@@ -138,16 +138,20 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
 
         server_dict = server.to_dict()
 
-        return assistant_pb2.MCPServer(
+        # Convert mcp_config dict to Struct
+        proto_server = assistant_pb2.MCPServer(
             id=str(server_dict.get('id', '')),
-            workspace_id=str(server_dict.get('workspace_id', '')),
-            user_id=str(server_dict.get('user_id', '')),
-            mcp_config=json.dumps(server_dict.get('mcp_config', {})),
             server_status=server_dict.get('server_status', 'inactive'),
-            latency=server_dict.get('latency', 0),
             created_at=server_dict.get('created_at', ''),
             updated_at=server_dict.get('updated_at', '')
         )
+
+        # Use ParseDict to convert dict to Struct
+        mcp_config = server_dict.get('mcp_config', {})
+        if mcp_config:
+            ParseDict(mcp_config, proto_server.mcp_config)
+
+        return proto_server
 
     @get_metadata_interceptor
     def AddMCPServer(self, request, context):
@@ -156,14 +160,8 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
 
-            # Parse mcp_config from JSON
-            try:
-                mcp_config = json.loads(request.mcp_config)
-            except json.JSONDecodeError as e:
-                context.set_code(StatusCode.INVALID_ARGUMENT)
-                msg = f"Invalid JSON in mcp_config: {e}"
-                context.set_details(msg)
-                return assistant_pb2.AddMCPServerResponse(success=False, message=msg)
+            # Convert Struct to dict
+            mcp_config = MessageToDict(request.mcp_config, preserving_proto_field_name=True)
 
             # Validate required fields in config
             if not mcp_config.get('name'):
@@ -217,7 +215,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
 
     @get_metadata_interceptor
     def ListMCPServers(self, request, context):
-        """List all MCP servers for a workspace and user"""
+        """List all MCP servers for a workspace and user, checking and updating their active status"""
         try:
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
@@ -230,9 +228,64 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
 
                 servers = query.all()
 
-                # Filter by active status if requested
-                if request.only_active:
-                    servers = [s for s in servers if s.mcp_config.get('is_active', False)]
+                # Get manager to check connection status
+                manager = self._get_manager(workspace_id, user_id)
+                
+                # Ensure manager has initialized connections
+                # Only initialize if clients haven't been loaded yet
+                if not manager.clients:
+                    try:
+                        self._run_async(manager.initialize())
+                    except Exception as e:
+                        logger.error(f"Failed to initialize MCP manager: {e}")
+
+                # Update server_status for each server based on actual connection
+                for server in servers:
+                    # If manually disabled by user, don't check connection
+                    if server.server_status == ServerStatus.DISABLED.value:
+                        # Keep as disabled, don't check connection
+                        continue
+
+                    # Check actual connection status
+                    client = manager.clients.get(server.name)
+                    if client:
+                        # Use the async is_connected method through the event loop
+                        try:
+                            is_connected = self._run_async(client.is_connected())
+                        except Exception:
+                            # If async check fails, assume disconnected
+                            is_connected = False
+                    else:
+                        # If no client exists, try to connect to this specific server
+                        try:
+                            self._run_async(manager._connect(server))
+                            # Check if connection was successful
+                            client = manager.clients.get(server.name)
+                            if client:
+                                is_connected = self._run_async(client.is_connected())
+                            else:
+                                is_connected = False
+                        except Exception as e:
+                            is_connected = False
+
+                    # Determine new status based on connection
+                    new_status = ServerStatus.ACTIVE.value if is_connected else ServerStatus.INACTIVE.value
+
+                    if server.server_status != new_status:
+                        old_status = server.server_status
+                        server.server_status = new_status
+
+                    # Also update is_active in config for backward compatibility
+                    old_is_active = server.mcp_config.get('is_active', False)
+                    new_is_active = is_connected
+
+                    if old_is_active != new_is_active:
+                        updated_config = server.mcp_config.copy()
+                        updated_config['is_active'] = new_is_active
+                        server.mcp_config = updated_config
+
+                # Commit all updates
+                session.commit()
 
                 # Sort by priority
                 servers.sort(key=lambda s: s.mcp_config.get('priority', 0), reverse=True)
@@ -249,69 +302,15 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
             return assistant_pb2.ListMCPServersResponse()
 
     @get_metadata_interceptor
-    def GetMCPServerStatus(self, request, context):
-        """Get status of a specific MCP server"""
-        try:
-            workspace_id = UUID(context.workspace_id)
-            user_id = UUID(context.user_id)
-            server_id = UUID(request.server_id)
-
-            with self.db.get_session() as session:
-                server = self._get_server_by_id(session, server_id, workspace_id, user_id)
-                if not server:
-                    context.set_code(StatusCode.NOT_FOUND)
-                    context.set_details("Server not found")
-                    return assistant_pb2.GetMCPServerStatusResponse()
-
-                manager = self._get_manager(workspace_id, user_id)
-                client = manager.clients.get(server.name)
-
-                is_connected = client.is_connected() if client else False
-
-                # Determine status
-                is_active = server.mcp_config.get('is_active', False)
-                if not is_active:
-                    status = assistant_pb2.STOPPED
-                elif client and is_connected:
-                    status = assistant_pb2.RUNNING
-                else:
-                    status = assistant_pb2.ERROR
-
-                status_message = "Inactive" if not is_active else ("Connected" if is_connected else "Disconnected")
-
-                return assistant_pb2.GetMCPServerStatusResponse(
-                    server_id=str(server.id),
-                    server_name=server.name,
-                    status=status,
-                    status_message=status_message,
-                    is_connected=is_connected,
-                    uptime_seconds=0,  # TODO: Implement uptime tracking
-                    last_error='',  # TODO: Implement error tracking
-                    last_ping=''  # TODO: Implement ping tracking
-                )
-
-        except Exception as e:
-            logger.error(f"Error getting MCP server status: {e}")
-            context.set_code(StatusCode.INTERNAL if not isinstance(e, ValueError) else StatusCode.INVALID_ARGUMENT)
-            context.set_details(str(e))
-            return assistant_pb2.GetMCPServerStatusResponse()
-
-    @get_metadata_interceptor
     def UpdateMCPServer(self, request, context):
         """Update an existing MCP server"""
         try:
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
-            server_id = UUID(request.server_id)
+            server_id = UUID(request.mcp_server_id)
 
-            # Parse mcp_config from JSON
-            try:
-                new_config = json.loads(request.mcp_config)
-            except json.JSONDecodeError as e:
-                context.set_code(StatusCode.INVALID_ARGUMENT)
-                msg = f"Invalid JSON in mcp_config: {e}"
-                context.set_details(msg)
-                return assistant_pb2.UpdateMCPServerResponse(success=False, message=msg)
+            # Convert Struct to dict
+            new_config = MessageToDict(request.mcp_config, preserving_proto_field_name=True)
 
             with self.db.get_session() as session:
                 server = self._get_server_by_id(session, server_id, workspace_id, user_id)
@@ -320,6 +319,19 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
                     msg = "Server not found"
                     context.set_details(msg)
                     return assistant_pb2.UpdateMCPServerResponse(success=False, message=msg)
+
+                # Update server_status if provided
+                if request.server_status:
+                    # Validate status value
+                    valid_statuses = [ServerStatus.ACTIVE.value, ServerStatus.INACTIVE.value, ServerStatus.DISABLED.value]
+                    if request.server_status not in valid_statuses:
+                        context.set_code(StatusCode.INVALID_ARGUMENT)
+                        msg = f"Invalid server_status: {request.server_status}. Must be one of: {', '.join(valid_statuses)}"
+                        context.set_details(msg)
+                        return assistant_pb2.UpdateMCPServerResponse(success=False, message=msg)
+
+                    if request.server_status != server.server_status:
+                        server.server_status = request.server_status
 
                 # Check if critical fields changed (requires reconnection)
                 old_config = server.mcp_config
@@ -357,7 +369,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
         try:
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
-            server_id = UUID(request.server_id)
+            server_id = UUID(request.mcp_server_id)
 
             with self.db.get_session() as session:
                 server = self._get_server_by_id(session, server_id, workspace_id, user_id)

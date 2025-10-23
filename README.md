@@ -1,4 +1,4 @@
-# OASM ASSISTANT
+# 🤖 OASM ASSISTANT
 
 **Support in Managing, Monitoring, and Preventing Attack Surfaces**
 

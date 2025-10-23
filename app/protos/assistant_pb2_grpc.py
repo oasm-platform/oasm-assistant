@@ -575,11 +575,6 @@ class MCPServerServiceStub(object):
                 request_serializer=app_dot_protos_dot_assistant__pb2.ListMCPServersRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.ListMCPServersResponse.FromString,
                 )
-        self.GetMCPServerStatus = channel.unary_unary(
-                '/app.MCPServerService/GetMCPServerStatus',
-                request_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServerStatusRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServerStatusResponse.FromString,
-                )
         self.UpdateMCPServer = channel.unary_unary(
                 '/app.MCPServerService/UpdateMCPServer',
                 request_serializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServerRequest.SerializeToString,
@@ -610,12 +605,6 @@ class MCPServerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetMCPServerStatus(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def UpdateMCPServer(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -640,11 +629,6 @@ def add_MCPServerServiceServicer_to_server(servicer, server):
                     servicer.ListMCPServers,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.ListMCPServersRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.ListMCPServersResponse.SerializeToString,
-            ),
-            'GetMCPServerStatus': grpc.unary_unary_rpc_method_handler(
-                    servicer.GetMCPServerStatus,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServerStatusRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServerStatusResponse.SerializeToString,
             ),
             'UpdateMCPServer': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateMCPServer,
@@ -700,23 +684,6 @@ class MCPServerService(object):
         return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/ListMCPServers',
             app_dot_protos_dot_assistant__pb2.ListMCPServersRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.ListMCPServersResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def GetMCPServerStatus(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/GetMCPServerStatus',
-            app_dot_protos_dot_assistant__pb2.GetMCPServerStatusRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.GetMCPServerStatusResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
