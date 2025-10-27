@@ -68,10 +68,20 @@ class MCPManager:
             logger.error(f"Connect failed {server.name}: {e}")
 
     async def call_tool(self, server: str, tool: str, args: Dict = None) -> Optional[Dict]:
-        """Call a tool"""
+        """
+        Call a tool on an MCP server.
+
+        Lazily initializes connections on first call if not already initialized.
+        """
+        # Lazy initialization - connect on first use
+        if not self.clients:
+            await self.initialize()
+
         client = self.clients.get(server)
         if not client or not client.is_connected():
+            logger.warning(f"MCP server '{server}' not connected")
             return None
+
         return await client.call_tool(tool, args)
 
     async def get_all_tools(self) -> Dict[str, List[Dict]]:
