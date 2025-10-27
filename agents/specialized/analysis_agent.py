@@ -4,6 +4,7 @@ Comprehensive vulnerability assessment and reporting based on OASM scan results
 """
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
@@ -76,7 +77,21 @@ class AnalysisAgent(BaseAgent):
     7. Create comprehensive reports
     """
 
-    def __init__(self, db_session: Session, mcp_manager: Optional['MCPManager'] = None, **kwargs):
+    def __init__(
+        self,
+        db_session: Session,
+        workspace_id: Optional['UUID'] = None,
+        user_id: Optional['UUID'] = None,
+        **kwargs
+    ):
+        """
+        Initialize Analysis Agent
+
+        Args:
+            db_session: Database session for knowledge repositories
+            workspace_id: Workspace ID for MCP integration (optional)
+            user_id: User ID for MCP integration (optional)
+        """
         super().__init__(
             name="AnalysisAgent",
             role=AgentRole.ANALYSIS_AGENT,
@@ -101,11 +116,22 @@ class AnalysisAgent(BaseAgent):
             **kwargs
         )
 
-        # MCP integration
-        self.mcp_manager = mcp_manager
-        self._mcp_enabled = mcp_manager is not None and MCP_AVAILABLE
-
         self.session = db_session
+
+        # MCP integration - create manager internally if workspace/user provided
+        if workspace_id and user_id and MCP_AVAILABLE:
+            try:
+                from data.database import postgres_db
+                self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
+                self._mcp_enabled = True
+                logger.debug(f"MCP manager created for workspace {workspace_id}")
+            except Exception as e:
+                logger.warning(f"Failed to create MCP manager: {e}")
+                self.mcp_manager = None
+                self._mcp_enabled = False
+        else:
+            self.mcp_manager = None
+            self._mcp_enabled = False
 
         # Initialize repositories
         self.owasp_repo = OWASPMappingRepository(db_session)
