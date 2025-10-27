@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, TypedDict
+from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
 import re
 
 from langchain_core.messages import HumanMessage
@@ -12,6 +12,9 @@ from agents.specialized import (
     IncidentResponseAgent,
     OrchestrationAgent
 )
+
+if TYPE_CHECKING:
+    from tools.mcp_client import MCPManager
 
 
 
@@ -29,10 +32,26 @@ class SecurityWorkflowState(TypedDict):
 
 
 class SecurityCoordinator:
-    def __init__(self):
+    def __init__(
+        self,
+        db_session: Optional[Any] = None,
+        workspace_id: Optional[Any] = None,
+        user_id: Optional[Any] = None
+    ):
+        """
+        Initialize Security Coordinator
+
+        Args:
+            db_session: Database session for agents
+            workspace_id: Workspace ID for MCP integration (optional)
+            user_id: User ID for MCP integration (optional)
+        """
+        self.db_session = db_session
+        self.workspace_id = workspace_id
+        self.user_id = user_id
         self.available_agents = self._create_agent_registry()
         self.workflow_graph = self._build_workflow_graph()
-        logger.info("Security coordinator initialized")
+        logger.info(f"Security coordinator initialized (DB: {'enabled' if db_session else 'disabled'}, MCP context: workspace={workspace_id}, user={user_id})")
 
     def _create_agent_registry(self) -> Dict[str, type]:
         """Create registry of available security agents"""
@@ -173,7 +192,24 @@ class SecurityCoordinator:
                 state["error"] = f"{description} agent not available"
                 return state
 
-            agent = agent_class()
+            # Create agent with appropriate parameters
+            if agent_key == "orchestration":
+                # OrchestrationAgent needs db_session, workspace_id, user_id
+                agent = agent_class(
+                    db_session=self.db_session,
+                    workspace_id=self.workspace_id,
+                    user_id=self.user_id
+                )
+            elif agent_key == "analysis":
+                # AnalysisAgent creates MCP manager internally if workspace/user provided
+                agent = agent_class(
+                    db_session=self.db_session,
+                    workspace_id=self.workspace_id,
+                    user_id=self.user_id
+                )
+            else:
+                # Other agents don't need special parameters yet
+                agent = agent_class()
 
             task = {
                 "action": action,

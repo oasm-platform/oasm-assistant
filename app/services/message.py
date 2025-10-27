@@ -94,9 +94,13 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         context.set_details("Conversation not found")
                         return assistant_pb2.CreateMessageResponse()
 
-                # Initialize SecurityCoordinator and process question
+                # Initialize SecurityCoordinator with workspace/user context
                 logger.info("Processing question with SecurityCoordinator...")
-                coordinator = SecurityCoordinator()
+                coordinator = SecurityCoordinator(
+                    db_session=session,
+                    workspace_id=workspace_id,
+                    user_id=user_id
+                )
 
                 try:
                     # Generate answer using updated security agents
@@ -180,7 +184,11 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 # If question changed, regenerate answer
                 if old_question.strip() != new_question.strip():
                     logger.info("Question changed, regenerating answer with SecurityCoordinator...")
-                    coordinator = SecurityCoordinator()
+                    coordinator = SecurityCoordinator(
+                        db_session=session,
+                        workspace_id=workspace_id,
+                        user_id=user_id
+                    )
 
                     try:
                         # Generate new answer using updated security agents
