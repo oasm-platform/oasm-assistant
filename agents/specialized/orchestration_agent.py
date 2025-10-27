@@ -1,12 +1,14 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+from sqlalchemy.orm import Session
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
 from common.logger import logger
 from llms.prompts import SecurityAgentPrompts
+from agents.specialized.analysis_agent import AnalysisAgent, VulnerabilityContext
 
 
 class OrchestrationAgent(BaseAgent):
-    def __init__(self, **kwargs):
+    def __init__(self, db_session: Optional[Session] = None, mcp_manager: Optional['MCPManager'] = None, **kwargs):
         super().__init__(
             name="OrchestrationAgent",
             role=AgentRole.ORCHESTRATION_AGENT,
@@ -35,6 +37,13 @@ class OrchestrationAgent(BaseAgent):
             ],
             **kwargs
         )
+
+        # Initialize specialized agents
+        self.db_session = db_session
+        self.mcp_manager = mcp_manager
+        self.analysis_agent = None
+        if db_session:
+            self.analysis_agent = AnalysisAgent(db_session=db_session, mcp_manager=mcp_manager)
 
     def setup_tools(self) -> List[Any]:
         return [
@@ -73,11 +82,13 @@ class OrchestrationAgent(BaseAgent):
                 return self._make_decision(task)
             elif action == "monitor_system":
                 return self._monitor_system(task)
+            elif action == "analyze_vulnerabilities":
+                return self._analyze_vulnerabilities(task)
             else:
                 return {"success": False, "error": f"Unknown action: {action}"}
 
         except Exception as e:
-            logger.error(f"Orchestration task failed: {e}")
+            logger.error(f"Orchestration task failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     def _coordinate_workflow(self, task: Dict[str, Any]) -> Dict[str, Any]:
@@ -210,3 +221,73 @@ class OrchestrationAgent(BaseAgent):
             "monitoring": monitoring_result,
             "agent": self.name
         }
+
+    def _analyze_vulnerabilities(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Delegate vulnerability analysis to Analysis Agent
+
+        Task format:
+        {
+            "action": "analyze_vulnerabilities",
+            "scan_results": [...],  # Optional if scan_id provided
+            "scan_id": "scan-123",  # Optional, will fetch via MCP
+            "context": {
+                "environment": "production",
+                "data_sensitivity": "payment",
+                ...
+            },
+            "standards": ["OWASP", "PCI-DSS"]
+        }
+        """
+        if not self.analysis_agent:
+            return {
+                "success": False,
+                "error": "Analysis Agent not initialized. Database session required.",
+                "agent": self.name
+            }
+
+        try:
+            # Extract parameters
+            scan_results = task.get("scan_results")
+            scan_id = task.get("scan_id")
+            context_data = task.get("context", {})
+            standards = task.get("standards", ["OWASP"])
+
+            # Create VulnerabilityContext
+            context = VulnerabilityContext(
+                environment=context_data.get("environment", "production"),
+                data_sensitivity=context_data.get("data_sensitivity", "general"),
+                exposure=context_data.get("exposure", "internal"),
+                asset_criticality=context_data.get("asset_criticality", "medium"),
+                industry_sector=context_data.get("industry_sector", "technology"),
+                company_size=context_data.get("company_size", "medium")
+            )
+
+            # Call Analysis Agent (with MCP support)
+            if scan_results:
+                logger.info(f"OrchestrationAgent delegating to AnalysisAgent: {len(scan_results)} scan results")
+            elif scan_id:
+                logger.info(f"OrchestrationAgent delegating to AnalysisAgent: scan_id={scan_id} (will fetch via MCP)")
+            else:
+                logger.warning("No scan_results or scan_id provided")
+
+            result = self.analysis_agent.analyze_vulnerabilities(
+                scan_results=scan_results,
+                scan_id=scan_id,
+                context=context,
+                standards=standards
+            )
+
+            # Add orchestration metadata
+            result["orchestrated_by"] = self.name
+            result["workflow_id"] = task.get("workflow_id", "auto-generated")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Analysis delegation failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": f"Analysis failed: {str(e)}",
+                "agent": self.name
+            }
