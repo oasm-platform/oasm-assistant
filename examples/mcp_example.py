@@ -4,11 +4,11 @@ Example: LLM calls 2 MCPs (OASM + SearXNG)
 """
 import asyncio
 import sys
+from pathlib import Path
 from uuid import UUID
 
-# Fix encoding for Windows console
-if sys.platform == 'win32':
-    sys.stdout.reconfigure(encoding='utf-8')
+# Add parent directory to sys.path to import modules from project root
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tools.mcp_client import create_client
 from data.database.models import MCPServer
@@ -92,7 +92,8 @@ async def main():
     if assets and threats:
         print("\n[3] LLM analyzing data from both MCPs...")
         llm = llm_manager.get_llm()
-
+        print("assets: ", assets)
+        print("threats: ", threats)
         prompt = f"""Dựa vào 2 nguồn dữ liệu:
 
 1. ASSETS: {str(assets)}
