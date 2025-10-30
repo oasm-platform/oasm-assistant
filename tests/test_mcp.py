@@ -97,7 +97,8 @@ class TestMCPClient:
         assert client.server.transport_type == "sse"
         assert client.server.url == "http://localhost:5173/api/mcp"
         assert client.server.mcp_config.get('url') == "http://localhost:5173/api/mcp"
-        assert not client.is_connected()
+        # Note: is_connected() is async, so we check the internal state directly
+        assert not client._connected
 
     @pytest.mark.asyncio
     async def test_client_context_manager(self, test_server):

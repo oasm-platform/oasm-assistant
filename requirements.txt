@@ -46,6 +46,7 @@ asyncio
 
 # MCP (Model Context Protocol)
 mcp
+langchain-mcp-adapters
 
 # Web Search
 google-api-python-client
