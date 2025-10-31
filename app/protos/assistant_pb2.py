@@ -15,7 +15,7 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import struct_pb2 as google_dot_protobuf_dot_struct__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x61pp/protos/assistant.proto\x12\x03\x61pp\x1a\x1cgoogle/protobuf/struct.proto\"\x14\n\x12HealthCheckRequest\"&\n\x13HealthCheckResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\'\n\x15\x44omainClassifyRequest\x12\x0e\n\x06\x64omain\x18\x01 \x01(\t\"(\n\x16\x44omainClassifyResponse\x12\x0e\n\x06labels\x18\x01 \x03(\t\")\n\x15\x43reateTemplateRequest\x12\x10\n\x08question\x18\x01 \x01(\t\"(\n\x16\x43reateTemplateResponse\x12\x0e\n\x06\x61nswer\x18\x01 \x01(\t\"\x86\x01\n\x0c\x43onversation\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x11\n\tembedding\x18\x04 \x01(\t\x12\x12\n\ncreated_at\x18\x05 \x01(\t\x12\x12\n\nupdated_at\x18\x06 \x01(\t\"\x19\n\x17GetConversationsRequest\"D\n\x18GetConversationsResponse\x12(\n\rconversations\x18\x01 \x03(\x0b\x32\x11.app.Conversation\"X\n\x19UpdateConversationRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\"E\n\x1aUpdateConversationResponse\x12\'\n\x0c\x63onversation\x18\x01 \x01(\x0b\x32\x11.app.Conversation\"4\n\x19\x44\x65leteConversationRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\">\n\x1a\x44\x65leteConversationResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x1c\n\x1a\x44\x65leteConversationsRequest\"?\n\x1b\x44\x65leteConversationsResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x93\x01\n\x07Message\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x03 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x04 \x01(\t\x12\x11\n\tembedding\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x12\n\nupdated_at\x18\x07 \x01(\t\"-\n\x12GetMessagesRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\"5\n\x13GetMessagesResponse\x12\x1e\n\x08messages\x18\x01 \x03(\x0b\x32\x0c.app.Message\"a\n\x14\x43reateMessageRequest\x12\x10\n\x08question\x18\x01 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x02 \x01(\t\x12\x1e\n\x16is_create_conversation\x18\x03 \x01(\x08\"6\n\x15\x43reateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"<\n\x14UpdateMessageRequest\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\"6\n\x15UpdateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"\'\n\x14\x44\x65leteMessageRequest\x12\x0f\n\x07message\x18\x01 \x01(\t\"9\n\x15\x44\x65leteMessageResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x83\x01\n\tMCPServer\x12\n\n\x02id\x18\x01 \x01(\t\x12+\n\nmcp_config\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x15\n\rserver_status\x18\x03 \x01(\t\x12\x12\n\ncreated_at\x18\x05 \x01(\t\x12\x12\n\nupdated_at\x18\x06 \x01(\t\"B\n\x13\x41\x64\x64MCPServerRequest\x12+\n\nmcp_config\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct\"X\n\x14\x41\x64\x64MCPServerResponse\x12\x1e\n\x06server\x18\x01 \x01(\x0b\x32\x0e.app.MCPServer\x12\x0f\n\x07success\x18\x02 \x01(\x08\x12\x0f\n\x07message\x18\x03 \x01(\t\"\x17\n\x15ListMCPServersRequest\"N\n\x16ListMCPServersResponse\x12\x1f\n\x07servers\x18\x01 \x03(\x0b\x32\x0e.app.MCPServer\x12\x13\n\x0btotal_count\x18\x02 \x01(\x05\"s\n\x16UpdateMCPServerRequest\x12\x15\n\rmcp_server_id\x18\x01 \x01(\t\x12+\n\nmcp_config\x18\x02 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x15\n\rserver_status\x18\x03 \x01(\t\"[\n\x17UpdateMCPServerResponse\x12\x1e\n\x06server\x18\x01 \x01(\x0b\x32\x0e.app.MCPServer\x12\x0f\n\x07success\x18\x02 \x01(\x08\x12\x0f\n\x07message\x18\x03 \x01(\t\"+\n\x16\x44\x65leteMCPServerRequest\x12\x11\n\tserver_id\x18\x01 \x01(\t\";\n\x17\x44\x65leteMCPServerResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t2O\n\x0bHealthCheck\x12@\n\x0bHealthCheck\x12\x17.app.HealthCheckRequest\x1a\x18.app.HealthCheckResponse2[\n\x0e\x44omainClassify\x12I\n\x0e\x44omainClassify\x12\x1a.app.DomainClassifyRequest\x1a\x1b.app.DomainClassifyResponse2b\n\x15NucleiTemplateService\x12I\n\x0e\x43reateTemplate\x12\x1a.app.CreateTemplateRequest\x1a\x1b.app.CreateTemplateResponse2\xee\x02\n\x13\x43onversationService\x12O\n\x10GetConversations\x12\x1c.app.GetConversationsRequest\x1a\x1d.app.GetConversationsResponse\x12U\n\x12UpdateConversation\x12\x1e.app.UpdateConversationRequest\x1a\x1f.app.UpdateConversationResponse\x12U\n\x12\x44\x65leteConversation\x12\x1e.app.DeleteConversationRequest\x1a\x1f.app.DeleteConversationResponse\x12X\n\x13\x44\x65leteConversations\x12\x1f.app.DeleteConversationsRequest\x1a .app.DeleteConversationsResponse2\xaa\x02\n\x0eMessageService\x12@\n\x0bGetMessages\x12\x17.app.GetMessagesRequest\x1a\x18.app.GetMessagesResponse\x12\x46\n\rCreateMessage\x12\x19.app.CreateMessageRequest\x1a\x1a.app.CreateMessageResponse\x12\x46\n\rUpdateMessage\x12\x19.app.UpdateMessageRequest\x1a\x1a.app.UpdateMessageResponse\x12\x46\n\rDeleteMessage\x12\x19.app.DeleteMessageRequest\x1a\x1a.app.DeleteMessageResponse2\xbe\x02\n\x10MCPServerService\x12\x43\n\x0c\x41\x64\x64MCPServer\x12\x18.app.AddMCPServerRequest\x1a\x19.app.AddMCPServerResponse\x12I\n\x0eListMCPServers\x12\x1a.app.ListMCPServersRequest\x1a\x1b.app.ListMCPServersResponse\x12L\n\x0fUpdateMCPServer\x12\x1b.app.UpdateMCPServerRequest\x1a\x1c.app.UpdateMCPServerResponse\x12L\n\x0f\x44\x65leteMCPServer\x12\x1b.app.DeleteMCPServerRequest\x1a\x1c.app.DeleteMCPServerResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1a\x61pp/protos/assistant.proto\x12\x03\x61pp\x1a\x1cgoogle/protobuf/struct.proto\"\x14\n\x12HealthCheckRequest\"&\n\x13HealthCheckResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\"\'\n\x15\x44omainClassifyRequest\x12\x0e\n\x06\x64omain\x18\x01 \x01(\t\"(\n\x16\x44omainClassifyResponse\x12\x0e\n\x06labels\x18\x01 \x03(\t\")\n\x15\x43reateTemplateRequest\x12\x10\n\x08question\x18\x01 \x01(\t\"(\n\x16\x43reateTemplateResponse\x12\x0e\n\x06\x61nswer\x18\x01 \x01(\t\"\x86\x01\n\x0c\x43onversation\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x11\n\tembedding\x18\x04 \x01(\t\x12\x12\n\ncreated_at\x18\x05 \x01(\t\x12\x12\n\nupdated_at\x18\x06 \x01(\t\"\x19\n\x17GetConversationsRequest\"D\n\x18GetConversationsResponse\x12(\n\rconversations\x18\x01 \x03(\x0b\x32\x11.app.Conversation\"X\n\x19UpdateConversationRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\"E\n\x1aUpdateConversationResponse\x12\'\n\x0c\x63onversation\x18\x01 \x01(\x0b\x32\x11.app.Conversation\"4\n\x19\x44\x65leteConversationRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\">\n\x1a\x44\x65leteConversationResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x1c\n\x1a\x44\x65leteConversationsRequest\"?\n\x1b\x44\x65leteConversationsResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x93\x01\n\x07Message\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\x12\x0e\n\x06\x61nswer\x18\x03 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x04 \x01(\t\x12\x11\n\tembedding\x18\x05 \x01(\t\x12\x12\n\ncreated_at\x18\x06 \x01(\t\x12\x12\n\nupdated_at\x18\x07 \x01(\t\"-\n\x12GetMessagesRequest\x12\x17\n\x0f\x63onversation_id\x18\x01 \x01(\t\"5\n\x13GetMessagesResponse\x12\x1e\n\x08messages\x18\x01 \x03(\x0b\x32\x0c.app.Message\"a\n\x14\x43reateMessageRequest\x12\x10\n\x08question\x18\x01 \x01(\t\x12\x17\n\x0f\x63onversation_id\x18\x02 \x01(\t\x12\x1e\n\x16is_create_conversation\x18\x03 \x01(\x08\"6\n\x15\x43reateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"<\n\x14UpdateMessageRequest\x12\x12\n\nmessage_id\x18\x01 \x01(\t\x12\x10\n\x08question\x18\x02 \x01(\t\"6\n\x15UpdateMessageResponse\x12\x1d\n\x07message\x18\x01 \x01(\x0b\x32\x0c.app.Message\"\'\n\x14\x44\x65leteMessageRequest\x12\x0f\n\x07message\x18\x01 \x01(\t\"9\n\x15\x44\x65leteMessageResponse\x12\x0f\n\x07message\x18\x01 \x01(\t\x12\x0f\n\x07success\x18\x02 \x01(\x08\"a\n\tMCPServer\x12\'\n\x06\x63onfig\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct\x12\x10\n\x06\x61\x63tive\x18\x02 \x01(\x08H\x00\x12\x0f\n\x05\x65rror\x18\x03 \x01(\tH\x00\x42\x08\n\x06status\"C\n\x14\x41\x64\x64MCPServersRequest\x12+\n\nmcp_config\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct\"I\n\x15\x41\x64\x64MCPServersResponse\x12\x1f\n\x07servers\x18\x01 \x03(\x0b\x32\x0e.app.MCPServer\x12\x0f\n\x07success\x18\x02 \x01(\x08\"\x16\n\x14GetMCPServersRequest\"8\n\x15GetMCPServersResponse\x12\x1f\n\x07servers\x18\x01 \x03(\x0b\x32\x0e.app.MCPServer\"F\n\x17UpdateMCPServersRequest\x12+\n\nmcp_config\x18\x01 \x01(\x0b\x32\x17.google.protobuf.Struct\"L\n\x18UpdateMCPServersResponse\x12\x1f\n\x07servers\x18\x01 \x03(\x0b\x32\x0e.app.MCPServer\x12\x0f\n\x07success\x18\x02 \x01(\x08\"/\n\x17\x44\x65leteMCPServersRequest\x12\x14\n\x0cserver_names\x18\x01 \x03(\t\"+\n\x18\x44\x65leteMCPServersResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x32O\n\x0bHealthCheck\x12@\n\x0bHealthCheck\x12\x17.app.HealthCheckRequest\x1a\x18.app.HealthCheckResponse2[\n\x0e\x44omainClassify\x12I\n\x0e\x44omainClassify\x12\x1a.app.DomainClassifyRequest\x1a\x1b.app.DomainClassifyResponse2b\n\x15NucleiTemplateService\x12I\n\x0e\x43reateTemplate\x12\x1a.app.CreateTemplateRequest\x1a\x1b.app.CreateTemplateResponse2\xee\x02\n\x13\x43onversationService\x12O\n\x10GetConversations\x12\x1c.app.GetConversationsRequest\x1a\x1d.app.GetConversationsResponse\x12U\n\x12UpdateConversation\x12\x1e.app.UpdateConversationRequest\x1a\x1f.app.UpdateConversationResponse\x12U\n\x12\x44\x65leteConversation\x12\x1e.app.DeleteConversationRequest\x1a\x1f.app.DeleteConversationResponse\x12X\n\x13\x44\x65leteConversations\x12\x1f.app.DeleteConversationsRequest\x1a .app.DeleteConversationsResponse2\xaa\x02\n\x0eMessageService\x12@\n\x0bGetMessages\x12\x17.app.GetMessagesRequest\x1a\x18.app.GetMessagesResponse\x12\x46\n\rCreateMessage\x12\x19.app.CreateMessageRequest\x1a\x1a.app.CreateMessageResponse\x12\x46\n\rUpdateMessage\x12\x19.app.UpdateMessageRequest\x1a\x1a.app.UpdateMessageResponse\x12\x46\n\rDeleteMessage\x12\x19.app.DeleteMessageRequest\x1a\x1a.app.DeleteMessageResponse2\xc4\x02\n\x10MCPServerService\x12\x46\n\rAddMCPServers\x12\x19.app.AddMCPServersRequest\x1a\x1a.app.AddMCPServersResponse\x12\x46\n\rGetMCPServers\x12\x19.app.GetMCPServersRequest\x1a\x1a.app.GetMCPServersResponse\x12O\n\x10UpdateMCPServers\x12\x1c.app.UpdateMCPServersRequest\x1a\x1d.app.UpdateMCPServersResponse\x12O\n\x10\x44\x65leteMCPServers\x12\x1c.app.DeleteMCPServersRequest\x1a\x1d.app.DeleteMCPServersResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -70,34 +70,34 @@ if _descriptor._USE_C_DESCRIPTORS == False:
   _globals['_DELETEMESSAGEREQUEST']._serialized_end=1467
   _globals['_DELETEMESSAGERESPONSE']._serialized_start=1469
   _globals['_DELETEMESSAGERESPONSE']._serialized_end=1526
-  _globals['_MCPSERVER']._serialized_start=1529
-  _globals['_MCPSERVER']._serialized_end=1660
-  _globals['_ADDMCPSERVERREQUEST']._serialized_start=1662
-  _globals['_ADDMCPSERVERREQUEST']._serialized_end=1728
-  _globals['_ADDMCPSERVERRESPONSE']._serialized_start=1730
-  _globals['_ADDMCPSERVERRESPONSE']._serialized_end=1818
-  _globals['_LISTMCPSERVERSREQUEST']._serialized_start=1820
-  _globals['_LISTMCPSERVERSREQUEST']._serialized_end=1843
-  _globals['_LISTMCPSERVERSRESPONSE']._serialized_start=1845
-  _globals['_LISTMCPSERVERSRESPONSE']._serialized_end=1923
-  _globals['_UPDATEMCPSERVERREQUEST']._serialized_start=1925
-  _globals['_UPDATEMCPSERVERREQUEST']._serialized_end=2040
-  _globals['_UPDATEMCPSERVERRESPONSE']._serialized_start=2042
-  _globals['_UPDATEMCPSERVERRESPONSE']._serialized_end=2133
-  _globals['_DELETEMCPSERVERREQUEST']._serialized_start=2135
-  _globals['_DELETEMCPSERVERREQUEST']._serialized_end=2178
-  _globals['_DELETEMCPSERVERRESPONSE']._serialized_start=2180
-  _globals['_DELETEMCPSERVERRESPONSE']._serialized_end=2239
-  _globals['_HEALTHCHECK']._serialized_start=2241
-  _globals['_HEALTHCHECK']._serialized_end=2320
-  _globals['_DOMAINCLASSIFY']._serialized_start=2322
-  _globals['_DOMAINCLASSIFY']._serialized_end=2413
-  _globals['_NUCLEITEMPLATESERVICE']._serialized_start=2415
-  _globals['_NUCLEITEMPLATESERVICE']._serialized_end=2513
-  _globals['_CONVERSATIONSERVICE']._serialized_start=2516
-  _globals['_CONVERSATIONSERVICE']._serialized_end=2882
-  _globals['_MESSAGESERVICE']._serialized_start=2885
-  _globals['_MESSAGESERVICE']._serialized_end=3183
-  _globals['_MCPSERVERSERVICE']._serialized_start=3186
-  _globals['_MCPSERVERSERVICE']._serialized_end=3504
+  _globals['_MCPSERVER']._serialized_start=1528
+  _globals['_MCPSERVER']._serialized_end=1625
+  _globals['_ADDMCPSERVERSREQUEST']._serialized_start=1627
+  _globals['_ADDMCPSERVERSREQUEST']._serialized_end=1694
+  _globals['_ADDMCPSERVERSRESPONSE']._serialized_start=1696
+  _globals['_ADDMCPSERVERSRESPONSE']._serialized_end=1769
+  _globals['_GETMCPSERVERSREQUEST']._serialized_start=1771
+  _globals['_GETMCPSERVERSREQUEST']._serialized_end=1793
+  _globals['_GETMCPSERVERSRESPONSE']._serialized_start=1795
+  _globals['_GETMCPSERVERSRESPONSE']._serialized_end=1851
+  _globals['_UPDATEMCPSERVERSREQUEST']._serialized_start=1853
+  _globals['_UPDATEMCPSERVERSREQUEST']._serialized_end=1923
+  _globals['_UPDATEMCPSERVERSRESPONSE']._serialized_start=1925
+  _globals['_UPDATEMCPSERVERSRESPONSE']._serialized_end=2001
+  _globals['_DELETEMCPSERVERSREQUEST']._serialized_start=2003
+  _globals['_DELETEMCPSERVERSREQUEST']._serialized_end=2050
+  _globals['_DELETEMCPSERVERSRESPONSE']._serialized_start=2052
+  _globals['_DELETEMCPSERVERSRESPONSE']._serialized_end=2095
+  _globals['_HEALTHCHECK']._serialized_start=2097
+  _globals['_HEALTHCHECK']._serialized_end=2176
+  _globals['_DOMAINCLASSIFY']._serialized_start=2178
+  _globals['_DOMAINCLASSIFY']._serialized_end=2269
+  _globals['_NUCLEITEMPLATESERVICE']._serialized_start=2271
+  _globals['_NUCLEITEMPLATESERVICE']._serialized_end=2369
+  _globals['_CONVERSATIONSERVICE']._serialized_start=2372
+  _globals['_CONVERSATIONSERVICE']._serialized_end=2738
+  _globals['_MESSAGESERVICE']._serialized_start=2741
+  _globals['_MESSAGESERVICE']._serialized_end=3039
+  _globals['_MCPSERVERSERVICE']._serialized_start=3042
+  _globals['_MCPSERVERSERVICE']._serialized_end=3366
 # @@protoc_insertion_point(module_scope)

@@ -71,7 +71,6 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
 
             # Index documents into BM25
             self.hybrid_search.keyword_retriever.index_documents(documents)
-            logger.info(f"BM25 index initialized with {len(documents)} templates")
 
         except Exception as e:
             logger.warning(f"Failed to initialize BM25 index: {e}. Keyword search will be unavailable.")

@@ -565,25 +565,25 @@ class MCPServerServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.AddMCPServer = channel.unary_unary(
-                '/app.MCPServerService/AddMCPServer',
-                request_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServerRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServerResponse.FromString,
+        self.AddMCPServers = channel.unary_unary(
+                '/app.MCPServerService/AddMCPServers',
+                request_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.FromString,
                 )
-        self.ListMCPServers = channel.unary_unary(
-                '/app.MCPServerService/ListMCPServers',
-                request_serializer=app_dot_protos_dot_assistant__pb2.ListMCPServersRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.ListMCPServersResponse.FromString,
+        self.GetMCPServers = channel.unary_unary(
+                '/app.MCPServerService/GetMCPServers',
+                request_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServersRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServersResponse.FromString,
                 )
-        self.UpdateMCPServer = channel.unary_unary(
-                '/app.MCPServerService/UpdateMCPServer',
-                request_serializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServerRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServerResponse.FromString,
+        self.UpdateMCPServers = channel.unary_unary(
+                '/app.MCPServerService/UpdateMCPServers',
+                request_serializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServersRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServersResponse.FromString,
                 )
-        self.DeleteMCPServer = channel.unary_unary(
-                '/app.MCPServerService/DeleteMCPServer',
-                request_serializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServerRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServerResponse.FromString,
+        self.DeleteMCPServers = channel.unary_unary(
+                '/app.MCPServerService/DeleteMCPServers',
+                request_serializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersResponse.FromString,
                 )
 
 
@@ -593,25 +593,25 @@ class MCPServerServiceServicer(object):
     ----------------
     """
 
-    def AddMCPServer(self, request, context):
+    def AddMCPServers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def ListMCPServers(self, request, context):
+    def GetMCPServers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def UpdateMCPServer(self, request, context):
+    def UpdateMCPServers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def DeleteMCPServer(self, request, context):
+    def DeleteMCPServers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -620,25 +620,25 @@ class MCPServerServiceServicer(object):
 
 def add_MCPServerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'AddMCPServer': grpc.unary_unary_rpc_method_handler(
-                    servicer.AddMCPServer,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServerRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServerResponse.SerializeToString,
+            'AddMCPServers': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddMCPServers,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.SerializeToString,
             ),
-            'ListMCPServers': grpc.unary_unary_rpc_method_handler(
-                    servicer.ListMCPServers,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.ListMCPServersRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.ListMCPServersResponse.SerializeToString,
+            'GetMCPServers': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMCPServers,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServersRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServersResponse.SerializeToString,
             ),
-            'UpdateMCPServer': grpc.unary_unary_rpc_method_handler(
-                    servicer.UpdateMCPServer,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServerRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServerResponse.SerializeToString,
+            'UpdateMCPServers': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateMCPServers,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServersRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.UpdateMCPServersResponse.SerializeToString,
             ),
-            'DeleteMCPServer': grpc.unary_unary_rpc_method_handler(
-                    servicer.DeleteMCPServer,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServerRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServerResponse.SerializeToString,
+            'DeleteMCPServers': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteMCPServers,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -654,7 +654,7 @@ class MCPServerService(object):
     """
 
     @staticmethod
-    def AddMCPServer(request,
+    def AddMCPServers(request,
             target,
             options=(),
             channel_credentials=None,
@@ -664,14 +664,14 @@ class MCPServerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/AddMCPServer',
-            app_dot_protos_dot_assistant__pb2.AddMCPServerRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.AddMCPServerResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/AddMCPServers',
+            app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def ListMCPServers(request,
+    def GetMCPServers(request,
             target,
             options=(),
             channel_credentials=None,
@@ -681,14 +681,14 @@ class MCPServerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/ListMCPServers',
-            app_dot_protos_dot_assistant__pb2.ListMCPServersRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.ListMCPServersResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/GetMCPServers',
+            app_dot_protos_dot_assistant__pb2.GetMCPServersRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.GetMCPServersResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def UpdateMCPServer(request,
+    def UpdateMCPServers(request,
             target,
             options=(),
             channel_credentials=None,
@@ -698,14 +698,14 @@ class MCPServerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/UpdateMCPServer',
-            app_dot_protos_dot_assistant__pb2.UpdateMCPServerRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.UpdateMCPServerResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/UpdateMCPServers',
+            app_dot_protos_dot_assistant__pb2.UpdateMCPServersRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.UpdateMCPServersResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def DeleteMCPServer(request,
+    def DeleteMCPServers(request,
             target,
             options=(),
             channel_credentials=None,
@@ -715,8 +715,8 @@ class MCPServerService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/DeleteMCPServer',
-            app_dot_protos_dot_assistant__pb2.DeleteMCPServerRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.DeleteMCPServerResponse.FromString,
+        return grpc.experimental.unary_unary(request, target, '/app.MCPServerService/DeleteMCPServers',
+            app_dot_protos_dot_assistant__pb2.DeleteMCPServersRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.DeleteMCPServersResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

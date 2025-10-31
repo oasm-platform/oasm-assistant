@@ -34,8 +34,6 @@ class KeywordRetriever:
                       - 'metadata': Document metadata (id, name, etc.)
         """
         try:
-            logger.info(f"Building BM25 index for {len(documents)} documents...")
-
             self.documents = [doc.get('text', '') for doc in documents]
             self.metadata = [doc.get('metadata', {}) for doc in documents]
 
@@ -44,8 +42,6 @@ class KeywordRetriever:
 
             # Build BM25 index
             self.bm25_index = BM25Okapi(tokenized_docs)
-
-            logger.info(f"BM25 index built successfully with {len(documents)} documents")
 
         except Exception as e:
             logger.error(f"Failed to build BM25 index: {e}")

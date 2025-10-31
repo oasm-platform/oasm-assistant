@@ -7,6 +7,13 @@ This module provides a manager for handling multiple MCP server connections.
 from typing import Dict, List, Optional, Any
 from uuid import UUID
 from contextlib import asynccontextmanager
+import warnings
+import logging
+
+# Suppress pydantic validation warnings from MCP notification parsing
+warnings.filterwarnings("ignore", message="Failed to validate notification")
+# Also suppress at root logger level for MCP-related warnings
+logging.getLogger("root").addFilter(lambda record: "Failed to validate notification" not in record.getMessage())
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
@@ -24,7 +31,7 @@ class MCPManager:
     Handles connection pooling, lazy initialization, and workspace/user filtering.
     """
 
-    def __init__(self, database: PostgresDatabase, workspace_id: UUID, user_id: UUID):
+    def __init__(self, database: PostgresDatabase, workspace_id: UUID, user_id: UUID, async_loop=None):
         """
         Initialize MCP Manager
 
@@ -32,17 +39,24 @@ class MCPManager:
             database: Database instance
             workspace_id: Workspace ID to filter servers
             user_id: User ID to filter servers
+            async_loop: Optional event loop for async operations
         """
         self.database = database
         self.workspace_id = workspace_id
         self.user_id = user_id
         self._multi_client: Optional[MultiServerMCPClient] = None
         self._server_configs: Dict[str, MCPConnection] = {}
+        self._failed_servers: Dict[str, str] = {}  # Track failed connection attempts
         self._initialized = False
+        self._async_loop = async_loop  # Event loop for testing connections
 
     async def initialize(self):
         """Load MCP config and connect to servers"""
-        logger.info("Initializing MCP Manager...")
+        # Clear previous state
+        self._server_configs.clear()
+        self._failed_servers.clear()
+        self._multi_client = None
+        self._initialized = False
 
         servers = self._load_servers()
         if not servers:
@@ -57,16 +71,27 @@ class MCPManager:
                 connections[server.name] = connection_config
                 self._server_configs[server.name] = server
             except Exception as e:
-                logger.error(f"Failed to build config for {server.name}: {e}")
+                error_msg = str(e)
+                logger.error(f"Failed to build config for {server.name}: {error_msg}")
+                # Track as failed server
+                self._failed_servers[server.name] = error_msg
 
         if connections:
-            self._multi_client = MultiServerMCPClient(connections=connections)
-            self._initialized = True
+            try:
+                self._multi_client = MultiServerMCPClient(connections=connections)
+                self._initialized = True
+            except Exception as e:
+                logger.error(f"Failed to initialize MultiServerMCPClient: {e}")
+                # Mark all servers as failed if client creation fails
+                for server_name in connections.keys():
+                    self._failed_servers[server_name] = f"Client init failed: {e}"
+                self._initialized = True  # Still mark as initialized to track failures
         else:
             logger.warning("No active servers to initialize")
+            self._initialized = True  # Mark as initialized even with no servers
 
     def _load_servers(self) -> List[MCPConnection]:
-        """Load MCP config from database and convert to connections"""
+        """Load MCP config from database and convert to connections (only enabled/not disabled servers)"""
         with self.database.get_session() as session:
             mcp_config = session.query(MCPConfig).filter(
                 MCPConfig.workspace_id == self.workspace_id,
@@ -74,8 +99,95 @@ class MCPManager:
             ).first()
 
             if mcp_config:
-                return mcp_config_to_connections(mcp_config)
+                # Only load servers that are not disabled
+                all_connections = mcp_config_to_connections(mcp_config)
+                enabled_connections = [
+                    conn for conn in all_connections
+                    if not mcp_config.is_server_disabled(conn.name)
+                ]
+                return enabled_connections
             return []
+
+    def get_server_status(self, server_name: str, test_connection: bool = False) -> tuple[bool, Optional[str]]:
+        """
+        Get connection status for a specific server
+
+        Args:
+            server_name: Name of the server to check
+            test_connection: If True, will attempt to actually test the connection (slower but accurate)
+
+        Returns:
+            tuple: (is_active: bool, error_message: Optional[str])
+            - (True, None) - Server connected and operational
+            - (False, "error message") - Server failed with error or disabled
+        """
+        # Check if server exists and is disabled in database
+        with self.database.get_session() as session:
+            mcp_config = session.query(MCPConfig).filter(
+                MCPConfig.workspace_id == self.workspace_id,
+                MCPConfig.user_id == self.user_id
+            ).first()
+
+            if not mcp_config:
+                return (False, "MCP config not found")
+
+            # Check if server exists in config
+            if server_name not in mcp_config.servers:
+                return (False, "Server not found in config")
+
+            # Check disabled flag - if disabled, return error
+            if mcp_config.is_server_disabled(server_name):
+                return (False, "Server is disabled")
+
+        # Server is enabled, now check connection status
+        if not self._initialized:
+            return (False, "Manager not initialized")
+
+        # Check if server failed during initialization
+        if server_name in self._failed_servers:
+            error_msg = self._failed_servers.get(server_name, "Connection failed")
+            return (False, error_msg)
+
+        # Check if server is in loaded configs
+        if server_name not in self._server_configs:
+            return (False, "Server not loaded")
+
+        # Check if multi_client exists
+        if not self._multi_client:
+            return (False, "MCP client not initialized")
+
+        # If test_connection is requested, actually try to use the connection
+        if test_connection and self._async_loop:
+            try:
+                # Test by trying to list tools from the server
+                # This will fail if the server is down
+                import asyncio
+
+                async def test_server():
+                    async with self._multi_client.session(server_name) as session:
+                        tools = await load_mcp_tools(session)
+                        return tools
+
+                future = asyncio.run_coroutine_threadsafe(
+                    test_server(),
+                    self._async_loop
+                )
+                # Wait for result with reasonable timeout
+                future.result(timeout=10)
+                return (True, None)
+            except TimeoutError:
+                return (False, "Server response timeout")
+            except Exception as e:
+                return (False, f"Server not responding: {str(e)}")
+
+        # Without test_connection, assume server is active if:
+        # - It's not disabled
+        # - Manager is initialized
+        # - Server is in loaded configs
+        # - Multi-client exists
+        # - Server didn't fail during initialization
+        return (True, None)
+
 
 
     async def call_tool(self, server: str, tool: str, args: Dict = None) -> Optional[Dict]:
