@@ -18,23 +18,8 @@ from knowledge.repositories.exploit_intelligence_db import ExploitIntelligenceRe
 from knowledge.repositories.compliance_db import ComplianceRepository
 from knowledge.repositories.compliance_benchmarks_db import ComplianceBenchmarksRepository
 
-# RAG/Retrieval System (optional)
-try:
-    from data.retrieval import HybridSearchEngine
-    RAG_AVAILABLE = True
-except ImportError:
-    RAG_AVAILABLE = False
-    HybridSearchEngine = None
-    logger.warning("Retrieval system not available")
-
-# MCP Integration (optional)
-try:
-    from tools.mcp_client import MCPManager
-    MCP_AVAILABLE = True
-except ImportError:
-    MCP_AVAILABLE = False
-    MCPManager = None
-    logger.warning("MCP not available")
+from data.retrieval import HybridSearchEngine
+from tools.mcp_client import MCPManager
 
 
 @dataclass
@@ -119,16 +104,11 @@ class AnalysisAgent(BaseAgent):
         self.session = db_session
 
         # MCP integration - create manager internally if workspace/user provided
-        if workspace_id and user_id and MCP_AVAILABLE:
-            try:
-                from data.database import postgres_db
-                self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
-                self._mcp_enabled = True
-                logger.debug(f"MCP manager created for workspace {workspace_id}")
-            except Exception as e:
-                logger.warning(f"Failed to create MCP manager: {e}")
-                self.mcp_manager = None
-                self._mcp_enabled = False
+        if workspace_id and user_id:
+            from data.database import postgres_db
+            self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
+            self._mcp_enabled = True
+            logger.debug(f"MCP manager created for workspace {workspace_id}")
         else:
             self.mcp_manager = None
             self._mcp_enabled = False
@@ -143,19 +123,12 @@ class AnalysisAgent(BaseAgent):
         self.benchmark_repo = ComplianceBenchmarksRepository(db_session)
 
         # Initialize retrieval system for enhanced remediation
-        if RAG_AVAILABLE:
-            try:
-                self.retrieval = HybridSearchEngine(
-                    table_name="security_knowledge",
-                    vector_weight=0.7,
-                    keyword_weight=0.3
-                )
-                logger.info("Retrieval system initialized successfully")
-            except Exception as e:
-                logger.warning(f"Retrieval system initialization failed: {e}")
-                self.retrieval = None
-        else:
-            self.retrieval = None
+        self.retrieval = HybridSearchEngine(
+            table_name="security_knowledge",
+            vector_weight=0.7,
+            keyword_weight=0.3
+        )
+        logger.info("Retrieval system initialized successfully")
 
     def setup_tools(self) -> List[Any]:
         return [

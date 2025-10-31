@@ -15,14 +15,7 @@ from data.database.seeders.seed_analysis_knowledge import AnalysisKnowledgeSeede
 from scripts.knowledge_data_collector import KnowledgeDataCollector
 from scripts.generate_security_playbooks import SecurityPlaybookGenerator
 from common.logger import logger
-
-# Retrieval system (optional)
-try:
-    from data.retrieval import HybridSearchEngine
-    RETRIEVAL_AVAILABLE = True
-except ImportError:
-    RETRIEVAL_AVAILABLE = False
-    HybridSearchEngine = None
+from data.retrieval import HybridSearchEngine
 
 
 class CompleteKnowledgeBaseSeeder:
@@ -60,16 +53,13 @@ class CompleteKnowledgeBaseSeeder:
         else:
             logger.info("\n[2/5] Skipping playbook generation")
 
-        # Step 3: Initialize retrieval system (optional)
+        # Step 3: Initialize retrieval system
         logger.info("\n[3/5] Initializing retrieval system...")
-        if RETRIEVAL_AVAILABLE:
-            try:
-                # TODO: Index security knowledge into HybridSearchEngine
-                logger.info("✓ Retrieval system available (indexing not yet implemented)")
-            except Exception as e:
-                logger.error(f"✗ Retrieval system initialization failed: {e}", exc_info=True)
-        else:
-            logger.info("⊘ Retrieval system not available (optional)")
+        try:
+            # TODO: Index security knowledge into HybridSearchEngine
+            logger.info("✓ Retrieval system available (indexing not yet implemented)")
+        except Exception as e:
+            logger.error(f"✗ Retrieval system initialization failed: {e}", exc_info=True)
 
         # Step 4: Collect external data (optional)
         if collect_external_data:

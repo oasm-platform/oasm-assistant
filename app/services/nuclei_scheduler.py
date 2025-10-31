@@ -5,6 +5,8 @@ import os
 import shutil
 import threading
 import time
+import git
+import yaml
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
@@ -15,7 +17,6 @@ from data.database import postgres_db
 from data.database.models import NucleiTemplates
 from data.embeddings import get_embedding_model
 from sqlalchemy import delete, text
-from common.logger import logger
 
 
 class NucleiTemplatesScheduler:
@@ -85,8 +86,6 @@ class NucleiTemplatesScheduler:
             bool: True if successful, False otherwise
         """
         try:
-            import git
-
             if os.path.exists(self.clone_dir):
                 # Pull latest changes
                 logger.info(f"Pulling latest changes from {self.repo_url}")
@@ -116,8 +115,6 @@ class NucleiTemplatesScheduler:
             dict: Parsed template data or None if failed
         """
         try:
-            import yaml
-
             with open(file_path, 'r', encoding='utf-8') as f:
                 template_data = yaml.safe_load(f)
 

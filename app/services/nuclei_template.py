@@ -6,6 +6,8 @@ from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
 from llms.prompts import NucleiGenerationPrompts
 from data.retrieval import HybridSearchEngine
+from data.database import postgres_db
+from sqlalchemy import text
 
 
 class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
@@ -33,9 +35,6 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
     def _initialize_bm25_index(self):
         """Load documents from database and build BM25 index"""
         try:
-            from data.database import postgres_db
-            from sqlalchemy import text
-
             # Fetch all templates from database
             with postgres_db.get_session() as session:
                 result = session.execute(text("""

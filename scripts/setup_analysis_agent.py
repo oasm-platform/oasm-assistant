@@ -3,12 +3,16 @@ One-click setup script for Analysis Agent
 Run this to set up everything needed for Analysis Agent
 """
 import sys
+import os
+import pytest
 from pathlib import Path
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.logger import logger
+from data.database import postgres_db
+from data.database.seeders.seed_analysis_knowledge import seed_database
 
 
 def setup_analysis_agent():
@@ -25,8 +29,6 @@ def setup_analysis_agent():
     # Step 1: Initialize database (tables auto-created)
     print("📦 Step 1/3: Initializing database...")
     try:
-        from data.database import postgres_db
-
         # Tables are automatically created by SQLAlchemy
         # when postgres_db initializes via BaseEntity.metadata.create_all()
 
@@ -44,9 +46,6 @@ def setup_analysis_agent():
     # Step 2: Seed knowledge base
     print("🌱 Step 2/3: Seeding knowledge base...")
     try:
-        from data.database.seeders.seed_analysis_knowledge import seed_database
-        from data.database import postgres_db
-
         with postgres_db.get_session() as session:
             seed_database(session)
             print("  ✅ Knowledge base seeded successfully")
@@ -66,9 +65,6 @@ def setup_analysis_agent():
     # Step 3: Run tests
     print("🧪 Step 3/3: Running tests...")
     try:
-        import pytest
-        import os
-
         # Run a subset of tests
         test_files = [
             "tests/test_knowledge_repositories.py::TestOWASPMappingRepository::test_get_by_cve",
