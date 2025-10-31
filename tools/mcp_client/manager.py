@@ -13,7 +13,8 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 
 from common.logger import logger
 from data.database import PostgresDatabase
-from data.database.models.mcp_servers import MCPServer
+from data.database.models import MCPConfig
+from .utils import MCPConnection, mcp_config_to_connections, build_connection_config
 
 
 class MCPManager:
@@ -36,16 +37,11 @@ class MCPManager:
         self.workspace_id = workspace_id
         self.user_id = user_id
         self._multi_client: Optional[MultiServerMCPClient] = None
-        self._server_configs: Dict[str, MCPServer] = {}
+        self._server_configs: Dict[str, MCPConnection] = {}
         self._initialized = False
 
     async def initialize(self):
-        """
-        Load and connect to servers
-
-        Servers are filtered by workspace_id and user_id.
-        Only active servers are connected.
-        """
+        """Load MCP config and connect to servers"""
         logger.info("Initializing MCP Manager...")
 
         servers = self._load_servers()
@@ -53,92 +49,34 @@ class MCPManager:
             logger.warning("No servers found")
             return
 
-        # Build connections config for MultiServerMCPClient
+        # Build connections config
         connections = {}
-        servers.sort(key=lambda s: s.priority, reverse=True)
-
         for server in servers:
-            if server.mcp_config.get('is_active', False):
-                try:
-                    connection_config = self._build_connection_config(server)
-                    connections[server.name] = connection_config
-                    self._server_configs[server.name] = server
-                except Exception as e:
-                    logger.error(f"Failed to build config for {server.name}: {e}")
+            try:
+                connection_config = build_connection_config(server)
+                connections[server.name] = connection_config
+                self._server_configs[server.name] = server
+            except Exception as e:
+                logger.error(f"Failed to build config for {server.name}: {e}")
 
-        # Create MultiServerMCPClient with all active servers
         if connections:
             self._multi_client = MultiServerMCPClient(connections=connections)
             self._initialized = True
         else:
             logger.warning("No active servers to initialize")
 
-    def _load_servers(self) -> List[MCPServer]:
-        """
-        Load servers from database, filtered by workspace and user
-
-        Returns:
-            List of MCPServer instances
-        """
+    def _load_servers(self) -> List[MCPConnection]:
+        """Load MCP config from database and convert to connections"""
         with self.database.get_session() as session:
-            query = session.query(MCPServer)
-            query = query.filter(
-                MCPServer.workspace_id == self.workspace_id,
-                MCPServer.user_id == self.user_id
-            )
-            return query.all()
+            mcp_config = session.query(MCPConfig).filter(
+                MCPConfig.workspace_id == self.workspace_id,
+                MCPConfig.user_id == self.user_id
+            ).first()
 
-    def _build_connection_config(self, server: MCPServer) -> Dict[str, Any]:
-        """
-        Build connection configuration for a server
+            if mcp_config:
+                return mcp_config_to_connections(mcp_config)
+            return []
 
-        Args:
-            server: MCPServer instance
-
-        Returns:
-            Connection configuration dict
-        """
-        transport_type = server.transport_type
-
-        if transport_type == 'stdio':
-            return {
-                "command": server.command,
-                "args": server.args or [],
-                "env": server.env or {},
-                "transport": "stdio"
-            }
-        elif transport_type == 'sse':
-            config = {
-                "url": server.url,
-                "transport": "sse"
-            }
-
-            if server.headers:
-                headers = server.headers.copy()
-                if server.api_key and 'Authorization' not in headers:
-                    headers['Authorization'] = f"Bearer {server.api_key}"
-                config["headers"] = headers
-            elif server.api_key:
-                config["headers"] = {"Authorization": f"Bearer {server.api_key}"}
-
-            return config
-        elif transport_type == 'http' or transport_type == 'streamable_http':
-            config = {
-                "url": server.url,
-                "transport": "streamable_http"
-            }
-
-            if server.headers:
-                headers = server.headers.copy()
-                if server.api_key and 'Authorization' not in headers:
-                    headers['Authorization'] = f"Bearer {server.api_key}"
-                config["headers"] = headers
-            elif server.api_key:
-                config["headers"] = {"Authorization": f"Bearer {server.api_key}"}
-
-            return config
-        else:
-            raise ValueError(f"Unsupported transport type: {transport_type}")
 
     async def call_tool(self, server: str, tool: str, args: Dict = None) -> Optional[Dict]:
         """
@@ -357,42 +295,48 @@ class MCPManager:
             for name in self._server_configs.keys()
         }
 
-    async def add_server(self, config: Dict[str, Any]) -> bool:
+    async def add_server(self, name: str, server_config: Dict[str, Any]) -> bool:
         """
-        Add a new server dynamically
+        Add a new server to MCPConfig
 
         Args:
-            config: Server configuration dict. Must include 'workspace_id' and 'user_id'.
+            name: Server name
+            server_config: Server configuration dict (transport_type, url/command, etc.)
 
         Returns:
             True if successful, False otherwise
         """
         try:
             with self.database.get_session() as session:
-                server = MCPServer(**config)
-                session.add(server)
+                # Get or create MCPConfig
+                mcp_config = session.query(MCPConfig).filter(
+                    MCPConfig.workspace_id == self.workspace_id,
+                    MCPConfig.user_id == self.user_id
+                ).first()
 
-                # Validate config before saving
-                is_valid, error_msg = server.validate_config()
-                if not is_valid:
-                    logger.error(f"Invalid server config: {error_msg}")
-                    return False
+                if not mcp_config:
+                    mcp_config = MCPConfig(
+                        workspace_id=self.workspace_id,
+                        user_id=self.user_id,
+                        config_json={"mcpServers": {}}
+                    )
+                    session.add(mcp_config)
 
+                # Add server to JSON
+                mcp_config.add_server(name, server_config)
                 session.commit()
-                session.refresh(server)
 
                 # Re-initialize to include new server
-                if server.mcp_config.get('is_active', False):
-                    await self.initialize()
-
+                await self.initialize()
                 return True
+
         except Exception as e:
             logger.error(f"Add server failed: {e}", exc_info=True)
             return False
 
     async def remove_server(self, name: str) -> bool:
         """
-        Remove a server
+        Remove a server from MCPConfig
 
         Args:
             name: Server name
@@ -401,27 +345,24 @@ class MCPManager:
             True if successful, False otherwise
         """
         try:
-            # Remove from configs
-            if name in self._server_configs:
-                del self._server_configs[name]
-
-            # Remove from database
             with self.database.get_session() as session:
-                servers = session.query(MCPServer).filter(
-                    MCPServer.workspace_id == self.workspace_id,
-                    MCPServer.user_id == self.user_id
-                ).all()
+                mcp_config = session.query(MCPConfig).filter(
+                    MCPConfig.workspace_id == self.workspace_id,
+                    MCPConfig.user_id == self.user_id
+                ).first()
 
-                for server in servers:
-                    if server.name == name:
-                        session.delete(server)
-                        session.commit()
+                if not mcp_config or name not in mcp_config.servers:
+                    logger.warning(f"Server '{name}' not found in config")
+                    return False
 
-                        # Re-initialize to remove from multi-client
-                        await self.initialize()
-                        return True
+                # Remove server from JSON
+                mcp_config.remove_server(name)
+                session.commit()
 
-            return False
+                # Re-initialize to remove from multi-client
+                await self.initialize()
+                return True
+
         except Exception as e:
             logger.error(f"Remove server failed: {e}", exc_info=True)
             return False

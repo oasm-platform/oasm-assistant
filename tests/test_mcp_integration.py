@@ -20,8 +20,9 @@ if sys.platform == 'win32':
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from tools.mcp_client import create_client, create_manager
-from data.database.models import MCPServer
+from tools.mcp_client.utils import MCPConnection
 from data.database import postgres_db
+from uuid import UUID
 
 
 async def test_client_basic():
@@ -30,19 +31,14 @@ async def test_client_basic():
     print("TEST 1: Basic Client Functionality")
     print("="*70)
 
-    # Create a test server (stdio - doesn't require real server)
-    test_server = MCPServer(
+    # Create a test connection (stdio - doesn't require real server)
+    test_server = MCPConnection(
+        name="test_stdio",
         workspace_id=UUID("00000000-0000-0000-0000-000000000000"),
         user_id=UUID("00000000-0000-0000-0000-000000000000"),
-        mcp_config={
-            "name": "test_stdio",
-            "display_name": "Test Stdio Server",
-            "transport_type": "stdio",
-            "command": "echo",
-            "args": ["hello"],
-            "is_active": True,
-            "priority": 0
-        }
+        transport_type="stdio",
+        command="echo",
+        args=["hello"]
     )
 
     try:
@@ -110,18 +106,13 @@ async def test_api_compatibility():
     print("TEST 3: API Backward Compatibility")
     print("="*70)
 
-    test_server = MCPServer(
+    test_server = MCPConnection(
+        name="test_compat",
         workspace_id=UUID("00000000-0000-0000-0000-000000000000"),
         user_id=UUID("00000000-0000-0000-0000-000000000000"),
-        mcp_config={
-            "name": "test_compat",
-            "display_name": "Test Compatibility",
-            "transport_type": "stdio",
-            "command": "echo",
-            "args": ["test"],
-            "is_active": True,
-            "priority": 0
-        }
+        transport_type="stdio",
+        command="echo",
+        args=["test"]
     )
 
     try:
