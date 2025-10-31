@@ -3,7 +3,7 @@ from .conversations import Conversation
 from .base import BaseEntity
 from .knowledge_base import KnowledgeBase
 from .nuclei_templates import NucleiTemplates
-from .mcp_servers import MCPServer, ServerStatus
+from .mcp_config import MCPConfig
 from .owasp_mapping import OWASPMapping
 from .cwe import CWE
 from .compliance_standard import ComplianceStandard
@@ -18,8 +18,7 @@ __all__ = [
     "Conversation",
     "KnowledgeBase",
     "NucleiTemplates",
-    "MCPServer",
-    "ServerStatus",
+    "MCPConfig",
     "OWASPMapping",
     "CWE",
     "ComplianceStandard",

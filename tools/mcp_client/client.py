@@ -7,11 +7,11 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from common.logger import logger
-from data.database.models.mcp_servers import MCPServer
+from .utils import MCPConnection, build_connection_config
 
 
 class MCPClient:
-    def __init__(self, server: MCPServer):
+    def __init__(self, server: MCPConnection):
         self.server = server
         self._multi_client: Optional[MultiServerMCPClient] = None
         self._session = None
@@ -23,7 +23,7 @@ class MCPClient:
             logger.info(f"Connecting: {self.server.name}")
 
             self._multi_client = MultiServerMCPClient(
-                connections={self.server.name: self._build_connection_config()}
+                connections={self.server.name: build_connection_config(self.server)}
             )
 
             self._session_ctx = self._multi_client.session(self.server.name)
@@ -36,33 +36,6 @@ class MCPClient:
             logger.error(f"Connection failed: {e}", exc_info=True)
             self._connected = False
             return False
-
-    def _build_connection_config(self) -> Dict[str, Any]:
-        transport = self.server.transport_type
-
-        if transport == 'stdio':
-            return {
-                "command": self.server.command,
-                "args": self.server.args or [],
-                "env": self.server.env or {},
-                "transport": "stdio"
-            }
-
-        if transport in ('sse', 'http', 'streamable_http'):
-            config = {
-                "url": self.server.url,
-                "transport": "sse" if transport == 'sse' else "streamable_http"
-            }
-
-            headers = self.server.headers.copy() if self.server.headers else {}
-            if self.server.api_key and 'Authorization' not in headers:
-                headers['Authorization'] = f"Bearer {self.server.api_key}"
-            if headers:
-                config["headers"] = headers
-
-            return config
-
-        raise ValueError(f"Unsupported transport type: {transport}")
 
     async def list_tools(self) -> List[Dict[str, Any]]:
         if not self._session:
@@ -202,7 +175,7 @@ class MCPClient:
 
 
 @asynccontextmanager
-async def create_client(server: MCPServer):
+async def create_client(server: MCPConnection):
     client = MCPClient(server)
     try:
         if await client.connect():
