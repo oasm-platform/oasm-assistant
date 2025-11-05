@@ -831,28 +831,8 @@ A comprehensive security assessment has identified **{summary.get('total_finding
             counts[finding.severity] = counts.get(finding.severity, 0) + 1
         return counts
 
-    # ==========================================================================
-    # RAG INTEGRATION HELPERS
-    # ==========================================================================
-
-    # def _get_rag_remediation(self, vuln: VulnerabilityFinding) -> Dict[str, Any]:
-    #     """
-    #     Query retrieval system for remediation details
-    #     TODO: Implement using HybridSearchEngine from data.retrieval
-    #     """
-    #     if not self.retrieval:
-    #         return {}
-    #
-    #     # TODO: Query security knowledge base using hybrid search
-    #     # Example:
-    #     # results = self.retrieval.search(
-    #     #     query=f"{vuln.title} {vuln.cwe_id} remediation",
-    #     #     k=5
-    #     # )
-    #
-    #     return {}
-
-    # Helper methods
+    
+    # HELPER METHODS
     def _extract_cve(self, tags: List[str]) -> Optional[str]:
         """Extract CVE ID from tags"""
         for tag in tags:
@@ -907,12 +887,10 @@ A comprehensive security assessment has identified **{summary.get('total_finding
             return []
 
         try:
-            logger.info(f"Fetching scan results via MCP: scan_id={scan_id}, tool={tool}")
-
             result = await self.mcp_manager.call_tool(
-                server_name="oasm-core",
-                tool_name="get_scan_results",
-                arguments={
+                server="oasm-core",
+                tool="get_scan_results",
+                args={
                     "scan_id": scan_id,
                     "tool": tool,
                     "limit": limit

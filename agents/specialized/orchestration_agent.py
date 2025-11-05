@@ -1,4 +1,5 @@
 from typing import Dict, Any, List, Optional
+from uuid import UUID
 from sqlalchemy.orm import Session
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
@@ -8,7 +9,21 @@ from agents.specialized.analysis_agent import AnalysisAgent, VulnerabilityContex
 
 
 class OrchestrationAgent(BaseAgent):
-    def __init__(self, db_session: Optional[Session] = None, mcp_manager: Optional['MCPManager'] = None, **kwargs):
+    def __init__(
+        self,
+        db_session: Optional[Session] = None,
+        workspace_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
+        **kwargs
+    ):
+        """
+        Initialize Orchestration Agent
+
+        Args:
+            db_session: Database session for agents
+            workspace_id: Workspace ID for MCP integration (optional)
+            user_id: User ID for MCP integration (optional)
+        """
         super().__init__(
             name="OrchestrationAgent",
             role=AgentRole.ORCHESTRATION_AGENT,
@@ -38,12 +53,24 @@ class OrchestrationAgent(BaseAgent):
             **kwargs
         )
 
-        # Initialize specialized agents
+        # Store MCP context
         self.db_session = db_session
-        self.mcp_manager = mcp_manager
+        self.workspace_id = workspace_id
+        self.user_id = user_id
+
+        # Initialize specialized agents with MCP context
         self.analysis_agent = None
-        if db_session:
-            self.analysis_agent = AnalysisAgent(db_session=db_session, mcp_manager=mcp_manager)
+        if db_session and workspace_id and user_id:
+            self.analysis_agent = AnalysisAgent(
+                db_session=db_session,
+                workspace_id=workspace_id,
+                user_id=user_id
+            )
+            logger.debug(f"OrchestrationAgent initialized with MCP context: workspace={workspace_id}, user={user_id}")
+        elif db_session:
+            # Fallback without MCP
+            self.analysis_agent = AnalysisAgent(db_session=db_session)
+            logger.debug("OrchestrationAgent initialized without MCP context")
 
     def setup_tools(self) -> List[Any]:
         return [

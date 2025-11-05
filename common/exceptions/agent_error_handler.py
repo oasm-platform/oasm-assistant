@@ -4,7 +4,7 @@ Simplified error handling system for OASM agents - Q&A only version
 from typing import Callable, Dict, Any
 from datetime import datetime
 import traceback
-from agents.base.agent_state import AgentStatus
+from agents.core.state import AgentStatus
 
 
 class AgentErrorHandler:

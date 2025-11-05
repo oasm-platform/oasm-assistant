@@ -38,14 +38,6 @@ class AgentCapability:
     enabled: bool = True
 
 
-class LangGraphAgentState(TypedDict):
-    messages: List[Any]
-    current_task: Optional[Dict[str, Any]]
-    agent_results: Dict[str, Any]
-    next_action: Optional[str]
-    error: Optional[str]
-
-
 class BaseAgent(ABC):
     def __init__(
         self,
