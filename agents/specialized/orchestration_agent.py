@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
 from common.logger import logger
 from llms.prompts import SecurityAgentPrompts
-from agents.specialized.analysis_agent import AnalysisAgent, VulnerabilityContext
+from agents.specialized.analysis_agent import AnalysisAgent
 
 
 class OrchestrationAgent(BaseAgent):
@@ -132,19 +132,7 @@ class OrchestrationAgent(BaseAgent):
         }
 
         # Assign agents based on workflow type
-        if workflow_type == "incident_response":
-            coordination_result["agents_assigned"] = [
-                "IncidentResponseAgent",
-                "AnalysisAgent",
-                "ThreatIntelligenceAgent"
-            ]
-        elif workflow_type == "threat_hunting":
-            coordination_result["agents_assigned"] = [
-                "ThreatIntelligenceAgent",
-                "AnalysisAgent"
-            ]
-        else:
-            coordination_result["agents_assigned"] = ["AnalysisAgent"]
+        coordination_result["agents_assigned"] = ["AnalysisAgent"]
 
         return {
             "success": True,
@@ -257,13 +245,7 @@ class OrchestrationAgent(BaseAgent):
         {
             "action": "analyze_vulnerabilities",
             "scan_results": [...],  # Optional if scan_id provided
-            "scan_id": "scan-123",  # Optional, will fetch via MCP
-            "context": {
-                "environment": "production",
-                "data_sensitivity": "payment",
-                ...
-            },
-            "standards": ["OWASP", "PCI-DSS"]
+            "scan_id": "scan-123"   # Optional, will fetch via MCP
         }
         """
         if not self.analysis_agent:
@@ -277,18 +259,6 @@ class OrchestrationAgent(BaseAgent):
             # Extract parameters
             scan_results = task.get("scan_results")
             scan_id = task.get("scan_id")
-            context_data = task.get("context", {})
-            standards = task.get("standards", ["OWASP"])
-
-            # Create VulnerabilityContext
-            context = VulnerabilityContext(
-                environment=context_data.get("environment", "production"),
-                data_sensitivity=context_data.get("data_sensitivity", "general"),
-                exposure=context_data.get("exposure", "internal"),
-                asset_criticality=context_data.get("asset_criticality", "medium"),
-                industry_sector=context_data.get("industry_sector", "technology"),
-                company_size=context_data.get("company_size", "medium")
-            )
 
             # Call Analysis Agent (with MCP support)
             if scan_results:
@@ -300,9 +270,7 @@ class OrchestrationAgent(BaseAgent):
 
             result = self.analysis_agent.analyze_vulnerabilities(
                 scan_results=scan_results,
-                scan_id=scan_id,
-                context=context,
-                standards=standards
+                scan_id=scan_id
             )
 
             # Add orchestration metadata

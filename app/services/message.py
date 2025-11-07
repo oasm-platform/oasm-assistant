@@ -71,8 +71,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             workspace_id = context.workspace_id
             user_id = context.user_id
 
-            logger.info(f"Creating message for conversation {conversation_id}: {question[:100]}...")
-
             with self.db.get_session() as session:
                 if is_create_conversation:
                     title_response = self.llm.invoke(ConversationPrompts.get_conversation_title_prompt(question=question))
@@ -83,6 +81,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     session.add(conversation)
                     session.commit()
                     session.refresh(conversation)
+                    # Use the newly created conversation_id
+                    conversation_id = conversation.conversation_id
                 else:
                     conversation = session.query(Conversation).filter(
                         Conversation.conversation_id == conversation_id,
@@ -138,7 +138,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 return assistant_pb2.CreateMessageResponse(message=pb_message)
 
         except Exception as e:
-            logger.error(f"Error in CreateMessage: {e}", exc_info=True)
+            # Use string concatenation to avoid KeyError with f-string formatting
+            logger.error("Error in CreateMessage: " + str(e), exc_info=True)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(f"Internal server error: {str(e)}")
             return assistant_pb2.CreateMessageResponse()
