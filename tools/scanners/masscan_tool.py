@@ -1,3 +1,0 @@
-"""
-Fast port scanner
-"""

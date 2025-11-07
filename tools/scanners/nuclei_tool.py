@@ -1,3 +1,0 @@
-"""
-Nuclei vulnerability scanner
-"""
