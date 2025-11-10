@@ -9,7 +9,7 @@ from common.logger import logger
 from llms import llm_manager
 from llms.prompts import AnalysisAgentPrompts
 from tools.mcp_client import MCPManager
-
+from data.database import postgres_db
 
 class AnalysisAgent(BaseAgent):
     """
@@ -43,7 +43,6 @@ class AnalysisAgent(BaseAgent):
 
         # MCP setup - dynamic discovery
         if workspace_id and user_id:
-            from data.database import postgres_db
             self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
             logger.info(f"✓ MCP enabled for workspace {workspace_id}")
         else:

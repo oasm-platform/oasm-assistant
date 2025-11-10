@@ -39,7 +39,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         question=msg.question,
                         answer=msg.answer,
                         conversation_id=str(msg.conversation_id),
-                        embedding=str(msg.embedding) if msg.embedding else "",
                         created_at=msg.created_at.isoformat() if msg.created_at else "",
                         updated_at=msg.updated_at.isoformat() if msg.updated_at else ""
                     )
@@ -130,7 +129,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     question=message.question,
                     answer=message.answer,
                     conversation_id=str(message.conversation_id),
-                    embedding=str(message.embedding) if message.embedding else "",
                     created_at=message.created_at.isoformat() if message.created_at else "",
                     updated_at=message.updated_at.isoformat() if message.updated_at else ""
                 )
@@ -216,7 +214,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     question=message.question,
                     answer=message.answer,
                     conversation_id=str(message.conversation_id),
-                    embedding=str(message.embedding) if message.embedding else "",
                     created_at=message.created_at.isoformat() if message.created_at else "",
                     updated_at=message.updated_at.isoformat() if message.updated_at else ""
                 )

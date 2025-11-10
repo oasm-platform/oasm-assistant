@@ -1,6 +1,5 @@
 from sqlalchemy import String, Column
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
-from sqlalchemy.types import Float
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from .base import BaseEntity
 from uuid import uuid4
@@ -16,6 +15,5 @@ class Conversation(BaseEntity):
     description = Column(String(255))
     workspace_id = Column(UUID(as_uuid=True))
     user_id = Column(UUID(as_uuid=True))
-    embedding = Column(ARRAY(Float), nullable=True)
 
     messages = relationship("Message", back_populates="conversation", cascade="all, delete")
