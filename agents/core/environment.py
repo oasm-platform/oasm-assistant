@@ -1,27 +1,6 @@
 from typing import Dict, Any
 from common.logger import logger
 from datetime import datetime
-from enum import Enum
-
-
-class ThreatLevel(Enum):
-    """Threat levels for OASM environment monitoring"""
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
-class EnvironmentData:
-    """Environment data container for OASM agents"""
-    def __init__(self, data: Dict[str, Any] = None):
-        self.data = data or {}
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self.data.get(key, default)
-
-    def set(self, key: str, value: Any):
-        self.data[key] = value
 
 
 class AgentEnvironment:
@@ -31,7 +10,7 @@ class AgentEnvironment:
         # Basic environment state
         self.environmental_state: Dict[str, Any] = {
             "timestamp": datetime.now(),
-            "threat_level": ThreatLevel.LOW.value,
+            "threat_level": "low",
             "active_threats": [],
             "security_events": []
         }
@@ -67,8 +46,8 @@ class AgentEnvironment:
         if len(self.environmental_state["security_events"]) > 100:
             self.environmental_state["security_events"] = self.environmental_state["security_events"][-100:]
 
-    def update_threat_level(self, new_level: ThreatLevel):
+    def update_threat_level(self, new_level: str):
         """Update current threat level"""
         old_level = self.environmental_state["threat_level"]
-        self.environmental_state["threat_level"] = new_level.value
-        logger.info(f"Threat level updated from {old_level} to {new_level.value}")
+        self.environmental_state["threat_level"] = new_level
+        logger.info(f"Threat level updated from {old_level} to {new_level}")

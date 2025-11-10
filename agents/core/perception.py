@@ -21,21 +21,12 @@ class PerceptionSystem:
             "environment_state": self.agent.environment.get_environment_state(),
             "agent_state": {
                 "role": self.agent.role.value,
-                "capabilities_count": len(self.agent.capabilities),
-                "execution_count": self.agent.execution_count,
-                "success_rate": self._calculate_success_rate()
+                "capabilities_count": len(self.agent.capabilities)
             }
         }
 
         self.last_perception = perception_data
         return perception_data
-
-    def _calculate_success_rate(self) -> float:
-        """Calculate agent success rate"""
-        total = self.agent.success_count + self.agent.failure_count
-        if total == 0:
-            return 0.0
-        return self.agent.success_count / total
 
     def get_last_perception(self) -> Dict[str, Any]:
         """Get last perception data"""

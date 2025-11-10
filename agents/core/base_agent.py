@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Any, Optional, TypedDict
+from typing import Dict, List, Any, Optional
 import uuid
 
 from langchain_core.messages import HumanMessage
@@ -60,11 +60,6 @@ class BaseAgent(ABC):
         self.perception = PerceptionSystem(self)
         self.memory = AgentMemory(self.id)
         self.state = AgentStateClass()
-
-        self.current_task: Optional[Dict[str, Any]] = None
-        self.execution_count = 0
-        self.success_count = 0
-        self.failure_count = 0
 
         self.llm_provider = llm_provider
         self.llm_model = llm_model
@@ -140,10 +135,10 @@ class BaseAgent(ABC):
     def _create_security_prompt_template(self) -> ChatPromptTemplate:
         try:
             # Lazy import to avoid dependency issues
-            from llms.prompts import SecurityAgentPrompts
+            from llms.prompts import AnalysisAgentPrompts
 
             capabilities = [cap.name for cap in self.capabilities]
-            system_prompt = SecurityAgentPrompts.get_base_security_prompt(
+            system_prompt = AnalysisAgentPrompts.get_base_security_prompt(
                 self.name,
                 self.role.value,
                 capabilities
@@ -189,60 +184,6 @@ Current Security Context:
         except Exception as e:
             logger.error(f"LLM query failed: {e}")
             return f"Error querying LLM: {e}"
-
-    def add_capability(self, capability: AgentCapability):
-        self.capabilities.append(capability)
-        logger.info(f"Added capability '{capability.name}' to agent {self.name}")
-
-    def perceive(self) -> Dict[str, Any]:
-        return self.perception.perceive()
-
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        total_executions = self.success_count + self.failure_count
-        success_rate = self.success_count / total_executions if total_executions > 0 else 0
-
-        return {
-            "agent_id": self.id,
-            "agent_name": self.name,
-            "role": self.role.value,
-            "total_executions": total_executions,
-            "success_count": self.success_count,
-            "failure_count": self.failure_count,
-            "success_rate": success_rate,
-            "last_execution": getattr(self, 'last_execution_time', None)
-        }
-
-    def update_execution_stats(self, success: bool, execution_time: float = None):
-        """Update execution statistics"""
-        self.execution_count += 1
-        if success:
-            self.success_count += 1
-        else:
-            self.failure_count += 1
-
-        if execution_time:
-            self.last_execution_time = execution_time
-
-        logger.debug(f"Agent {self.name} stats updated: success={success}, total={self.execution_count}")
-
-    def is_available(self) -> bool:
-        """Check if agent is available for new tasks"""
-        return self.current_task is None and self.state.status.value in ['idle', 'thinking']
-
-    def get_state_summary(self) -> Dict[str, Any]:
-        """Get a summary of current agent state"""
-        return {
-            "agent_id": self.id,
-            "name": self.name,
-            "role": self.role.value,
-            "status": self.state.status.value,
-            "confidence": self.state.confidence,
-            "energy": self.state.energy,
-            "alert_level": self.state.security_alert_level.value,
-            "active_threats": len(self.state.active_threats),
-            "capabilities": [cap.name for cap in self.capabilities if cap.enabled],
-            "available": self.is_available()
-        }
 
     @abstractmethod
     def setup_tools(self) -> List[Any]:
