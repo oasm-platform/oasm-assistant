@@ -1,337 +1,402 @@
-"""
-Analysis Agent
-Comprehensive vulnerability assessment and reporting based on OASM scan results
-"""
 from typing import Dict, Any, List, Optional
 from uuid import UUID
 from sqlalchemy.orm import Session
+import asyncio
+import json
 
-from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
+from agents.core import BaseAgent, AgentRole, AgentType
 from common.logger import logger
-from llms.prompts import SecurityAgentPrompts
-
-from data.retrieval import HybridSearchEngine
+from llms import llm_manager
+from llms.prompts import AnalysisAgentPrompts
 from tools.mcp_client import MCPManager
 
 
 class AnalysisAgent(BaseAgent):
     """
-    Analysis Agent
+    Dynamic Analysis Agent with MCP Integration
 
-    Collect scan results from OASM Core via MCP and generate comprehensive security reports
+    How it works (like ChatGPT/Claude Desktop):
+    1. Discover all available MCP tools dynamically
+    2. LLM reads tool descriptions and selects the best one
+    3. Call the selected tool with appropriate arguments
+    4. Generate human-friendly response from tool results
     """
 
     def __init__(
         self,
         db_session: Session,
-        workspace_id: Optional['UUID'] = None,
-        user_id: Optional['UUID'] = None,
+        workspace_id: Optional[UUID] = None,
+        user_id: Optional[UUID] = None,
         **kwargs
     ):
-        """
-        Initialize Analysis Agent
-
-        Args:
-            db_session: Database session for knowledge repositories
-            workspace_id: Workspace ID for MCP integration (optional)
-            user_id: User ID for MCP integration (optional)
-        """
         super().__init__(
             name="AnalysisAgent",
             role=AgentRole.ANALYSIS_AGENT,
             agent_type=AgentType.GOAL_BASED,
-            capabilities=[
-                AgentCapability(
-                    name="report_generation",
-                    description="Generate comprehensive security reports from scan results",
-                    tools=["mcp_data_fetch", "markdown_report_generation"]
-                )
-            ],
             **kwargs
         )
 
         self.session = db_session
+        self.workspace_id = workspace_id
+        self.user_id = user_id
+        self.llm = llm_manager.get_llm()
 
-        # MCP integration - create manager internally if workspace/user provided
+        # MCP setup - dynamic discovery
         if workspace_id and user_id:
             from data.database import postgres_db
             self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
-            self._mcp_enabled = True
-            logger.debug(f"MCP manager created for workspace {workspace_id}")
+            logger.info(f"✓ MCP enabled for workspace {workspace_id}")
         else:
             self.mcp_manager = None
-            self._mcp_enabled = False
+            logger.warning("⚠ MCP disabled - no workspace/user provided")
 
-
-        # Initialize retrieval system for enhanced remediation
-        self.retrieval = HybridSearchEngine(
-            table_name="security_knowledge",
-            vector_weight=0.7,
-            keyword_weight=0.3
-        )
-        logger.info("Retrieval system initialized successfully")
+    # Abstract methods (required by BaseAgent)
 
     def setup_tools(self) -> List[Any]:
-        return [
-            "mcp_data_fetch",
-            "markdown_report_generator"
-        ]
+        """No traditional tools - uses dynamic MCP instead"""
+        return []
 
     def create_prompt_template(self) -> str:
-        return SecurityAgentPrompts.get_analysis_prompt()
+        """Prompts are inline in methods"""
+        return ""
 
     def process_observation(self, observation: Any) -> Dict[str, Any]:
-        return {
-            "analysis_complete": False,
-            "vulnerabilities_found": 0
-        }
+        """Basic observation processing"""
+        return {"observation": observation, "processed": True}
 
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute vulnerability analysis task
-
-        Args:
-            task: {
-                "action": "analyze_vulnerabilities",
-                "scan_results": [...],
-                "context": VulnerabilityContext,
-                "standards": ["OWASP", "PCI-DSS"]
-            }
-        """
+        """Execute analysis task"""
         try:
             action = task.get("action", "analyze_vulnerabilities")
+            question = task.get("question", "Provide security summary")
 
             if action == "analyze_vulnerabilities":
-                return self.analyze_vulnerabilities(
-                    scan_results=task.get("scan_results", [])
-                )
-            elif action == "generate_report":
-                return self.generate_reports(
-                    analysis_results=task.get("analysis_results", {}),
-                    report_types=task.get("report_types", ["technical"])
-                )
+                # Simply use asyncio.run with nest_asyncio support
+                # nest_asyncio allows this to work even in running event loops
+                return asyncio.run(self.analyze_vulnerabilities(question))
             else:
                 return {"success": False, "error": f"Unknown action: {action}"}
 
         except Exception as e:
-            logger.error(f"Vulnerability analysis failed: {e}", exc_info=True)
+            logger.error(f"Task execution failed: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
+    # Main analysis method
 
-    def generate_reports(
-        self,
-        analysis_results: Dict,
-        report_types: List[str] = None
-    ) -> Dict[str, Any]:
+    async def analyze_vulnerabilities(self, question: str) -> Dict[str, Any]:
         """
-        Generate comprehensive reports
+        Analyze security vulnerabilities dynamically
 
-        Report types: technical, executive, compliance, action_list
+        Flow (like ChatGPT/Claude):
+        1. Discover available MCP tools
+        2. LLM selects best tool for the question
+        3. Call the tool with LLM-generated arguments
+        4. Format response in human-friendly way
         """
-        report_types = report_types or ["technical"]
+        logger.info(f"Analyzing: {question[:100]}...")
 
-        reports = {}
+        # Step 1: Fetch data via dynamic MCP
+        scan_data = await self._fetch_mcp_data_dynamic(question)
 
-        if "technical" in report_types:
-            reports["technical"] = self._generate_technical_report(analysis_results)
-
-        if "executive" in report_types:
-            reports["executive"] = self._generate_executive_summary(analysis_results)
-
-
-        if "action_list" in report_types:
-            reports["action_list"] = self._generate_action_list(analysis_results)
-
-        return {
-            "success": True,
-            "reports": reports,
-            "generated_at": "2025-10-24"
-        }
-
-    def _generate_technical_report(self, results: Dict) -> str:
-        """Generate technical report for security team"""
-        vulnerabilities = results.get("vulnerabilities", [])
-        summary = results.get("summary", {})
-
-        sections = []
-        sections.append("# Security Analysis Technical Report\n")
-        sections.append(f"**Total Findings:** {summary.get('total_findings', 0)}\n\n")
-
-        # Severity breakdown
-        sections.append("## Summary Statistics\n")
-        by_severity = summary.get("by_severity", {})
-        for severity, count in sorted(by_severity.items()):
-            sections.append(f"- **{severity}:** {count} vulnerabilities\n")
-
-        # Critical vulnerabilities
-        sections.append("\n## Critical Vulnerabilities\n")
-        critical_vulns = [v for v in vulnerabilities if v.get("severity") in ["Critical", "High"]]
-
-        for i, vuln in enumerate(critical_vulns[:10], 1):
-            sections.append(f"\n### {i}. {vuln.get('title', 'Unknown')}\n")
-            sections.append(f"- **Severity:** {vuln.get('severity', 'N/A')}\n")
-            sections.append(f"- **CVE:** {vuln.get('cve_id') or 'N/A'}\n")
-            sections.append(f"- **CWE:** {vuln.get('cwe_id') or 'N/A'}\n")
-            sections.append(f"- **Affected Asset:** {vuln.get('affected_asset', 'N/A')}\n")
-
-        return "".join(sections)
-
-    def _generate_executive_summary(self, results: Dict) -> str:
-        """Generate executive summary for management"""
-        summary = results.get("summary", {})
-
-        by_severity = summary.get("by_severity", {})
-        report = f"""# Executive Security Summary
-
-## Overview
-A comprehensive security assessment has identified **{summary.get('total_findings', 0)} vulnerabilities** across your attack surface.
-
-## Severity Distribution
-- **Critical:** {by_severity.get('Critical', 0)} issues requiring immediate attention
-- **High:** {by_severity.get('High', 0)} issues requiring prompt remediation
-- **Medium:** {by_severity.get('Medium', 0)} issues for planned remediation
-- **Low:** {by_severity.get('Low', 0)} issues for future consideration
-- **Info:** {by_severity.get('Info', 0)} informational findings
-
-## Recommended Actions
-1. **Immediate (24-48h):** Address all Critical vulnerabilities
-2. **Short-term (1-2 weeks):** Remediate High priority issues
-3. **Medium-term (1 month):** Implement systematic security improvements
-
-## Cost Estimate
-- **Estimated Effort:** {summary.get('total_findings', 0) * 4} hours
-- **Approximate Cost:** ${summary.get('total_findings', 0) * 500:,}
-"""
-        return report.strip()
-
-
-    def _generate_action_list(self, results: Dict) -> str:
-        """Generate prioritized action list for developers"""
-        # TODO: Prioritized list of fixes with assignees
-        return "# Action List\n\n[Prioritized fixes...]"
-
-    def analyze_vulnerabilities(
-        self,
-        scan_results: List[Dict] = None,
-        scan_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Generate security analysis reports from scan results
-
-        Args:
-            scan_results: Optional scan results
-            scan_id: Optional scan ID to fetch from OASM Core via MCP
-        """
-
-        # Collect data from OASM Core via MCP (if scan_id provided and no scan_results)
-        if not scan_results and scan_id and self.has_mcp:
-            logger.info(f"Fetching scan results from MCP: scan_id={scan_id}")
-            scan_results = self.fetch_scan_results_sync(scan_id=scan_id)
-
-            if not scan_results:
-                logger.warning(f"No scan results fetched from MCP for scan_id={scan_id}")
-
-        if not scan_results:
+        if not scan_data:
             return {
                 "success": False,
-                "error": "No scan results provided or fetched from MCP"
+                "error": "No data available",
+                "response": "Unable to fetch security data. Please ensure MCP is configured and workspace has data."
             }
 
-        logger.info(f"Starting vulnerability analysis: {len(scan_results)} scan results")
-
-        # Count by severity
-        severity_counts = {}
-        for vuln in scan_results:
-            severity = vuln.get("severity", "Unknown")
-            severity_counts[severity] = severity_counts.get(severity, 0) + 1
-
-        # Compile results
-        analysis_results = {
-            "summary": {
-                "total_findings": len(scan_results),
-                "by_severity": severity_counts
-            },
-            "vulnerabilities": scan_results
-        }
-
-        # Generate markdown reports
-        reports = self.generate_reports(
-            analysis_results,
-            report_types=["technical", "executive", "action_list"]
-        )
+        # Step 2: Generate human-friendly analysis
+        analysis = self._generate_analysis(question, scan_data)
 
         return {
             "success": True,
-            "analysis": analysis_results,
-            "reports": reports,
-            "agent": self.name
+            "response": analysis,
+            "data_source": scan_data.get("source", "MCP"),
+            "stats": scan_data.get("stats")
         }
 
-    @property
-    def has_mcp(self) -> bool:
-        """Check if MCP is available"""
-        return self._mcp_enabled
+    # Dynamic MCP tool discovery and selection (like ChatGPT/Claude)
 
-    async def fetch_scan_results_from_mcp(
-        self,
-        scan_id: Optional[str] = None,
-        tool: str = "all",
-        limit: int = 100
-    ) -> List[Dict]:
+    async def _fetch_mcp_data_dynamic(self, question: str) -> Optional[Dict[str, Any]]:
         """
-        Fetch scan results from OASM Core via MCP
+        Dynamically discover and use MCP tools
 
-        Args:
-            scan_id: Specific scan ID (optional)
-            tool: Filter by tool (nuclei, nessus, all)
-            limit: Max results to return
-
-        Returns:
-            List of scan results
+        This is how ChatGPT, Claude Desktop, and other modern AI assistants work:
+        - No hardcoded tool names
+        - LLM reads all available tools and their descriptions
+        - LLM selects the best tool for the user's question
+        - LLM generates appropriate arguments
         """
-        if not self._mcp_enabled:
-            logger.debug("MCP not enabled, returning empty results")
-            return []
+        if not self.mcp_manager:
+            logger.warning("MCP not available")
+            return None
 
         try:
+            # Initialize MCP connection
+            await self.mcp_manager.initialize()
+
+            # Step 1: Discover all available tools (dynamic)
+            all_tools = await self.mcp_manager.get_all_tools()
+            if not all_tools:
+                logger.warning("No MCP tools available")
+                return None
+
+            logger.info(f"Discovered {sum(len(tools) for tools in all_tools.values())} MCP tools from {len(all_tools)} servers")
+
+            # Step 2: Let LLM select the best tool
+            selected = self._llm_select_tool(question, all_tools)
+            if not selected:
+                logger.warning("LLM could not select appropriate tool")
+                return None
+
+            server_name = selected["server"]
+            tool_name = selected["tool"]
+            tool_args = selected["args"]
+
+            logger.info(f"LLM selected: {server_name}.{tool_name}")
+            logger.debug(f"Arguments: {tool_args}")
+
+            # Step 3: Call the selected tool
             result = await self.mcp_manager.call_tool(
-                server="oasm-core",
-                tool="get_scan_results",
-                args={
-                    "scan_id": scan_id,
-                    "tool": tool,
-                    "limit": limit
-                }
+                server=server_name,
+                tool=tool_name,
+                args=tool_args
             )
 
-            scan_results = result.get("scan_results", [])
-            logger.info(f"Fetched {len(scan_results)} scan results from MCP")
+            if result and not result.get("isError"):
+                # Handle different response structures:
+                # - Paginated tools (get_vulnerabilities, get_assets, get_targets): {data: [], total, page, ...}
+                # - Non-paginated tools (get_statistics): {assets, vuls, score, ...}
 
-            return scan_results
+                # For paginated responses, pass the whole object (not just data array)
+                # This preserves pagination info (total, page, etc.) for proper formatting
+                stats_data = result
+
+                return {
+                    "source": f"MCP ({server_name}/{tool_name})",
+                    "stats": stats_data,
+                    "tool": tool_name
+                }
+            else:
+                logger.warning(f"MCP call failed: {result.get('content') if result else 'No response'}")
+                return None
 
         except Exception as e:
-            logger.error(f"MCP fetch failed: {e}", exc_info=True)
-            return []
+            logger.error(f"MCP fetch error: {e}", exc_info=True)
+            return None
 
-    def fetch_scan_results_sync(
-        self,
-        scan_id: Optional[str] = None,
-        tool: str = "all",
-        limit: int = 100
-    ) -> List[Dict]:
-        """
-        Synchronous wrapper for fetch_scan_results_from_mcp
-
-        Uses asyncio.run() to execute async function
-        """
-        if not self._mcp_enabled:
-            return []
+    def _llm_select_tool(self, question: str, all_tools: Dict[str, List[Dict]]) -> Optional[Dict]:
+        """Use LLM to select the best tool (like ChatGPT/Claude)"""
+        prompt = AnalysisAgentPrompts.get_mcp_tool_selection_prompt(
+            question=question,
+            workspace_id=str(self.workspace_id),
+            tools_description=self._format_tools_for_llm(all_tools)
+        )
 
         try:
-            import asyncio
-            return asyncio.run(
-                self.fetch_scan_results_from_mcp(scan_id, tool, limit)
-            )
+            content = self.llm.invoke(prompt).content.strip()
+            # Extract JSON from markdown code blocks
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+
+            result = json.loads(content)
+            logger.info(f"LLM reasoning: {result.get('reasoning', 'N/A')}")
+            return result
+
         except Exception as e:
-            logger.error(f"Sync MCP fetch failed: {e}")
-            return []
+            logger.error(f"LLM tool selection failed: {e}")
+            return self._fallback_tool_selection(question, all_tools)
+
+    def _fallback_tool_selection(self, question: str, all_tools: Dict[str, List[Dict]]) -> Optional[Dict]:
+        """Fallback tool selection using keyword matching"""
+        oasm_tools = all_tools.get("oasm-platform", [])
+        if not oasm_tools:
+            logger.warning("Fallback: No suitable tools found")
+            return None
+
+        question_lower = question.lower()
+
+        # Keyword mapping: (keywords, tool_name, extra_args)
+        keyword_map = [
+            (["summary", "overview", "statistics", "tình hình", "tổng quan", "thống kê", "như thế nào", "ra sao"],
+             "get_statistics", {}),
+            (["vulnerabilit", "lỗ hổng", "lỗi bảo mật", "vulnerability", "weakness"],
+             "get_vulnerabilities", {"limit": 20, "page": 1}),
+            (["asset", "target", "tài sản", "mục tiêu", "host", "domain"],
+             "get_assets", {"limit": 20, "page": 1})
+        ]
+
+        # Try to match keywords
+        for keywords, tool_name, extra_args in keyword_map:
+            if any(kw in question_lower for kw in keywords):
+                tool = next((t for t in oasm_tools if t["name"] == tool_name), None)
+                if tool:
+                    logger.info(f"Fallback: Using {tool_name}")
+                    return {
+                        "server": "oasm-platform",
+                        "tool": tool_name,
+                        "args": {"workspaceId": str(self.workspace_id), **extra_args},
+                        "reasoning": f"Fallback: keyword match → {tool_name}"
+                    }
+
+        # Default to get_statistics or first OASM tool
+        stats_tool = next((t for t in oasm_tools if t["name"] == "get_statistics"), None)
+        if stats_tool:
+            logger.info("Fallback: Default to get_statistics")
+            return {
+                "server": "oasm-platform",
+                "tool": "get_statistics",
+                "args": {"workspaceId": str(self.workspace_id)},
+                "reasoning": "Fallback: default statistics"
+            }
+
+        # Use first available tool
+        first_tool = oasm_tools[0]
+        logger.info(f"Fallback: Using first OASM tool {first_tool['name']}")
+        return {
+            "server": "oasm-platform",
+            "tool": first_tool["name"],
+            "args": self._generate_tool_args(first_tool),
+            "reasoning": f"Fallback: first tool ({first_tool['name']})"
+        }
+
+    def _generate_tool_args(self, tool: Dict) -> Dict[str, Any]:
+        """Generate appropriate arguments for a tool based on its schema"""
+        schema = tool.get('input_schema', {})
+        properties = schema.get('properties', {})
+        required = schema.get('required', [])
+        args = {}
+
+        # Always include workspaceId if available
+        if 'workspaceId' in properties:
+            args['workspaceId'] = str(self.workspace_id)
+
+        # Add pagination for list-type tools
+        tool_name = tool.get('name', '')
+        if any(kw in tool_name.lower() for kw in ['get_vulnerabilities', 'get_assets', 'get_targets']):
+            if 'limit' in properties:
+                args['limit'] = 20
+            if 'page' in properties:
+                args['page'] = 1
+
+        # Handle other required parameters with type-based defaults
+        type_defaults = {'string': '', 'number': 0, 'integer': 0, 'boolean': False, 'array': [], 'object': {}}
+        for param in required:
+            if param not in args:
+                param_type = properties.get(param, {}).get('type', 'string')
+                args[param] = type_defaults.get(param_type, '')
+
+        return args
+
+    def _format_tools_for_llm(self, all_tools: Dict[str, List[Dict]]) -> str:
+        """Format tools in a way LLM can understand"""
+        formatted = []
+
+        for server_name, tools in all_tools.items():
+            for tool in tools:
+                tool_info = f"""
+Server: {server_name}
+Tool: {tool['name']}
+Description: {tool['description']}
+Required Parameters: {json.dumps(tool.get('input_schema', {}).get('required', []))}
+"""
+                formatted.append(tool_info.strip())
+
+        return "\n---\n".join(formatted)
+
+    # Analysis generation
+
+    def _generate_analysis(self, question: str, scan_data: Dict) -> str:
+        """Generate human-friendly analysis"""
+        stats = scan_data.get("stats", {})
+        tool = scan_data.get("tool", "unknown")
+        if "statistics" in tool or "score" in str(stats):
+            return self._format_statistics_report(stats)
+        elif "vulnerabilities" in tool or "severity" in str(stats):
+            return self._format_vulnerabilities_report(stats)
+        elif "assets" in tool or "targets" in tool:
+            return self._format_assets_report(stats)
+        else:
+            return self._format_generic_report(question, stats)
+
+    def _format_statistics_report(self, stats: Dict) -> str:
+        """Format security statistics"""
+        if isinstance(stats, list):
+            stats = stats[0] if stats else {}
+
+        return f"""**Security Overview**
+
+📊 **Assets:**
+- Total Assets: {stats.get('assets', 0)}
+- Total Targets: {stats.get('targets', 0)}
+- Technologies: {stats.get('techs', 0)}
+- Open Ports: {stats.get('ports', 0)}
+
+🔒 **Security Score:** {stats.get('score', 0):.1f}/10
+
+⚠️ **Vulnerabilities:**
+- Total: {stats.get('vuls', 0)}
+- Critical: {stats.get('criticalVuls', 0)} 🔴
+- High: {stats.get('highVuls', 0)} 🟠
+- Medium: {stats.get('mediumVuls', 0)} 🟡
+- Low: {stats.get('lowVuls', 0)} 🟢
+- Info: {stats.get('infoVuls', 0)} ℹ️
+
+💡 **Recommendations:**
+{"- ⚠️ **URGENT**: Address " + str(stats.get('criticalVuls', 0)) + " critical vulnerabilities" if stats.get('criticalVuls', 0) > 0 else "- ✓ No critical vulnerabilities"}
+{"- Fix " + str(stats.get('highVuls', 0)) + " high-severity issues" if stats.get('highVuls', 0) > 0 else ""}
+- Maintain regular security scans
+"""
+
+    def _format_vulnerabilities_report(self, data: Dict) -> str:
+        """Format vulnerability list"""
+        vulns = data.get("data", []) if isinstance(data, dict) else []
+        total = data.get("total", len(vulns)) if isinstance(data, dict) else len(vulns)
+
+        if not vulns:
+            return "**No vulnerabilities found** ✓"
+
+        emoji_map = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢', 'INFO': 'ℹ️', 'UNKNOWN': '❓'}
+        report = f"**Vulnerability Report**\n\nFound {total} vulnerabilities:\n\n"
+
+        for i, vuln in enumerate(vulns[:10], 1):
+            severity = vuln.get('severity', 'unknown').upper()
+            emoji = emoji_map.get(severity, '❓')
+            report += f"{i}. {emoji} **{vuln.get('name', 'Unknown')}** ({severity})\n"
+
+        if total > 10:
+            report += f"\n... and {total - 10} more\n"
+
+        return report
+
+    def _format_assets_report(self, data: Dict) -> str:
+        """Format assets/targets list"""
+        items = data.get("data", []) if isinstance(data, dict) else []
+        total = data.get("total", len(items)) if isinstance(data, dict) else len(items)
+
+        if not items:
+            return "**No assets found**"
+
+        report = f"**Assets Report**\n\nFound {total} assets:\n\n"
+
+        for i, item in enumerate(items[:15], 1):
+            report += f"{i}. {item.get('value', 'Unknown')}\n"
+
+        if total > 15:
+            report += f"\n... and {total - 15} more\n"
+
+        return report
+
+    def _format_generic_report(self, question: str, data: Any) -> str:
+        """Generic format for unknown data types"""
+        return f"""**Analysis Results**
+
+Question: {question}
+
+Data from MCP:
+{json.dumps(data, indent=2)[:500]}
+
+Please review the data above for insights.
+"""

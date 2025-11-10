@@ -292,33 +292,30 @@ class SecurityCoordinator:
             participating_agents = result.get("participating_agents", [])
             agent_results = result.get("agent_results", {})
 
-            response = f"**LangGraph Security Analysis Complete**\n\n"
-            response += f"**Task Type :** {task_type.replace('_', ' ').title()}\n"
-            response += f"**Question:** {question}\n"
-            response += f"**Participating Agents:** {len(participating_agents)}\n\n"
-
+            response = ""
             if agent_results:
-                response += "**Agent Analysis Results:**\n"
                 for agent_name, agent_result in agent_results.items():
                     if isinstance(agent_result, dict):
-                        success_status = "✅ Success" if agent_result.get("success") else "❌ Failed"
-                        response += f"\n**{agent_name.replace('_', ' ').title()}:** {success_status}\n"
-
-                        if agent_result.get("success"):
-                            if "analysis" in agent_result:
-                                analysis = agent_result["analysis"]
-                                if isinstance(analysis, dict):
-                                    response += f"- Risk Assessment: {analysis.get('risk_assessment', 'N/A')}\n"
-                                    response += f"- Confidence: {analysis.get('confidence', 0):.1%}\n"
-
-                            if "scan_results" in agent_result:
-                                response += f"- Scan completed successfully\n"
+                        # If AnalysisAgent returns a response directly, use it
+                        if agent_result.get("success") and "response" in agent_result:
+                            response += f"\n{agent_result['response']}\n"
                         else:
-                            error = agent_result.get("error", "Unknown error")
-                            response += f"- Error: {error}\n"
+                            # Fallback to old format for other agents
+                            success_status = "✅ Success" if agent_result.get("success") else "❌ Failed"
+                            response += f"\n**{agent_name.replace('_', ' ').title()}:** {success_status}\n"
 
-            response += f"\n**Summary:**\nCompleted multi-agent security analysis using LangGraph workflow coordination. "
-            response += f"Each agent contributed specialized expertise to provide comprehensive security insights."
+                            if agent_result.get("success"):
+                                if "analysis" in agent_result:
+                                    analysis = agent_result["analysis"]
+                                    if isinstance(analysis, dict):
+                                        response += f"- Risk Assessment: {analysis.get('risk_assessment', 'N/A')}\n"
+                                        response += f"- Confidence: {analysis.get('confidence', 0):.1%}\n"
+
+                                if "scan_results" in agent_result:
+                                    response += f"- Scan completed successfully\n"
+                            else:
+                                error = agent_result.get("error", "Unknown error")
+                                response += f"- Error: {error}\n"
 
             return response
 

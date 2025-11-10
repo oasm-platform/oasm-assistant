@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
 from common.logger import logger
-from llms.prompts import SecurityAgentPrompts
+from llms.prompts import OrchestrationAgentPrompts
 from agents.specialized.analysis_agent import AnalysisAgent
 
 
@@ -84,7 +84,7 @@ class OrchestrationAgent(BaseAgent):
         ]
 
     def create_prompt_template(self) -> str:
-        return SecurityAgentPrompts.get_orchestration_prompt()
+        return OrchestrationAgentPrompts.get_orchestration_prompt()
 
     def process_observation(self, observation: Any) -> Dict[str, Any]:
         return {
@@ -244,8 +244,7 @@ class OrchestrationAgent(BaseAgent):
         Task format:
         {
             "action": "analyze_vulnerabilities",
-            "scan_results": [...],  # Optional if scan_id provided
-            "scan_id": "scan-123"   # Optional, will fetch via MCP
+            "scan_results": [...]  # Scan results from MCP
         }
         """
         if not self.analysis_agent:
@@ -256,21 +255,17 @@ class OrchestrationAgent(BaseAgent):
             }
 
         try:
-            # Extract parameters
+            # Extract scan results
             scan_results = task.get("scan_results")
-            scan_id = task.get("scan_id")
 
-            # Call Analysis Agent (with MCP support)
+            # Call Analysis Agent
             if scan_results:
                 logger.info(f"OrchestrationAgent delegating to AnalysisAgent: {len(scan_results)} scan results")
-            elif scan_id:
-                logger.info(f"OrchestrationAgent delegating to AnalysisAgent: scan_id={scan_id} (will fetch via MCP)")
             else:
-                logger.warning("No scan_results or scan_id provided")
+                logger.warning("No scan_results provided")
 
             result = self.analysis_agent.analyze_vulnerabilities(
-                scan_results=scan_results,
-                scan_id=scan_id
+                scan_results=scan_results
             )
 
             # Add orchestration metadata

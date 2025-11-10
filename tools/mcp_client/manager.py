@@ -9,6 +9,10 @@ from uuid import UUID
 from contextlib import asynccontextmanager
 import warnings
 import logging
+import nest_asyncio
+
+# Enable nested asyncio for MCP calls within event loop
+nest_asyncio.apply()
 
 # Suppress pydantic validation warnings from MCP notification parsing
 warnings.filterwarnings("ignore", message="Failed to validate notification")
@@ -192,7 +196,7 @@ class MCPManager:
 
     async def call_tool(self, server: str, tool: str, args: Dict = None) -> Optional[Dict]:
         """
-        Call a tool on an MCP server
+        Call a tool on an MCP server using native MCP protocol
 
         Lazily initializes connections on first call if not already initialized.
 
@@ -213,33 +217,44 @@ class MCPManager:
             return None
 
         try:
+            logger.debug(f"Opening session for server: {server}")
             async with self._multi_client.session(server) as session:
-                tools = await load_mcp_tools(session)
+                logger.debug(f"Calling tool: {tool} with args: {args}")
+                # Use native MCP protocol call_tool instead of LangChain adapter
+                result = await session.call_tool(tool, args or {})
+                logger.debug(f"Tool call result type: {type(result)}")
 
-                # Find the tool by name
-                target_tool = next((t for t in tools if t.name == tool), None)
-                if not target_tool:
-                    logger.error(f"Tool '{tool}' not found on server '{server}'")
-                    return None
+                # MCP returns CallToolResult with content array
+                if hasattr(result, 'content') and result.content:
+                    logger.debug(f"Result has content array with {len(result.content)} items")
+                    # Extract first content item
+                    first_content = result.content[0]
 
-                # Invoke the tool
-                result = await target_tool.ainvoke(args or {})
+                    # Check if it's a text content
+                    if hasattr(first_content, 'text'):
+                        # Try to parse as JSON
+                        import json
+                        try:
+                            data = json.loads(first_content.text)
+                            logger.debug(f"Parsed JSON data successfully")
+                            return data if isinstance(data, dict) else {"content": first_content.text, "isError": False}
+                        except json.JSONDecodeError:
+                            logger.debug(f"Content is not JSON, returning as text")
+                            return {"content": first_content.text, "isError": False}
+                    else:
+                        return {"content": str(first_content), "isError": False}
 
-                # Return result as dict
-                if isinstance(result, str):
-                    return {"content": result, "isError": False}
-                elif isinstance(result, dict):
-                    return result
-                else:
-                    return {"content": str(result), "isError": False}
+                return {"content": str(result), "isError": False}
 
         except Exception as e:
+            import traceback
             logger.error(f"call_tool error on {server}.{tool}: {e}", exc_info=True)
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             return {"content": str(e), "isError": True}
 
     async def get_all_tools(self) -> Dict[str, List[Dict]]:
         """
-        Get all tools from all connected servers
+        Get all tools from all connected servers using native MCP protocol
 
         Returns:
             Dict mapping server names to lists of tool definitions
@@ -251,17 +266,19 @@ class MCPManager:
         for server_name in self._server_configs.keys():
             try:
                 async with self._multi_client.session(server_name) as session:
-                    tools = await load_mcp_tools(session)
+                    # Session is already a ClientSession from mcp package
+                    # Call list_tools() directly
+                    tools_result = await session.list_tools()
                     result[server_name] = [
                         {
                             "name": tool.name,
-                            "description": tool.description,
-                            "input_schema": tool.args_schema.schema() if hasattr(tool, 'args_schema') and tool.args_schema else {}
+                            "description": tool.description or "No description",
+                            "input_schema": tool.inputSchema if hasattr(tool, 'inputSchema') else {}
                         }
-                        for tool in tools
+                        for tool in tools_result.tools
                     ]
             except Exception as e:
-                logger.error(f"Failed to get tools from {server_name}: {e}")
+                logger.error(f"Failed to get tools from {server_name}: {e}", exc_info=True)
                 result[server_name] = []
 
         return result

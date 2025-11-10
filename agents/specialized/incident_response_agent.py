@@ -2,7 +2,7 @@ from typing import Dict, Any, List
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
 from common.logger import logger
-from llms.prompts import SecurityAgentPrompts
+from llms.prompts import IncidentResponseAgentPrompts
 
 
 class IncidentResponseAgent(BaseAgent):
@@ -48,7 +48,7 @@ class IncidentResponseAgent(BaseAgent):
         ]
 
     def create_prompt_template(self) -> str:
-        return SecurityAgentPrompts.get_incident_response_prompt()
+        return IncidentResponseAgentPrompts.get_incident_response_prompt()
 
     def process_observation(self, observation: Any) -> Dict[str, Any]:
         return {
