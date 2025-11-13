@@ -5,7 +5,7 @@ from llms import llm_manager
 from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
 from llms.prompts import NucleiGenerationPrompts
-from data.retrieval import HybridSearchEngine
+from data.retrieval import hybrid_search_engine
 from data.database import postgres_db
 from sqlalchemy import text
 
@@ -17,20 +17,14 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         """Initialize the Nuclei template service"""
         self.llm_manager = llm_manager
 
-        # Initialize RAG components
-        embed_dim = configs.embedding.dimensions or 384  # Default to 384 if not set
-        self.hybrid_search = HybridSearchEngine(
-            table_name=configs.rag.table_name,
-            embedding_model_name=configs.embedding.model_name,
-            vector_weight=configs.rag.vector_weight,
-            keyword_weight=configs.rag.keyword_weight,
-            embed_dim=embed_dim
-        )
+        # Use singleton hybrid search engine
+        self.hybrid_search = hybrid_search_engine
 
-        # Load documents from database for BM25 indexing
-        self._initialize_bm25_index()
+        # Load documents from database for BM25 indexing (only if not already initialized)
+        if not self.hybrid_search.keyword_retriever.is_ready():
+            self._initialize_bm25_index()
 
-        logger.info("NucleiTemplateService initialized with HybridSearchEngine")
+        logger.info("NucleiTemplateService initialized with singleton HybridSearchEngine")
 
     def _initialize_bm25_index(self):
         """Load documents from database and build BM25 index"""

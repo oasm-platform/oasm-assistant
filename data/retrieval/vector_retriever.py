@@ -14,7 +14,7 @@ from data.database import postgres_db
 
 class VectorRetriever:
     """
-    HNSW-based vector retriever for semantic similarity search
+    HNSW-based vector retriever for semantic similarity search (Singleton)
 
     Uses:
     - PostgreSQL with pgvector extension
@@ -27,6 +27,27 @@ class VectorRetriever:
     - Query understanding beyond exact keywords
     """
 
+    _instance: Optional['VectorRetriever'] = None
+    _initialized = False
+
+    def __new__(
+        cls,
+        table_name: str = "nuclei_templates",
+        embedding_model_name: Optional[str] = None,
+        embed_dim: int = 384,
+    ):
+        """
+        Singleton implementation - ensures only one instance exists
+
+        Args:
+            table_name: PostgreSQL table name (only used on first instantiation)
+            embedding_model_name: HuggingFace model (only used on first instantiation)
+            embed_dim: Embedding dimension (only used on first instantiation)
+        """
+        if cls._instance is None:
+            cls._instance = super(VectorRetriever, cls).__new__(cls)
+        return cls._instance
+
     def __init__(
         self,
         table_name: str = "nuclei_templates",
@@ -34,13 +55,17 @@ class VectorRetriever:
         embed_dim: int = 384,
     ):
         """
-        Initialize vector retriever
+        Initialize vector retriever - only runs once due to Singleton
 
         Args:
             table_name: PostgreSQL table name for vector storage
             embedding_model_name: HuggingFace embedding model name
             embed_dim: Embedding dimension
         """
+        # Only initialize once
+        if self._initialized:
+            return
+
         self.table_name = table_name
         self.embed_dim = embed_dim
 
@@ -64,7 +89,9 @@ class VectorRetriever:
         # Vector index (will be loaded or created)
         self.index: Optional[VectorStoreIndex] = None
 
-        logger.info(f"VectorRetriever initialized for table: {table_name}")
+        # Mark as initialized
+        VectorRetriever._initialized = True
+        logger.info(f"VectorRetriever singleton initialized for table: {table_name}")
 
     def _create_vector_store(self) -> PGVectorStore:
         """Create LlamaIndex PGVectorStore connection"""
