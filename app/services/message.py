@@ -7,7 +7,7 @@ from app.interceptors import get_metadata_interceptor
 from agents.workflows.security_coordinator import SecurityCoordinator
 from llms.prompts import ConversationPrompts
 from llms import llm_manager
-from data.embeddings import get_embedding_model
+from data.embeddings import embeddings_manager
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
     """Message service with OASM security agent integration"""
@@ -15,17 +15,15 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
     def __init__(self):
         self.db = database_instance
         self.llm = llm_manager.get_llm()
-        self.embedding_model = None  # Lazy load
+        self.embeddings_manager = embeddings_manager
 
     def _get_embedding_model(self):
-        """Lazy load embedding model"""
-        if self.embedding_model is None:
-            try:
-                self.embedding_model = get_embedding_model()
-            except Exception as e:
-                logger.warning(f"Failed to load embedding model: {e}")
-                self.embedding_model = False  # Mark as failed
-        return self.embedding_model if self.embedding_model else None
+        """Get embedding model from singleton manager"""
+        try:
+            return self.embeddings_manager.get_embedding()
+        except Exception as e:
+            logger.warning(f"Failed to get embedding model: {e}")
+            return None
 
     def _generate_embedding(self, question: str, answer: str) -> list:
         """Generate embedding from question + answer concatenation"""

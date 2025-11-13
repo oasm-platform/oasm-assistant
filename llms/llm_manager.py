@@ -9,20 +9,43 @@ from common.config import LlmConfigs
 
 
 class LLMManager:
-    """LLM Manager with LangChain integration and external configuration"""
+    """LLM Manager with LangChain integration and external configuration (Singleton)"""
 
-    def __init__(self,
-                 config: LlmConfigs):
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, config: LlmConfigs = None):
+        """
+        Singleton implementation - ensures only one instance exists
+
+        Args:
+            config: LlmConfigs instance with provider configuration (only used on first instantiation)
+        """
+        if cls._instance is None:
+            cls._instance = super(LLMManager, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, config: LlmConfigs = None):
         """
         Initialize LLM Manager with configurations
+        Only initializes once due to Singleton pattern
 
         Args:
             config: LlmConfigs instance with provider configuration
         """
+        # Only initialize once
+        if self._initialized:
+            return
+
+        if config is None:
+            raise ValueError("Config must be provided on first initialization")
+
         self.config = config
         self.providers = {}
-
         self._initialize_providers()
+
+        # Mark as initialized
+        LLMManager._initialized = True
 
     def _initialize_providers(self):
         """Initialize available LLM providers based on configurations"""

@@ -1,4 +1,3 @@
-import threading
 from .models import (
     BaseEmbedding,
     OpenAIEmbedding,
@@ -8,19 +7,83 @@ from .models import (
 )
 from common.logger import logger
 from common.config import EmbeddingConfigs
-from typing import List, Type
+from typing import List, Type, Optional
 
 class Embeddings:
-    """Embedding usage pattern factory class"""
-    
+    """Embedding usage pattern factory class (Singleton)"""
+
+    _instance: Optional['Embeddings'] = None
+    _initialized = False
+
     _providers = {
         'openai': OpenAIEmbedding,
         'google': GoogleEmbedding,
         'mistral': MistralEmbedding,
         'sentence_transformer': SentenceTransformerEmbedding,
     }
-    
-    _lock = threading.RLock()
+
+    def __new__(cls, config: EmbeddingConfigs = None):
+        """
+        Singleton implementation - ensures only one instance exists
+
+        Args:
+            config: EmbeddingConfigs instance with provider configuration (only used on first instantiation)
+        """
+        if cls._instance is None:
+            cls._instance = super(Embeddings, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, config: EmbeddingConfigs = None):
+        """
+        Initialize Embeddings Manager with configurations
+        Only initializes once due to Singleton pattern
+
+        Args:
+            config: EmbeddingConfigs instance with provider configuration
+        """
+        # Only initialize once
+        if self._initialized:
+            return
+
+        if config is None:
+            raise ValueError("Config must be provided on first initialization")
+
+        self.config = config
+        self.embedding_instance: Optional[BaseEmbedding] = None
+
+        # Create the embedding instance based on config
+        self.embedding_instance = self._create_from_config()
+
+        # Mark as initialized
+        Embeddings._initialized = True
+
+    def _create_from_config(self) -> BaseEmbedding:
+        """Create embedding instance from configuration"""
+        provider = self._normalize_provider(self.config.provider or 'sentence_transformer')
+
+        if provider not in self._providers:
+            available_providers = ', '.join(self._providers.keys())
+            logger.error(f"[Embeddings] Unsupported provider '{provider}'. Available: {available_providers}")
+            raise ValueError(
+                f"Unsupported embedding provider: {provider}. "
+                f"Available providers: {available_providers}"
+            )
+
+        embedding_class = self._providers[provider]
+
+        try:
+            instance = embedding_class(self.config)
+            logger.info(f"[Embeddings] Created {provider} embedding with model {self.config.model_name}")
+            return instance
+        except Exception as e:
+            logger.exception(f"[Embeddings] Failed to create {provider} embedding")
+            raise ValueError(f"Failed to create {provider} embedding: {e}") from e
+
+    def get_embedding(self) -> BaseEmbedding:
+        """Get the singleton embedding instance"""
+        if self.embedding_instance is None:
+            raise ValueError("Embedding instance not initialized")
+        return self.embedding_instance
 
     @classmethod
     def _normalize_provider(cls, provider: str) -> str:
@@ -115,7 +178,7 @@ class Embeddings:
     def register_provider(cls, name: str, provider_class: Type[BaseEmbedding]):
         """
         Register a new embedding provider
-        
+
         Args:
             name: Provider name
             provider_class: Class that inherits from BaseEmbedding
@@ -123,6 +186,5 @@ class Embeddings:
         if not issubclass(provider_class, BaseEmbedding):
             logger.error(f"[Embeddings] Tried to register invalid provider '{name}'")
             raise ValueError("Provider class must inherit from BaseEmbedding")
-        
-        with cls._lock:
-            cls._providers[name.lower()] = provider_class
+
+        cls._providers[name.lower()] = provider_class

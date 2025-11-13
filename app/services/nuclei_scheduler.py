@@ -15,7 +15,7 @@ from common.logger import logger
 from common.config import configs
 from data.database import postgres_db
 from data.database.models import NucleiTemplates
-from data.embeddings import get_embedding_model
+from data.embeddings import embeddings_manager
 from sqlalchemy import delete, text
 
 
@@ -31,7 +31,7 @@ class NucleiTemplatesScheduler:
         self.thread: Optional[threading.Thread] = None
 
         # Use shared singleton embedding model
-        self.embedding_model = get_embedding_model()
+        self.embeddings_manager = embeddings_manager
 
         # Ensure TSV column and index exist for hybrid search
         self._ensure_tsv_column()
@@ -304,7 +304,7 @@ class NucleiTemplatesScheduler:
                 text_to_embed = ' '.join(filter(None, embedding_parts))  # Remove empty strings
 
                 # Use encode() which returns List[List[float]], take first element
-                embedding = self.embedding_model.encode([text_to_embed])[0]
+                embedding = self.embeddings_manager.get_embedding().encode([text_to_embed])[0]
 
                 # Prepare data
                 batch_data.append({
