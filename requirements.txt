@@ -27,6 +27,7 @@ langchain-openai
 langchain-anthropic
 langchain-google-genai
 langchain-community
+langchain-ollama
 
 
 # Document Processing

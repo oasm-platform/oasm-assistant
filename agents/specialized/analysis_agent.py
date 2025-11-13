@@ -81,7 +81,6 @@ class AnalysisAgent(BaseAgent):
             return {"success": False, "error": str(e)}
 
     # Main analysis method
-
     async def analyze_vulnerabilities(self, question: str) -> Dict[str, Any]:
         """
         Analyze security vulnerabilities dynamically
@@ -189,7 +188,7 @@ class AnalysisAgent(BaseAgent):
         prompt = AnalysisAgentPrompts.get_mcp_tool_selection_prompt(
             question=question,
             workspace_id=str(self.workspace_id),
-            tools_description=self._format_tools_for_llm(all_tools)
+            tools_description=AnalysisAgentPrompts.format_tools_for_llm(all_tools)
         )
 
         try:
@@ -289,113 +288,16 @@ class AnalysisAgent(BaseAgent):
 
         return args
 
-    def _format_tools_for_llm(self, all_tools: Dict[str, List[Dict]]) -> str:
-        """Format tools in a way LLM can understand"""
-        formatted = []
-
-        for server_name, tools in all_tools.items():
-            for tool in tools:
-                tool_info = f"""
-Server: {server_name}
-Tool: {tool['name']}
-Description: {tool['description']}
-Required Parameters: {json.dumps(tool.get('input_schema', {}).get('required', []))}
-"""
-                formatted.append(tool_info.strip())
-
-        return "\n---\n".join(formatted)
-
-    # Analysis generation
-
     def _generate_analysis(self, question: str, scan_data: Dict) -> str:
         """Generate human-friendly analysis"""
         stats = scan_data.get("stats", {})
         tool = scan_data.get("tool", "unknown")
+
         if "statistics" in tool or "score" in str(stats):
-            return self._format_statistics_report(stats)
+            return AnalysisAgentPrompts.format_statistics_report(stats)
         elif "vulnerabilities" in tool or "severity" in str(stats):
-            return self._format_vulnerabilities_report(stats)
+            return AnalysisAgentPrompts.format_vulnerabilities_report(stats)
         elif "assets" in tool or "targets" in tool:
-            return self._format_assets_report(stats)
+            return AnalysisAgentPrompts.format_assets_report(stats)
         else:
-            return self._format_generic_report(question, stats)
-
-    def _format_statistics_report(self, stats: Dict) -> str:
-        """Format security statistics"""
-        if isinstance(stats, list):
-            stats = stats[0] if stats else {}
-
-        return f"""**Security Overview**
-
-📊 **Assets:**
-- Total Assets: {stats.get('assets', 0)}
-- Total Targets: {stats.get('targets', 0)}
-- Technologies: {stats.get('techs', 0)}
-- Open Ports: {stats.get('ports', 0)}
-
-🔒 **Security Score:** {stats.get('score', 0):.1f}/10
-
-⚠️ **Vulnerabilities:**
-- Total: {stats.get('vuls', 0)}
-- Critical: {stats.get('criticalVuls', 0)} 🔴
-- High: {stats.get('highVuls', 0)} 🟠
-- Medium: {stats.get('mediumVuls', 0)} 🟡
-- Low: {stats.get('lowVuls', 0)} 🟢
-- Info: {stats.get('infoVuls', 0)} ℹ️
-
-💡 **Recommendations:**
-{"- ⚠️ **URGENT**: Address " + str(stats.get('criticalVuls', 0)) + " critical vulnerabilities" if stats.get('criticalVuls', 0) > 0 else "- ✓ No critical vulnerabilities"}
-{"- Fix " + str(stats.get('highVuls', 0)) + " high-severity issues" if stats.get('highVuls', 0) > 0 else ""}
-- Maintain regular security scans
-"""
-
-    def _format_vulnerabilities_report(self, data: Dict) -> str:
-        """Format vulnerability list"""
-        vulns = data.get("data", []) if isinstance(data, dict) else []
-        total = data.get("total", len(vulns)) if isinstance(data, dict) else len(vulns)
-
-        if not vulns:
-            return "**No vulnerabilities found** ✓"
-
-        emoji_map = {'CRITICAL': '🔴', 'HIGH': '🟠', 'MEDIUM': '🟡', 'LOW': '🟢', 'INFO': 'ℹ️', 'UNKNOWN': '❓'}
-        report = f"**Vulnerability Report**\n\nFound {total} vulnerabilities:\n\n"
-
-        for i, vuln in enumerate(vulns[:10], 1):
-            severity = vuln.get('severity', 'unknown').upper()
-            emoji = emoji_map.get(severity, '❓')
-            report += f"{i}. {emoji} **{vuln.get('name', 'Unknown')}** ({severity})\n"
-
-        if total > 10:
-            report += f"\n... and {total - 10} more\n"
-
-        return report
-
-    def _format_assets_report(self, data: Dict) -> str:
-        """Format assets/targets list"""
-        items = data.get("data", []) if isinstance(data, dict) else []
-        total = data.get("total", len(items)) if isinstance(data, dict) else len(items)
-
-        if not items:
-            return "**No assets found**"
-
-        report = f"**Assets Report**\n\nFound {total} assets:\n\n"
-
-        for i, item in enumerate(items[:15], 1):
-            report += f"{i}. {item.get('value', 'Unknown')}\n"
-
-        if total > 15:
-            report += f"\n... and {total - 15} more\n"
-
-        return report
-
-    def _format_generic_report(self, question: str, data: Any) -> str:
-        """Generic format for unknown data types"""
-        return f"""**Analysis Results**
-
-Question: {question}
-
-Data from MCP:
-{json.dumps(data, indent=2)[:500]}
-
-Please review the data above for insights.
-"""
+            return AnalysisAgentPrompts.format_generic_report(question, stats)
