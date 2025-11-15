@@ -17,26 +17,16 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
         self.llm = llm_manager.get_llm()
         self.embeddings_manager = embeddings_manager
 
-    def _get_embedding_model(self):
-        """Get embedding model from singleton manager"""
-        try:
-            return self.embeddings_manager.get_embedding()
-        except Exception as e:
-            logger.warning(f"Failed to get embedding model: {e}")
-            return None
-
     def _generate_embedding(self, question: str, answer: str) -> list:
         """Generate embedding from question + answer concatenation"""
         try:
-            model = self._get_embedding_model()
-            if not model:
-                return None
-
             # Concatenate question and answer for better semantic search
             text = f"Question: {question}\nAnswer: {answer}"
-            embedding = model.encode([text])[0]
 
-            # Convert to list for database storage
+            # Generate embedding using LangChain's embed_query method
+            embedding = self.embeddings_manager.embed_query(text)
+
+            # Convert to list for database storage (embed_query returns List[float])
             return embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
         except Exception as e:
             logger.error(f"Failed to generate embedding: {e}")

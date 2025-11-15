@@ -29,10 +29,11 @@ class TestVectorEmbedding:
 
     def test_singleton_embedding_model(self):
         """Test that embedding model is singleton (same instance)"""
-        from data.embeddings import get_embedding_model
+        from data.embeddings import embeddings_manager
 
-        model1 = get_embedding_model()
-        model2 = get_embedding_model()
+        # EmbeddingManager is a singleton, so multiple accesses return same instance
+        model1 = embeddings_manager.get_embedding()
+        model2 = embeddings_manager.get_embedding()
 
         assert model1 is model2, "Embedding models should be the same instance"
 
@@ -40,14 +41,13 @@ class TestVectorEmbedding:
         """Test that vector casting works in SQL queries"""
         from data.database.database import PostgresDatabase
         from common.config.configs import Configs
-        from data.embeddings import get_embedding_model
+        from data.embeddings import embeddings_manager
 
         configs = Configs()
         db = PostgresDatabase(configs.postgres.url)
-        embedding_model = get_embedding_model()
 
-        # Generate test embedding
-        test_embedding = embedding_model.encode("test")
+        # Generate test embedding using LangChain's embed_query
+        test_embedding = embeddings_manager.embed_query("test")
         if hasattr(test_embedding, 'tolist'):
             test_embedding = test_embedding.tolist()
 

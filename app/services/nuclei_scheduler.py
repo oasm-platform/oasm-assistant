@@ -303,8 +303,8 @@ class NucleiTemplatesScheduler:
 
                 text_to_embed = ' '.join(filter(None, embedding_parts))  # Remove empty strings
 
-                # Use encode() which returns List[List[float]], take first element
-                embedding = self.embeddings_manager.get_embedding().encode([text_to_embed])[0]
+                # Generate embedding using LangChain's embed_query method
+                embedding = self.embeddings_manager.embed_query(text_to_embed)
 
                 # Prepare data
                 batch_data.append({

@@ -1,39 +1,31 @@
 # gRPC
-grpcio==1.60.0
-grpcio-tools==1.60.0
-grpcio-status==1.60.0
-googleapis-common-protos==1.62.0
+grpcio
+grpcio-tools
+grpcio-status
+googleapis-common-protos
 watchfiles
 
+# Configuration & Settings
 pydantic
 pydantic-settings
-python-dotenv
 
 # Database
-asyncpg
 sqlalchemy
-alembic
-psycopg2-binary
 pgvector
+psycopg2-binary
 
 # AI/ML Core
-torch
 numpy
-sentence-transformers
 
 # LangChain - complete set for all providers
 langchain
-langchain-openai
 langchain-anthropic
+langchain-openai
 langchain-google-genai
-langchain-community
 langchain-ollama
-
-
+langchain-mcp-adapters
 # Document Processing
 pypdf
-PyPDF2
-python-docx
 
 # LangGraph for agent workflow
 langgraph
@@ -43,27 +35,22 @@ loguru
 
 # Utilities
 aiohttp
-asyncio
-
-# MCP (Model Context Protocol)
-mcp
-langchain-mcp-adapters
+nest-asyncio
 
 # Web Search
-google-api-python-client
 requests
 beautifulsoup4
 
-# Embeddings
-google-generativeai
-mistralai
-sentence-transformers
-openai
+# LangChain Community & PostgreSQL Vector Store
+langchain-community
+langchain-postgres
+langchain-huggingface
+psycopg[binary]
 
-# LlamaIndex - RAG framework
-llama-index
-llama-index-vector-stores-postgres
-llama-index-embeddings-huggingface
+# Sentence Transformers for HuggingFace embeddings
+sentence-transformers
+
+# BM25 for keyword search
 rank-bm25
 
 # Git operations
@@ -72,18 +59,6 @@ GitPython
 # YAML parsing
 PyYAML
 
-# Git operations
-GitPython
-
-# YAML parsing
-PyYAML
-
-# Git operations
-GitPython
-
-# YAML parsing
-PyYAML
-
-# test
+# Testing
 pytest
 pytest-asyncio

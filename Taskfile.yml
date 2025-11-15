@@ -1,23 +1,48 @@
 version: "3.8"
 
 tasks:
-  install:
+  create-env:
+    desc: Create conda environment
     cmds:
-      - python -m venv venv
-      - ./venv/Scripts/activate
-      - pip install -r requirements.txt
+      - conda create -n oasm-assistant
+
+  install:
+    desc: Install dependencies using conda
+    cmds:
+      - conda install -n oasm-assistant pip -y
+      - conda run -n oasm-assistant pip install -r requirements.txt
+
+  export-env:
+    desc: Export conda environment
+    cmds:
+      - conda env export -n oasm-assistant > environment.yml
+      - conda list -n oasm-assistant --export > requirements-conda.txt
 
   proto:
+    desc: Generate gRPC Python code
     cmds:
-      - python -m grpc_tools.protoc -I. --proto_path=. --python_out=. --grpc_python_out=. ./app/protos/*.proto
+      - python -m grpc_tools.protoc \
+        -I. --proto_path=. \
+        --python_out=. \
+        --grpc_python_out=. \
+        ./app/protos/*.proto
 
   dev:
+    desc: Run development server
     cmds:
       - python dev.py
 
   prod:
+    desc: Run production server
     cmds:
       - python -m app.main
+
   test:
+    desc: Run all tests
     cmds:
       - pytest tests/ -v
+
+  clean:
+    desc: Remove conda environment
+    cmds:
+      - conda env remove -n oasm-assistant -y

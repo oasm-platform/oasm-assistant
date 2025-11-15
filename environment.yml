@@ -1,0 +1,95 @@
+# Create conda environment
+# conda env create -f environment.yml
+# Activate conda environment
+# conda activate oasm-assistant
+# Update conda environment
+# conda env update -f environment.yml --prune
+# Remove conda environment
+# conda env remove -n oasm-assistant
+
+name: oasm-assistant
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  # Python
+  - python=3.12
+
+  # System packages
+  - git
+  - postgresql
+
+  # Database libraries
+  - psycopg2
+
+  # Scientific computing
+  - numpy
+
+  # pip packages
+  - pip
+  - pip:
+      # gRPC
+      - grpcio
+      - grpcio-tools
+      - grpcio-status
+      - googleapis-common-protos
+      - watchfiles
+
+      # Configuration & Settings
+      - pydantic
+      - pydantic-settings
+
+      # Database
+      - sqlalchemy
+      - pgvector
+      - psycopg2-binary
+
+      # AI/ML Core
+      - numpy
+
+      # LangChain - complete set for all providers
+      - langchain
+      - langchain-anthropic
+      - langchain-openai
+      - langchain-google-genai
+      - langchain-ollama
+      - langchain-mcp-adapters
+
+      # Document Processing
+      - pypdf
+
+      # LangGraph for agent workflow
+      - langgraph
+
+      # Logging
+      - loguru
+
+      # Utilities
+      - aiohttp
+      - nest-asyncio
+
+      # Web Search
+      - requests
+      - beautifulsoup4
+
+      # LangChain Community & PostgreSQL Vector Store
+      - langchain-community
+      - langchain-postgres
+      - langchain-huggingface
+      - psycopg[binary]
+
+      # Sentence Transformers for HuggingFace embeddings
+      - sentence-transformers
+
+      # BM25 for keyword search
+      - rank-bm25
+
+      # Git operations
+      - GitPython
+
+      # YAML parsing
+      - PyYAML
+
+      # Testing
+      - pytest
+      - pytest-asyncio
