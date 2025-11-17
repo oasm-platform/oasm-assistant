@@ -111,9 +111,8 @@ message Message {
   string question = 2;
   string answer = 3;
   string conversation_id = 4;
-  string embedding = 5;
-  string created_at = 6;
-  string updated_at = 7;
+  string created_at = 5;
+  string updated_at = 6;
 }
 
 message GetMessagesRequest {

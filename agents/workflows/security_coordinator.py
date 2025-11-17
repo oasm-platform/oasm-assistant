@@ -1,19 +1,17 @@
-from typing import Dict, Any, List, Optional, TypedDict, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, TypedDict
 import re
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 
-from agents.core import BaseAgent, AgentRole, AgentType
+from agents.core import BaseAgent, AgentRole
 from common.logger import logger
 from agents.specialized import (
     AnalysisAgent,
     OrchestrationAgent
 )
 
-if TYPE_CHECKING:
-    from tools.mcp_client import MCPManager
-
+from tools.mcp_client import MCPManager
 
 
 class SecurityWorkflowState(TypedDict):
@@ -296,8 +294,8 @@ class SecurityCoordinator:
             if agent_results:
                 for agent_name, agent_result in agent_results.items():
                     if isinstance(agent_result, dict):
-                        # If AnalysisAgent returns a response directly, use it
-                        if agent_result.get("success") and "response" in agent_result:
+                        # If agent returns a response (success or failure), use it directly
+                        if "response" in agent_result:
                             response += f"\n{agent_result['response']}\n"
                         else:
                             # Fallback to old format for other agents

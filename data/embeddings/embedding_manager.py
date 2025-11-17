@@ -262,3 +262,21 @@ class EmbeddingManager:
     def get_provider_config(self) -> EmbeddingConfigs:
         """Get current configuration"""
         return self.config
+
+    def generate_message_embedding(self, question: str, answer: str) -> Optional[List[float]]:
+        """
+        Generate embedding from question + answer concatenation for semantic search
+        """
+        try:
+            # Concatenate question and answer for better semantic search
+            text = f"Question: {question}\nAnswer: {answer}"
+
+            # Generate embedding using embed_query method
+            embedding = self.embed_query(text)
+
+            # embed_query already returns List[float], so just return it
+            return embedding
+
+        except Exception as e:
+            logger.error(f"[EmbeddingManager] Failed to generate message embedding: {e}")
+            return None

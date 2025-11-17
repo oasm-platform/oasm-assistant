@@ -17,20 +17,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
         self.llm = llm_manager.get_llm()
         self.embeddings_manager = embeddings_manager
 
-    def _generate_embedding(self, question: str, answer: str) -> list:
-        """Generate embedding from question + answer concatenation"""
-        try:
-            # Concatenate question and answer for better semantic search
-            text = f"Question: {question}\nAnswer: {answer}"
-
-            # Generate embedding using LangChain's embed_query method
-            embedding = self.embeddings_manager.embed_query(text)
-
-            # Convert to list for database storage (embed_query returns List[float])
-            return embedding.tolist() if hasattr(embedding, 'tolist') else list(embedding)
-        except Exception as e:
-            logger.error(f"Failed to generate embedding: {e}")
-            return None
 
     @get_metadata_interceptor
     def GetMessages(self, request, context):
@@ -56,7 +42,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         question=msg.question,
                         answer=msg.answer,
                         conversation_id=str(msg.conversation_id),
-                        embedding=str(msg.embedding) if msg.embedding else "",
                         created_at=msg.created_at.isoformat() if msg.created_at else "",
                         updated_at=msg.updated_at.isoformat() if msg.updated_at else ""
                     )
@@ -92,9 +77,10 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 if is_create_conversation:
                     title_response = self.llm.invoke(ConversationPrompts.get_conversation_title_prompt(question=question))
                     conversation = Conversation(
-                    workspace_id=workspace_id,
-                    user_id=user_id,
-                    title=title_response.content)
+                        workspace_id=workspace_id,
+                        user_id=user_id,
+                        title=title_response.content
+                    )
                     session.add(conversation)
                     session.commit()
                     session.refresh(conversation)
@@ -112,7 +98,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         return assistant_pb2.CreateMessageResponse()
 
                 # Initialize SecurityCoordinator with workspace/user context
-                logger.info("Processing question with SecurityCoordinator...")
                 coordinator = SecurityCoordinator(
                     db_session=session,
                     workspace_id=workspace_id,
@@ -122,14 +107,12 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 try:
                     # Generate answer using updated security agents
                     answer = coordinator.process_message_question(question)
-                    logger.info(f"Generated answer length: {len(answer)} characters")
-
                 except Exception as agent_error:
                     logger.error(f"Security agent processing failed: {agent_error}")
                     answer = f"I apologize, but I encountered an issue processing your security question: {str(agent_error)[:200]}..."
 
                 # Generate embedding from question + answer
-                embedding = self._generate_embedding(question, answer)
+                embedding = self.embeddings_manager.generate_message_embedding(question, answer)
 
                 # Create and save message
                 message = Message(
@@ -142,16 +125,13 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 session.add(message)
                 session.commit()
                 session.refresh(message)
-
-                logger.info(f"Message created successfully with ID: {message.message_id}")
-
+                
                 # Build response
                 pb_message = assistant_pb2.Message(
                     message_id=str(message.message_id),
                     question=message.question,
                     answer=message.answer,
                     conversation_id=str(message.conversation_id),
-                    embedding=str(message.embedding) if message.embedding else "",
                     created_at=message.created_at.isoformat() if message.created_at else "",
                     updated_at=message.updated_at.isoformat() if message.updated_at else ""
                 )
@@ -160,9 +140,10 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
         except Exception as e:
             # Use string concatenation to avoid KeyError with f-string formatting
-            logger.error("Error in CreateMessage: " + str(e), exc_info=True)
+            error_msg = "Error in CreateMessage: " + str(e)
+            logger.error(error_msg, exc_info=True)
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal server error: {str(e)}")
+            context.set_details("Internal server error: " + str(e))
             return assistant_pb2.CreateMessageResponse()
 
     @get_metadata_interceptor
@@ -219,7 +200,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         logger.info(f"Answer regenerated, length: {len(new_answer)} characters")
 
                         # Regenerate embedding with new question + answer
-                        message.embedding = self._generate_embedding(new_question, new_answer)
+                        message.embedding = self.embeddings_manager.generate_message_embedding(new_question, new_answer)
 
                     except Exception as agent_error:
                         logger.error(f"Security agent processing failed during update: {agent_error}")
@@ -240,7 +221,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     question=message.question,
                     answer=message.answer,
                     conversation_id=str(message.conversation_id),
-                    embedding=str(message.embedding) if message.embedding else "",
                     created_at=message.created_at.isoformat() if message.created_at else "",
                     updated_at=message.updated_at.isoformat() if message.updated_at else ""
                 )
@@ -248,9 +228,10 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 return assistant_pb2.UpdateMessageResponse(message=pb_message)
 
         except Exception as e:
-            logger.error(f"Error in UpdateMessage: {e}", exc_info=True)
+            error_msg = "Error in UpdateMessage: " + str(e)
+            logger.error(error_msg, exc_info=True)
             context.set_code(StatusCode.INTERNAL)
-            context.set_details(f"Internal server error: {str(e)}")
+            context.set_details("Internal server error: " + str(e))
             return assistant_pb2.UpdateMessageResponse()
 
     @get_metadata_interceptor

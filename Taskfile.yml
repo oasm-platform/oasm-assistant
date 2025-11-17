@@ -21,11 +21,7 @@ tasks:
   proto:
     desc: Generate gRPC Python code
     cmds:
-      - python -m grpc_tools.protoc \
-        -I. --proto_path=. \
-        --python_out=. \
-        --grpc_python_out=. \
-        ./app/protos/*.proto
+      - python -m grpc_tools.protoc -I. --proto_path=.  --python_out=.   --grpc_python_out=. ./app/protos/*.proto
 
   dev:
     desc: Run development server

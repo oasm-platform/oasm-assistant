@@ -97,10 +97,12 @@ class AnalysisAgent(BaseAgent):
         scan_data = await self._fetch_mcp_data_dynamic(question)
 
         if not scan_data:
+            # Let LLM generate a friendly response when no data is available
+            no_data_response = self._generate_no_data_response(question)
             return {
                 "success": False,
                 "error": "No data available",
-                "response": "Unable to fetch security data. Please ensure MCP is configured and workspace has data."
+                "response": no_data_response
             }
 
         # Step 2: Generate human-friendly analysis
@@ -166,6 +168,29 @@ class AnalysisAgent(BaseAgent):
                 # - Paginated tools (get_vulnerabilities, get_assets, get_targets): {data: [], total, page, ...}
                 # - Non-paginated tools (get_statistics): {assets, vuls, score, ...}
 
+                # Check if result has actual data
+                has_data = False
+
+                # Check paginated response
+                if "data" in result:
+                    has_data = bool(result.get("data")) or result.get("total", 0) > 0
+                # Check statistics response
+                elif any(key in result for key in ["assets", "vuls", "vulnerabilities", "score"]):
+                    # Statistics should have some meaningful values
+                    has_data = (
+                        result.get("assets", 0) > 0 or
+                        result.get("vuls", 0) > 0 or
+                        result.get("vulnerabilities", 0) > 0 or
+                        "score" in result
+                    )
+                # Check generic response
+                else:
+                    has_data = bool(result and result != {})
+
+                if not has_data:
+                    logger.warning(f"MCP returned empty data for {tool_name}")
+                    return None
+
                 # For paginated responses, pass the whole object (not just data array)
                 # This preserves pagination info (total, page, etc.) for proper formatting
                 stats_data = result
@@ -205,88 +230,30 @@ class AnalysisAgent(BaseAgent):
 
         except Exception as e:
             logger.error(f"LLM tool selection failed: {e}")
-            return self._fallback_tool_selection(question, all_tools)
-
-    def _fallback_tool_selection(self, question: str, all_tools: Dict[str, List[Dict]]) -> Optional[Dict]:
-        """Fallback tool selection using keyword matching"""
-        oasm_tools = all_tools.get("oasm-platform", [])
-        if not oasm_tools:
-            logger.warning("Fallback: No suitable tools found")
             return None
 
-        question_lower = question.lower()
+    def _generate_no_data_response(self, question: str) -> str:
+        """Generate a friendly response when no data is available"""
+        prompt = f"""Bạn là trợ lý bảo mật. User hỏi: "{question}"
 
-        # Keyword mapping: (keywords, tool_name, extra_args)
-        keyword_map = [
-            (["summary", "overview", "statistics", "tình hình", "tổng quan", "thống kê", "như thế nào", "ra sao"],
-             "get_statistics", {}),
-            (["vulnerabilit", "lỗ hổng", "lỗi bảo mật", "vulnerability", "weakness"],
-             "get_vulnerabilities", {"limit": 20, "page": 1}),
-            (["asset", "target", "tài sản", "mục tiêu", "host", "domain"],
-             "get_assets", {"limit": 20, "page": 1})
-        ]
+Tuy nhiên workspace này hiện chưa có dữ liệu quét bảo mật.
 
-        # Try to match keywords
-        for keywords, tool_name, extra_args in keyword_map:
-            if any(kw in question_lower for kw in keywords):
-                tool = next((t for t in oasm_tools if t["name"] == tool_name), None)
-                if tool:
-                    logger.info(f"Fallback: Using {tool_name}")
-                    return {
-                        "server": "oasm-platform",
-                        "tool": tool_name,
-                        "args": {"workspaceId": str(self.workspace_id), **extra_args},
-                        "reasoning": f"Fallback: keyword match → {tool_name}"
-                    }
+Hãy trả lời ngắn gọn, tự nhiên bằng tiếng Việt (2-3 câu):
+- Giải thích rằng chưa có dữ liệu
+- Gợi ý user cần chạy quét bảo mật trước
+- Giữ giọng điệu thân thiện, chuyên nghiệp
 
-        # Default to get_statistics or first OASM tool
-        stats_tool = next((t for t in oasm_tools if t["name"] == "get_statistics"), None)
-        if stats_tool:
-            logger.info("Fallback: Default to get_statistics")
-            return {
-                "server": "oasm-platform",
-                "tool": "get_statistics",
-                "args": {"workspaceId": str(self.workspace_id)},
-                "reasoning": "Fallback: default statistics"
-            }
+CHÚ Ý: Chỉ trả lời bằng tiếng Việt, KHÔNG dịch sang tiếng Anh, KHÔNG giải thích thêm.
 
-        # Use first available tool
-        first_tool = oasm_tools[0]
-        logger.info(f"Fallback: Using first OASM tool {first_tool['name']}")
-        return {
-            "server": "oasm-platform",
-            "tool": first_tool["name"],
-            "args": self._generate_tool_args(first_tool),
-            "reasoning": f"Fallback: first tool ({first_tool['name']})"
-        }
+Câu trả lời:"""
 
-    def _generate_tool_args(self, tool: Dict) -> Dict[str, Any]:
-        """Generate appropriate arguments for a tool based on its schema"""
-        schema = tool.get('input_schema', {})
-        properties = schema.get('properties', {})
-        required = schema.get('required', [])
-        args = {}
-
-        # Always include workspaceId if available
-        if 'workspaceId' in properties:
-            args['workspaceId'] = str(self.workspace_id)
-
-        # Add pagination for list-type tools
-        tool_name = tool.get('name', '')
-        if any(kw in tool_name.lower() for kw in ['get_vulnerabilities', 'get_assets', 'get_targets']):
-            if 'limit' in properties:
-                args['limit'] = 20
-            if 'page' in properties:
-                args['page'] = 1
-
-        # Handle other required parameters with type-based defaults
-        type_defaults = {'string': '', 'number': 0, 'integer': 0, 'boolean': False, 'array': [], 'object': {}}
-        for param in required:
-            if param not in args:
-                param_type = properties.get(param, {}).get('type', 'string')
-                args[param] = type_defaults.get(param_type, '')
-
-        return args
+        try:
+            response = self.llm.invoke(prompt).content.strip()
+            return response
+        except Exception as e:
+            logger.error(f"Failed to generate no-data response: {e}")
+            # Fallback to a simple message
+            return "Hiện tại workspace chưa có dữ liệu quét bảo mật. Vui lòng chạy quét bảo mật trước để tôi có thể phân tích và trả lời câu hỏi của bạn."
 
     def _generate_analysis(self, question: str, scan_data: Dict) -> str:
         """Generate human-friendly analysis"""

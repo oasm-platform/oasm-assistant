@@ -4,10 +4,15 @@ class ConversationPrompts:
     @staticmethod
     def get_conversation_title_prompt(question: str) -> str:
         """Get the conversation title generation prompt"""
-        return f"""Please create a concise, descriptive title for this conversation based on the following question.
-The title should be no more than 8 words, focusing on the main topic or intent of the question.
-The title should be clear, specific, and capture the essence of the question without being too generic.
+        return f"""
+        Create a concise and specific title (maximum 8 words) that accurately reflects the main topic of the user's question.
+        Guidelines:
+        - Focus on the primary intent or subject.
+        - Avoid vague or generic titles.
+        - Do not repeat the full question.
+        - Keep the title short, clear, and meaningful.
 
-Question: {question}
+        Question: {question}
 
-Title: """
+        Title:
+        """
