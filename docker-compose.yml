@@ -1,29 +1,72 @@
+version: '3.8'
+
 services:
+  # PostgreSQL with pgvector extension
   postgresql:
     image: pgvector/pgvector:pg16
-    container_name: postgresql
-    ports:
-      - "9432:5432"
+    container_name: oasm-assistant-postgresql
+    restart: unless-stopped
     env_file:
       - .env
+    ports:
+      - "9432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./data/database/extensions:/docker-entrypoint-initdb.d
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     networks:
       - oasm-network
+    environment:
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8
 
+  # OASM Assistant Application
+  app:
+    container_name: oasm-assistant-app
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"  # gRPC port
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+      - ./knowledge:/app/knowledge
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    networks:
+      - oasm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-8000}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # SearXNG - Meta search engine
   searxng:
-    container_name: searxng
+    container_name: oasm-assistant-searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
-    networks:
-      - oasm-network
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -31,16 +74,79 @@ services:
       - searxng-data:/var/cache/searxng:rw
     environment:
       - SEARXNG_BASE_URL=https://localhost:8080/
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-changeme}
+    networks:
+      - oasm-network
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     logging:
       driver: "json-file"
       options:
         max-size: "1m"
         max-file: "1"
 
+  # Ollama - LLM Runtime for Llama3 8B
+  ollama:
+    container_name: oasm-assistant-ollama
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - oasm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Nessus vulnerability scanner (optional)
+  # Start with: docker compose up -d --force-recreate nessus
+  nessus:
+    container_name: oasm-assistant-nessus
+    image: anhnmt/nessus:latest
+    restart: "no"
+    ports:
+      - "8834:8834"
+    volumes:
+      - nessus-data:/opt/nessus
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    cap_add:
+      - LINUX_IMMUTABLE
+    networks:
+      - oasm-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'curl -skf https://localhost:8834/server/status | grep -q ''"code":200''',
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    profiles:
+      - tools  # Only start when explicitly specified
+
 networks:
   oasm-network:
     driver: bridge
+    name: oasm-network
 
 volumes:
   postgres_data:
+    name: oasm-assistant-postgres-data
   searxng-data:
+    name: oasm-assistant-searxng-data
+  nessus-data:
+    name: oasm-assistant-nessus-data
+  ollama-data:
+    name: oasm-assistant-ollama-data

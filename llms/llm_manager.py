@@ -50,9 +50,30 @@ class LLMManager:
     def _initialize_providers(self):
         """Initialize available LLM providers based on configurations"""
         try:
-            # Initialize configured provider if available
-            if self.config.provider and self.config.api_key:
-                self._initialize_single_provider(self.config.provider)
+            provider = self.config.provider
+
+            # Check if provider is configured
+            if not provider:
+                logger.warning("No LLM provider configured")
+                return
+
+            # Check API key requirement (Ollama doesn't need API key)
+            if provider != "ollama" and not self.config.api_key:
+                logger.warning(f"Provider '{provider}' requires API key but none provided")
+                return
+
+            # Initialize provider
+            if provider == "openai":
+                self.providers["openai"] = self._create_openai_provider
+            elif provider == "anthropic":
+                self.providers["anthropic"] = self._create_anthropic_provider
+            elif provider == "google":
+                self.providers["google"] = self._create_google_provider
+            elif provider == "ollama":
+                self.providers["ollama"] = self._create_ollama_provider
+            else:
+                logger.warning(f"Unknown provider: {provider}")
+                return
 
             if not self.providers:
                 logger.warning("No LLM providers available. Check configurations.")
@@ -60,19 +81,6 @@ class LLMManager:
         except Exception as e:
             logger.error(f"Error initializing LLM providers: {e}")
             raise
-
-    def _initialize_single_provider(self, provider: str):
-        """Initialize a single provider"""
-        if provider == "openai":
-            self.providers["openai"] = self._create_openai_provider
-        elif provider == "anthropic":
-            self.providers["anthropic"] = self._create_anthropic_provider
-        elif provider == "google":
-            self.providers["google"] = self._create_google_provider
-        elif provider == "ollama":
-            self.providers["ollama"] = self._create_ollama_provider
-        else:
-            logger.warning(f"Unknown provider: {provider}")
 
     def _create_openai_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
         """Create OpenAI LangChain provider"""

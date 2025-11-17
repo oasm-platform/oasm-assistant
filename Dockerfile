@@ -1,65 +1,81 @@
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.12-slim AS builder
 
-WORKDIR /app
+WORKDIR /build
 
-# Install uv
-RUN pip install uv
-
-# Set environment variables
+# Set environment variables for build
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_NO_WARN_SCRIPT_LOCATION=0 \
-    PATH="/root/.cargo/bin:${PATH}"
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install system dependencies for building
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
-    pkg-config \
+    git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy only requirements for better layer caching
 COPY requirements.txt .
 
-# Install Python dependencies using uv
-RUN uv pip install --no-cache -r requirements.txt --target /deps
+# Install Python dependencies to a separate directory with pip cache mount
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install --no-warn-script-location -r requirements.txt
 
 # Runtime stage
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install runtime system dependencies with cache mounts
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    curl \
+    ca-certificates \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# No need to install uv in runtime stage
-
-# Create a non-root user
-RUN adduser --disabled-password --gecos "" appuser && \
+# Create non-root user
+RUN groupadd -r appuser && \
+    useradd -r -g appuser -u 1000 -m -s /bin/bash appuser && \
     chown -R appuser:appuser /app
 
-# Copy Python dependencies from builder
-COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
+# Copy installed Python dependencies from builder
+COPY --from=builder /install /usr/local
 
 # Copy application code
-COPY --chown=appuser:appuser . .
+COPY --chown=appuser:appuser ./agents ./agents
+COPY --chown=appuser:appuser ./app ./app
+COPY --chown=appuser:appuser ./common ./common
+COPY --chown=appuser:appuser ./llms ./llms
+COPY --chown=appuser:appuser ./tools ./tools
+COPY --chown=appuser:appuser ./data ./data
+COPY --chown=appuser:appuser ./scripts ./scripts
+COPY --chown=appuser:appuser ./dev.py ./dev.py
 
 # Switch to non-root user
 USER appuser
 
-# Environment variables
+# Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    APP_HOST=0.0.0.0 \
-    APP_PORT=8000 \
-    UV_NO_WARN_SCRIPT_LOCATION=0
+    PATH="/home/appuser/.local/bin:${PATH}"
 
-# Expose the port the app runs on
-EXPOSE $APP_PORT
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:${APP_PORT:-8000}/health || exit 1
 
-# Command to run the application
-CMD ["python", "-m", "app.main"]
+# Expose gRPC port
+EXPOSE 8000
+
+# Command to run the application in production mode
+# CMD ["python", "-m", "app.main"]
+
+# Command to run the application in development mode
+CMD ["python", "dev.py"]
