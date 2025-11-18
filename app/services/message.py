@@ -8,6 +8,32 @@ from agents.workflows.security_coordinator import SecurityCoordinator
 from llms.prompts import ConversationPrompts
 from llms import llm_manager
 from data.embeddings import embeddings_manager
+from app.services.streaming_handler import StreamingResponseBuilder
+import uuid
+import asyncio
+
+
+def async_generator_to_sync(async_gen):
+    """
+    Convert async generator to sync generator for gRPC compatibility
+
+    Args:
+        async_gen: Async generator to convert
+
+    Yields:
+        Items from the async generator
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        while True:
+            try:
+                yield loop.run_until_complete(async_gen.__anext__())
+            except StopAsyncIteration:
+                break
+    finally:
+        loop.close()
+
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
     """Message service with OASM security agent integration"""
@@ -56,7 +82,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
     @get_metadata_interceptor
     def CreateMessage(self, request, context):
-        """Create a message with question and AI-generated answer using security agents"""
+        """Create a message with streaming response using security agents"""
         try:
             # Extract request data
             conversation_id = request.conversation_id
@@ -67,13 +93,20 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             if not question:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Question cannot be empty")
-                return assistant_pb2.CreateMessageResponse()
+                return
 
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
 
+            # Generate message_id
+            message_id = str(uuid.uuid4())
+
+            # Accumulated answer for database storage
+            accumulated_answer = []
+
             with self.db.get_session() as session:
+                # Handle conversation creation
                 if is_create_conversation:
                     title_response = self.llm.invoke(ConversationPrompts.get_conversation_title_prompt(question=question))
                     conversation = Conversation(
@@ -84,8 +117,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     session.add(conversation)
                     session.commit()
                     session.refresh(conversation)
-                    # Use the newly created conversation_id
-                    conversation_id = conversation.conversation_id
+                    conversation_id = str(conversation.conversation_id)
                 else:
                     conversation = session.query(Conversation).filter(
                         Conversation.conversation_id == conversation_id,
@@ -95,9 +127,9 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     if not conversation:
                         context.set_code(StatusCode.NOT_FOUND)
                         context.set_details("Conversation not found")
-                        return assistant_pb2.CreateMessageResponse()
+                        return
 
-                # Initialize SecurityCoordinator with workspace/user context
+                # Initialize SecurityCoordinator
                 coordinator = SecurityCoordinator(
                     db_session=session,
                     workspace_id=workspace_id,
@@ -105,50 +137,73 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 )
 
                 try:
-                    # Generate answer using updated security agents
-                    answer = coordinator.process_message_question(question)
+                    # Create streaming response generator (async)
+                    streaming_events = coordinator.process_message_question_streaming(question)
+
+                    # Build async response stream
+                    async_stream = StreamingResponseBuilder.build_response_stream(
+                        message_id=message_id,
+                        conversation_id=conversation_id,
+                        question=question,
+                        response_generator=streaming_events
+                    )
+
+                    # Convert async generator to sync for gRPC
+                    for stream_message in async_generator_to_sync(async_stream):
+                        # Accumulate delta text for database storage
+                        if stream_message.type == "delta":
+                            import json
+                            content_data = json.loads(stream_message.content)
+                            accumulated_answer.append(content_data.get("text", ""))
+
+                        # Yield the streaming message
+                        yield assistant_pb2.CreateMessageResponse(message=stream_message)
+
+                    # Save complete message to database
+                    answer = "".join(accumulated_answer)
+                    embedding = self.embeddings_manager.generate_message_embedding(question, answer)
+
+                    message = Message(
+                        conversation_id=conversation_id,
+                        question=question,
+                        answer=answer,
+                        embedding=embedding
+                    )
+                    session.add(message)
+                    session.commit()
+                    session.refresh(message)
+
+                    logger.info(f"Message {message.message_id} created and saved to database")
+
                 except Exception as agent_error:
-                    logger.error(f"Security agent processing failed: {agent_error}")
-                    answer = f"I apologize, but I encountered an issue processing your security question: {str(agent_error)[:200]}..."
+                    logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
+                    # Stream error response
+                    from app.services.streaming_handler import StreamingMessageHandler
+                    handler = StreamingMessageHandler(message_id, conversation_id, question)
 
-                # Generate embedding from question + answer
-                embedding = self.embeddings_manager.generate_message_embedding(question, answer)
-
-                # Create and save message
-                message = Message(
-                    conversation_id=conversation_id,
-                    question=question,
-                    answer=answer,
-                    embedding=embedding
-                )
-
-                session.add(message)
-                session.commit()
-                session.refresh(message)
-                
-                # Build response
-                pb_message = assistant_pb2.Message(
-                    message_id=str(message.message_id),
-                    question=message.question,
-                    answer=message.answer,
-                    conversation_id=str(message.conversation_id),
-                    created_at=message.created_at.isoformat() if message.created_at else "",
-                    updated_at=message.updated_at.isoformat() if message.updated_at else ""
-                )
-
-                return assistant_pb2.CreateMessageResponse(message=pb_message)
+                    yield assistant_pb2.CreateMessageResponse(message=handler.message_start())
+                    yield assistant_pb2.CreateMessageResponse(
+                        message=handler.error(
+                            error_type="AgentProcessingError",
+                            error_message=f"I encountered an issue processing your security question: {str(agent_error)[:200]}",
+                            agent="MessageService",
+                            recoverable=True,
+                            retry_suggested=True
+                        )
+                    )
+                    yield assistant_pb2.CreateMessageResponse(message=handler.message_end(success=False))
+                    yield assistant_pb2.CreateMessageResponse(message=handler.done(final_status="error"))
 
         except Exception as e:
-            # Use string concatenation to avoid KeyError with f-string formatting
             error_msg = "Error in CreateMessage: " + str(e)
             logger.error(error_msg, exc_info=True)
             context.set_code(StatusCode.INTERNAL)
             context.set_details("Internal server error: " + str(e))
-            return assistant_pb2.CreateMessageResponse()
+            return
 
     @get_metadata_interceptor
     def UpdateMessage(self, request, context):
-        """Update a message and regenerate answer if question changed"""
+        """Update a message with streaming response if question changed"""
         try:
             # Extract request data
             message_id = request.message_id
@@ -158,13 +213,16 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             if not new_question:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Question cannot be empty")
-                return assistant_pb2.UpdateMessageResponse()
+                return
 
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
 
             logger.info(f"Updating message {message_id}: {new_question[:100]}...")
+
+            # Accumulated answer for database storage
+            accumulated_answer = []
 
             with self.db.get_session() as session:
                 # Find message and verify permissions
@@ -178,15 +236,15 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     logger.warning(f"Message {message_id} not found for user {user_id}")
                     context.set_code(StatusCode.NOT_FOUND)
                     context.set_details("Message not found")
-                    return assistant_pb2.UpdateMessageResponse()
+                    return
 
-                # Store old question for comparison
+                conversation_id = str(message.conversation_id)
                 old_question = message.question
-                message.question = new_question
 
-                # If question changed, regenerate answer
+                # If question changed, regenerate answer with streaming
                 if old_question.strip() != new_question.strip():
-                    logger.info("Question changed, regenerating answer with SecurityCoordinator...")
+                    logger.info("Question changed, regenerating answer with streaming...")
+
                     coordinator = SecurityCoordinator(
                         db_session=session,
                         workspace_id=workspace_id,
@@ -194,45 +252,79 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     )
 
                     try:
-                        # Generate new answer using updated security agents
-                        new_answer = coordinator.process_message_question(new_question)
-                        message.answer = new_answer
-                        logger.info(f"Answer regenerated, length: {len(new_answer)} characters")
+                        # Create streaming response (async)
+                        streaming_events = coordinator.process_message_question_streaming(new_question)
 
-                        # Regenerate embedding with new question + answer
+                        # Build async response stream
+                        async_stream = StreamingResponseBuilder.build_response_stream(
+                            message_id=message_id,
+                            conversation_id=conversation_id,
+                            question=new_question,
+                            response_generator=streaming_events
+                        )
+
+                        # Convert async generator to sync for gRPC
+                        for stream_message in async_generator_to_sync(async_stream):
+                            # Accumulate delta text
+                            if stream_message.type == "delta":
+                                import json
+                                content_data = json.loads(stream_message.content)
+                                accumulated_answer.append(content_data.get("text", ""))
+
+                            yield assistant_pb2.UpdateMessageResponse(message=stream_message)
+
+                        # Update database
+                        new_answer = "".join(accumulated_answer)
+                        message.question = new_question
+                        message.answer = new_answer
                         message.embedding = self.embeddings_manager.generate_message_embedding(new_question, new_answer)
 
+                        session.commit()
+                        session.refresh(message)
+                        logger.info(f"Message {message_id} updated successfully")
+
                     except Exception as agent_error:
-                        logger.error(f"Security agent processing failed during update: {agent_error}")
-                        message.answer = f"I apologize, but I encountered an issue processing your updated security question: {str(agent_error)[:200]}..."
+                        logger.error(f"Security agent processing failed during update: {agent_error}", exc_info=True)
+                        # Stream error response
+                        from app.services.streaming_handler import StreamingMessageHandler
+                        handler = StreamingMessageHandler(message_id, conversation_id, new_question)
+
+                        yield assistant_pb2.UpdateMessageResponse(message=handler.message_start())
+                        yield assistant_pb2.UpdateMessageResponse(
+                            message=handler.error(
+                                error_type="AgentProcessingError",
+                                error_message=f"I encountered an issue: {str(agent_error)[:200]}",
+                                agent="MessageService",
+                                recoverable=True,
+                                retry_suggested=True
+                            )
+                        )
+                        yield assistant_pb2.UpdateMessageResponse(message=handler.message_end(success=False))
+                        yield assistant_pb2.UpdateMessageResponse(message=handler.done(final_status="error"))
 
                 else:
-                    logger.info("Question unchanged, keeping existing answer")
+                    # Question unchanged, return existing message as single stream
+                    logger.info("Question unchanged, returning existing answer")
+                    from app.services.streaming_handler import StreamingMessageHandler
+                    handler = StreamingMessageHandler(message_id, conversation_id, new_question)
 
-                # Save changes
-                session.commit()
-                session.refresh(message)
-
-                logger.info(f"Message {message_id} updated successfully")
-
-                # Build response
-                pb_message = assistant_pb2.Message(
-                    message_id=str(message.message_id),
-                    question=message.question,
-                    answer=message.answer,
-                    conversation_id=str(message.conversation_id),
-                    created_at=message.created_at.isoformat() if message.created_at else "",
-                    updated_at=message.updated_at.isoformat() if message.updated_at else ""
-                )
-
-                return assistant_pb2.UpdateMessageResponse(message=pb_message)
+                    yield assistant_pb2.UpdateMessageResponse(message=handler.message_start())
+                    # Stream existing answer in chunks
+                    chunk_size = 50
+                    for i in range(0, len(message.answer), chunk_size):
+                        chunk = message.answer[i:i + chunk_size]
+                        yield assistant_pb2.UpdateMessageResponse(
+                            message=handler.delta(text=chunk, agent="MessageService")
+                        )
+                    yield assistant_pb2.UpdateMessageResponse(message=handler.message_end(success=True))
+                    yield assistant_pb2.UpdateMessageResponse(message=handler.done(final_status="success"))
 
         except Exception as e:
             error_msg = "Error in UpdateMessage: " + str(e)
             logger.error(error_msg, exc_info=True)
             context.set_code(StatusCode.INTERNAL)
             context.set_details("Internal server error: " + str(e))
-            return assistant_pb2.UpdateMessageResponse()
+            return
 
     @get_metadata_interceptor
     def DeleteMessage(self, request, context):
