@@ -1,13 +1,13 @@
 # Create conda environment
 # conda env create -f environment.yml
 # Activate conda environment
-# conda activate oasm-assistant
+# conda activate base
 # Update conda environment
 # conda env update -f environment.yml --prune
 # Remove conda environment
-# conda env remove -n oasm-assistant
+# conda env remove -n base
 
-name: oasm-assistant
+name: base
 channels:
   - conda-forge
   - defaults

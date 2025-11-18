@@ -36,29 +36,6 @@ class IncidentResponseAgent(BaseAgent):
             **kwargs
         )
 
-    def setup_tools(self) -> List[Any]:
-        return [
-            "splunk_connector",
-            "elastic_siem",
-            "firewall_controller",
-            "edr_integration",
-            "backup_manager",
-            "communication_system",
-            "ticketing_system"
-        ]
-
-    def create_prompt_template(self) -> str:
-        return IncidentResponseAgentPrompts.get_incident_response_prompt()
-
-    def process_observation(self, observation: Any) -> Dict[str, Any]:
-        return {
-            "incident_detected": False,
-            "severity": "low",
-            "affected_systems": [],
-            "response_actions": [],
-            "status": "monitoring"
-        }
-
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         try:
             action = task.get("action", "assess_incident")

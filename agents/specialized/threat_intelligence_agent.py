@@ -26,28 +26,6 @@ class ThreatIntelligenceAgent(BaseAgent):
             **kwargs
         )
 
-    def setup_tools(self) -> List[Any]:
-        return [
-            "misp_integration",
-            "opencti_connector",
-            "virustotal_api",
-            "shodan_api",
-            "threat_feeds_parser",
-            "ioc_extractor"
-        ]
-
-    def create_prompt_template(self) -> str:
-        return ThreatIntelligenceAgentPrompts.get_threat_intelligence_prompt()
-
-    def process_observation(self, observation: Any) -> Dict[str, Any]:
-        return {
-            "intelligence_sources": [],
-            "threat_indicators": [],
-            "confidence_score": 0.0,
-            "threat_attribution": None,
-            "recommendations": []
-        }
-
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         try:
             action = task.get("action", "gather_intelligence")

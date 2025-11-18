@@ -72,29 +72,6 @@ class OrchestrationAgent(BaseAgent):
             self.analysis_agent = AnalysisAgent(db_session=db_session)
             logger.debug("OrchestrationAgent initialized without MCP context")
 
-    def setup_tools(self) -> List[Any]:
-        return [
-            "workflow_engine",
-            "agent_registry",
-            "task_queue",
-            "event_bus",
-            "decision_matrix",
-            "policy_engine",
-            "resource_monitor"
-        ]
-
-    def create_prompt_template(self) -> str:
-        return OrchestrationAgentPrompts.get_orchestration_prompt()
-
-    def process_observation(self, observation: Any) -> Dict[str, Any]:
-        return {
-            "active_workflows": [],
-            "agent_status": {},
-            "resource_utilization": {},
-            "pending_decisions": [],
-            "system_health": "healthy"
-        }
-
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         try:
             action = task.get("action", "coordinate_workflow")

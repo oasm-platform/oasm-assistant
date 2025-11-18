@@ -156,8 +156,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
             # Note: MessageToDict may return nested dicts with camelCase keys by default
             request_data = MessageToDict(
                 request.mcp_config,
-                preserving_proto_field_name=True,
-                including_default_value_fields=False
+                preserving_proto_field_name=True
             )
 
             # Extract mcpServers - handle both camelCase and snake_case

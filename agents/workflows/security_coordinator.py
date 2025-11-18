@@ -133,8 +133,6 @@ class SecurityCoordinator:
         else:
             # Default to analysis for most security tasks
             state["next_action"] = "analysis"
-
-        logger.info(f"Task routed: {task_type} -> {state['next_action']}")
         return state
 
     def _should_continue_from_router(self, state: SecurityWorkflowState) -> str:

@@ -35,29 +35,34 @@ You have access to security tools and databases. Use your expertise to provide c
         """
         return f"""You are a security analysis assistant with access to MCP (Model Context Protocol) tools.
 
-User Question: {question}
+**User Question:**
+{question}
 
-Available MCP Tools:
+**Available MCP Tools:**
 {tools_description}
 
-Your task:
-1. Analyze the user's question
-2. Select the MOST appropriate tool from the list above
+**Your Task:**
+1. Analyze the user's question carefully
+2. Select the MOST appropriate tool from the list above that best matches the question
 3. Generate the correct arguments for that tool
 
-Respond in JSON format:
+**CRITICAL INSTRUCTIONS:**
+- You MUST respond with ONLY valid JSON, nothing else
+- Do NOT include any explanation, commentary, or markdown formatting
+- Do NOT wrap the JSON in code blocks (no ```)
+- workspaceId is REQUIRED for all tools: "{workspace_id}"
+- Only use tools from the list above
+- Choose based on tool description and user question intent
+
+**Required JSON format (respond with this exact structure):**
 {{
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{"workspaceId": "{workspace_id}", ...}},
-    "reasoning": "why you selected this tool"
+    "args": {{"workspaceId": "{workspace_id}"}},
+    "reasoning": "brief explanation why you selected this tool"
 }}
 
-IMPORTANT:
-- workspaceId is REQUIRED for all tools: "{workspace_id}"
-- Only use tools from the list above
-- Choose based on tool description and user question
-"""
+**Your JSON response:**"""
 
     @staticmethod
     def format_statistics_report(stats: Dict) -> str:
@@ -161,3 +166,31 @@ Required Parameters: {json.dumps(tool.get('input_schema', {}).get('required', []
                 formatted.append(tool_info.strip())
 
         return "\n---\n".join(formatted)
+
+    @staticmethod
+    def get_no_data_response_prompt(question: str) -> str:
+        """Prompt for generating response when no scan data is available"""
+        return f"""You are an expert security analysis assistant specializing in vulnerability assessment and threat intelligence.
+
+**User's Question:**
+"{question}"
+
+**Current Situation:**
+This workspace currently has no security scan data available. No assets, vulnerabilities, or security metrics have been collected yet.
+
+**Your Task:**
+Generate a helpful, professional response that:
+1. Directly acknowledges the user's question
+2. Clearly explains that no scan data exists in this workspace
+3. Guides the user on next steps (running a security scan to collect data)
+4. Maintains a friendly, supportive tone without being overly apologetic
+5. **IMPORTANT: Respond in the SAME LANGUAGE as the user's question**
+
+**Response Guidelines:**
+- Be concise (2-3 sentences maximum)
+- Use natural, conversational language
+- Avoid technical jargon unless necessary
+- Focus on actionable next steps
+- **Match the language of the user's question (English, Vietnamese, etc.)**
+
+**Your Response:"""
