@@ -495,12 +495,12 @@ class MessageServiceStub(object):
                 request_serializer=app_dot_protos_dot_assistant__pb2.GetMessagesRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.GetMessagesResponse.FromString,
                 _registered_method=True)
-        self.CreateMessage = channel.unary_unary(
+        self.CreateMessage = channel.unary_stream(
                 '/app.MessageService/CreateMessage',
                 request_serializer=app_dot_protos_dot_assistant__pb2.CreateMessageRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.CreateMessageResponse.FromString,
                 _registered_method=True)
-        self.UpdateMessage = channel.unary_unary(
+        self.UpdateMessage = channel.unary_stream(
                 '/app.MessageService/UpdateMessage',
                 request_serializer=app_dot_protos_dot_assistant__pb2.UpdateMessageRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMessageResponse.FromString,
@@ -550,12 +550,12 @@ def add_MessageServiceServicer_to_server(servicer, server):
                     request_deserializer=app_dot_protos_dot_assistant__pb2.GetMessagesRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.GetMessagesResponse.SerializeToString,
             ),
-            'CreateMessage': grpc.unary_unary_rpc_method_handler(
+            'CreateMessage': grpc.unary_stream_rpc_method_handler(
                     servicer.CreateMessage,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.CreateMessageRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.CreateMessageResponse.SerializeToString,
             ),
-            'UpdateMessage': grpc.unary_unary_rpc_method_handler(
+            'UpdateMessage': grpc.unary_stream_rpc_method_handler(
                     servicer.UpdateMessage,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.UpdateMessageRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.UpdateMessageResponse.SerializeToString,
@@ -617,7 +617,7 @@ class MessageService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/app.MessageService/CreateMessage',
@@ -644,7 +644,7 @@ class MessageService(object):
             wait_for_ready=None,
             timeout=None,
             metadata=None):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_stream(
             request,
             target,
             '/app.MessageService/UpdateMessage',
