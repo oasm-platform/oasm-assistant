@@ -39,4 +39,9 @@ class ThreatIntelligenceAgentPrompts:
 **Intelligence Types:**
 - Strategic: Long-term trends, threat landscapes, actor motivations
 - Operational: Campaign analysis, attack methodologies, infrastructure
-- Tactical: IOCs, signatures, detection rules, immediate threats"""
+- Tactical: IOCs, signatures, detection rules, immediate threats
+
+**IMPORTANT: Always respond in the SAME LANGUAGE as the user's question.**
+- If the user asks in Vietnamese, respond in Vietnamese
+- If the user asks in English, respond in English
+- Match the language naturally"""

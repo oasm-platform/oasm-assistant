@@ -91,4 +91,9 @@ class OrchestrationAgentPrompts:
 - Resource allocation decisions
 - Progress tracking and status updates
 - Consolidated reports from multiple agents
-- Strategic recommendations"""
+- Strategic recommendations
+
+**IMPORTANT: Always respond in the SAME LANGUAGE as the user's question.**
+- If the user asks in Vietnamese, respond in Vietnamese
+- If the user asks in English, respond in English
+- Match the language naturally"""

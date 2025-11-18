@@ -1,11 +1,17 @@
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
 from common.logger import logger
-from llms.prompts import IncidentResponseAgentPrompts
 
 
 class IncidentResponseAgent(BaseAgent):
+    """
+    Incident Response Agent
+
+    Handles security incident detection, containment, eradication,
+    and recovery processes.
+    """
+
     def __init__(self, **kwargs):
         super().__init__(
             name="IncidentResponseAgent",
@@ -14,29 +20,30 @@ class IncidentResponseAgent(BaseAgent):
             capabilities=[
                 AgentCapability(
                     name="incident_detection",
-                    description="Detect and classify security incidents",
-                    tools=["siem_integration", "alert_correlation", "anomaly_detection"]
+                    description="Detect and classify security incidents"
                 ),
                 AgentCapability(
                     name="incident_containment",
-                    description="Contain and isolate security incidents",
-                    tools=["network_isolation", "system_quarantine", "access_control"]
+                    description="Contain and isolate security incidents"
                 ),
                 AgentCapability(
                     name="incident_recovery",
-                    description="Recover from security incidents",
-                    tools=["backup_restore", "system_rebuild", "service_restoration"]
-                ),
-                AgentCapability(
-                    name="incident_documentation",
-                    description="Document incident response activities",
-                    tools=["report_generation", "timeline_creation", "evidence_collection"]
+                    description="Recover from security incidents"
                 )
             ],
             **kwargs
         )
 
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute incident response task
+
+        Args:
+            task: Task dictionary with action and parameters
+
+        Returns:
+            Result dictionary with success status
+        """
         try:
             action = task.get("action", "assess_incident")
 
@@ -44,12 +51,8 @@ class IncidentResponseAgent(BaseAgent):
                 return self._assess_incident(task)
             elif action == "contain_incident":
                 return self._contain_incident(task)
-            elif action == "eradicate_threat":
-                return self._eradicate_threat(task)
             elif action == "recover_systems":
                 return self._recover_systems(task)
-            elif action == "lessons_learned":
-                return self._lessons_learned(task)
             else:
                 return {"success": False, "error": f"Unknown action: {action}"}
 
@@ -58,6 +61,7 @@ class IncidentResponseAgent(BaseAgent):
             return {"success": False, "error": str(e)}
 
     def _assess_incident(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Assess security incident"""
         alert = task.get("alert", {})
 
         assessment = {
@@ -81,6 +85,7 @@ class IncidentResponseAgent(BaseAgent):
         }
 
     def _contain_incident(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Contain security incident"""
         incident = task.get("incident", {})
         affected_systems = incident.get("affected_systems", [])
 
@@ -89,8 +94,7 @@ class IncidentResponseAgent(BaseAgent):
             containment_actions.append({
                 "system": system,
                 "action": "network_isolation",
-                "status": "completed",
-                "timestamp": "2024-01-01T00:00:00Z"
+                "status": "completed"
             })
 
         return {
@@ -100,34 +104,16 @@ class IncidentResponseAgent(BaseAgent):
             "agent": self.name
         }
 
-    def _eradicate_threat(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        threat = task.get("threat", {})
-
-        eradication_result = {
-            "threat_removed": True,
-            "systems_cleaned": [],
-            "patches_applied": [],
-            "configurations_updated": [],
-            "vulnerabilities_closed": [],
-            "verification_status": "pending"
-        }
-
-        return {
-            "success": True,
-            "eradication": eradication_result,
-            "agent": self.name
-        }
-
     def _recover_systems(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Recover systems after incident"""
         systems = task.get("systems", [])
 
         recovery_result = {
-            "systems_restored": [],
+            "systems_restored": systems,
             "services_restarted": [],
             "data_recovered": True,
             "monitoring_enabled": True,
-            "recovery_time": "2 hours",
-            "verification_tests": []
+            "recovery_time": "2 hours"
         }
 
         return {
@@ -136,32 +122,8 @@ class IncidentResponseAgent(BaseAgent):
             "agent": self.name
         }
 
-    def _lessons_learned(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        incident = task.get("incident", {})
-
-        lessons = {
-            "incident_summary": "Security incident successfully resolved",
-            "timeline": [],
-            "root_cause": "unknown",
-            "improvements": [
-                "Update detection rules",
-                "Enhance monitoring capabilities",
-                "Improve response procedures"
-            ],
-            "preventive_measures": [
-                "Security awareness training",
-                "System hardening",
-                "Enhanced monitoring"
-            ]
-        }
-
-        return {
-            "success": True,
-            "lessons_learned": lessons,
-            "agent": self.name
-        }
-
     def _calculate_severity(self, alert: Dict[str, Any]) -> str:
+        """Calculate incident severity based on alert score"""
         score = alert.get("score", 0)
         if score >= 8:
             return "critical"

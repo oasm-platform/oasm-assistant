@@ -11,6 +11,7 @@ class ConversationPrompts:
         - Avoid vague or generic titles.
         - Do not repeat the full question.
         - Keep the title short, clear, and meaningful.
+        - **Use the SAME LANGUAGE as the question** (if question is in Vietnamese, title must be in Vietnamese; if in English, title in English)
 
         Question: {question}
 

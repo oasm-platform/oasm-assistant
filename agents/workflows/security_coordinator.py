@@ -1,20 +1,27 @@
-from typing import Dict, Any, List, Optional, TypedDict
-import re
+"""
+Security Coordinator Module
+
+This module implements the SecurityCoordinator class which orchestrates
+multi-agent security workflows using LangGraph for workflow management
+and supports both synchronous and streaming response modes.
+"""
+
+from typing import Dict, Any, List, Optional, TypedDict, AsyncGenerator
+import time
+import asyncio
 
 from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 
-from agents.core import BaseAgent, AgentRole
 from common.logger import logger
 from agents.specialized import (
     AnalysisAgent,
     OrchestrationAgent
 )
 
-from tools.mcp_client import MCPManager
-
 
 class SecurityWorkflowState(TypedDict):
+    """State type for security workflow"""
     messages: List[Any]
     question: str
     task_type: str
@@ -28,6 +35,14 @@ class SecurityWorkflowState(TypedDict):
 
 
 class SecurityCoordinator:
+    """
+    Orchestrates multi-agent security workflows using LangGraph.
+
+    This coordinator manages the execution of security analysis tasks by routing
+    requests to appropriate specialized agents and handling both synchronous and
+    streaming response modes with LLM-level streaming (like ChatGPT/Claude).
+    """
+
     def __init__(
         self,
         db_session: Optional[Any] = None,
@@ -47,7 +62,11 @@ class SecurityCoordinator:
         self.user_id = user_id
         self.available_agents = self._create_agent_registry()
         self.workflow_graph = self._build_workflow_graph()
-        logger.info(f"Security coordinator initialized (DB: {'enabled' if db_session else 'disabled'}, MCP context: workspace={workspace_id}, user={user_id})")
+        logger.info(
+            f"Security coordinator initialized "
+            f"(DB: {'enabled' if db_session else 'disabled'}, "
+            f"MCP context: workspace={workspace_id}, user={user_id})"
+        )
 
     def _create_agent_registry(self) -> Dict[str, type]:
         """Create registry of available security agents"""
@@ -57,15 +76,19 @@ class SecurityCoordinator:
         }
 
     def _build_workflow_graph(self) -> StateGraph:
+        """Build LangGraph workflow for security tasks"""
         workflow = StateGraph(SecurityWorkflowState)
 
+        # Add workflow nodes
         workflow.add_node("router", self._route_task)
         workflow.add_node("analysis", self._execute_analysis)
         workflow.add_node("orchestration", self._execute_orchestration)
         workflow.add_node("result_formatter", self._format_results)
 
+        # Set entry point
         workflow.set_entry_point("router")
 
+        # Add conditional routing from router
         workflow.add_conditional_edges(
             "router",
             self._should_continue_from_router,
@@ -76,14 +99,25 @@ class SecurityCoordinator:
             }
         )
 
+        # Connect agent nodes to formatter
         for node in ["analysis", "orchestration"]:
             workflow.add_edge(node, "result_formatter")
 
+        # Connect formatter to end
         workflow.add_edge("result_formatter", END)
 
         return workflow.compile()
 
     def execute_security_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a security task through the LangGraph workflow (synchronous)
+
+        Args:
+            task: Task dictionary containing question, type, target, and vulnerability data
+
+        Returns:
+            Result dictionary with success status and agent results
+        """
         try:
             initial_state = SecurityWorkflowState(
                 messages=[HumanMessage(content=task.get("question", ""))],
@@ -124,6 +158,7 @@ class SecurityCoordinator:
             }
 
     def _route_task(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
+        """Route task to appropriate agent based on task type"""
         task_type = state["task_type"]
 
         if task_type in ["security_analysis", "forensic_analysis", "malware_analysis"]:
@@ -136,6 +171,7 @@ class SecurityCoordinator:
         return state
 
     def _should_continue_from_router(self, state: SecurityWorkflowState) -> str:
+        """Determine next workflow step from router"""
         next_action = state.get("next_action", "end")
 
         if next_action in ["analysis", "orchestration"]:
@@ -144,12 +180,36 @@ class SecurityCoordinator:
         return "end"
 
     def _execute_analysis(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
-        return self._execute_agent_task(state, "analysis", "analyze_vulnerabilities", "Security analysis")
+        """Execute security analysis agent"""
+        return self._execute_agent_task(
+            state, "analysis", "analyze_vulnerabilities", "Security analysis"
+        )
 
     def _execute_orchestration(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
-        return self._execute_agent_task(state, "orchestration", "coordinate_workflow", "Workflow orchestration")
+        """Execute workflow orchestration agent"""
+        return self._execute_agent_task(
+            state, "orchestration", "coordinate_workflow", "Workflow orchestration"
+        )
 
-    def _execute_agent_task(self, state: SecurityWorkflowState, agent_key: str, action: str, description: str) -> SecurityWorkflowState:
+    def _execute_agent_task(
+        self,
+        state: SecurityWorkflowState,
+        agent_key: str,
+        action: str,
+        description: str
+    ) -> SecurityWorkflowState:
+        """
+        Execute a task with a specific agent
+
+        Args:
+            state: Current workflow state
+            agent_key: Key to identify agent in registry
+            action: Action to perform
+            description: Human-readable description for logging
+
+        Returns:
+            Updated workflow state
+        """
         try:
             logger.info(f"Executing {description.lower()}")
 
@@ -159,24 +219,16 @@ class SecurityCoordinator:
                 return state
 
             # Create agent with appropriate parameters
-            if agent_key == "orchestration":
-                # OrchestrationAgent needs db_session, workspace_id, user_id
-                agent = agent_class(
-                    db_session=self.db_session,
-                    workspace_id=self.workspace_id,
-                    user_id=self.user_id
-                )
-            elif agent_key == "analysis":
-                # AnalysisAgent creates MCP manager internally if workspace/user provided
+            if agent_key in ["orchestration", "analysis"]:
                 agent = agent_class(
                     db_session=self.db_session,
                     workspace_id=self.workspace_id,
                     user_id=self.user_id
                 )
             else:
-                # Other agents don't need special parameters yet
                 agent = agent_class()
 
+            # Prepare task
             task = {
                 "action": action,
                 "vulnerability_data": state["vulnerability_data"],
@@ -184,6 +236,7 @@ class SecurityCoordinator:
                 "question": state["question"]
             }
 
+            # Add workflow context for orchestration agent
             if agent_key == "orchestration":
                 task["workflow"] = {
                     "question": state["question"],
@@ -192,8 +245,10 @@ class SecurityCoordinator:
                     "agent_results": state["agent_results"]
                 }
 
+            # Execute task
             result = agent.execute_task(task)
 
+            # Update state
             state["agent_results"][agent_key] = result
             state["current_agent"] = agent_key
 
@@ -206,6 +261,7 @@ class SecurityCoordinator:
         return state
 
     def _format_results(self, state: SecurityWorkflowState) -> SecurityWorkflowState:
+        """Format final results from all agents"""
         try:
             final_result = {
                 "task_type": state["task_type"],
@@ -225,173 +281,129 @@ class SecurityCoordinator:
 
         return state
 
-    def _analyze_question_type(self, question: str) -> str:
-        """Analyze question to determine appropriate agent task type"""
-        question_lower = question.lower()
+    def process_message_question(self, question: str) -> str:
+        """
+        Process a message question and return an appropriate answer (synchronous)
 
-        # Check for workflow coordination keywords
-        if any(keyword in question_lower for keyword in ["coordinate", "workflow", "orchestrate", "manage"]):
-            return "workflow_coordination"
+        Args:
+            question: The security question to process
 
-        # Default to security analysis for all other tasks
-        return "security_analysis"
-
-    def _extract_target_from_question(self, question: str) -> str:
-        """Extract target information from question"""
-        domain_pattern = r'\b(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\b'
-        domains = re.findall(domain_pattern, question)
-
-        ip_pattern = r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b'
-        ips = re.findall(ip_pattern, question)
-
-        if domains:
-            return domains[0]
-        elif ips:
-            return ips[0]
-
-        return "unknown"
-
-    def _extract_vulnerability_data(self, question: str) -> dict:
-        """Extract vulnerability data from question"""
-        vulnerability_data = {}
-
-        cve_pattern = r'CVE-\d{4}-\d{4,7}'
-        cves = re.findall(cve_pattern, question, re.IGNORECASE)
-        if cves:
-            vulnerability_data["cve_id"] = cves[0]
-
-        severity_keywords = ["critical", "high", "medium", "low"]
-        for severity in severity_keywords:
-            if severity in question.lower():
-                vulnerability_data["severity"] = severity
-                break
-
-        vuln_types = ["xss", "sqli", "sql injection", "lfi", "rfi", "ssrf", "csrf", "rce"]
-        for vuln_type in vuln_types:
-            if vuln_type in question.lower():
-                vulnerability_data["vulnerability_type"] = vuln_type
-                break
-
-        vulnerability_data["description"] = question
-        return vulnerability_data
-
-    def _format_langgraph_response(self, result: dict, question: str) -> str:
-        """Format LangGraph coordination results into readable response"""
+        Returns:
+            Formatted response string
+        """
         try:
-            task_type = result.get("task_type", "unknown")
-            success = result.get("success", False)
+            coordination_task = {
+                "type": "security_analysis",
+                "question": question,
+                "target": None,
+                "vulnerability_data": {}
+            }
+            result = self.execute_security_task(coordination_task)
 
-            if not success:
+            if result.get("success"):
+                return self._format_response(result)
+            else:
                 error_msg = result.get("error", "Unknown error")
                 return f"I apologize, but I encountered difficulties processing your request: {error_msg}"
+        except Exception as e:
+            logger.error(f"Error with coordination: {e}")
+            return f"I apologize, but I'm experiencing technical difficulties: {str(e)}"
 
-            participating_agents = result.get("participating_agents", [])
+    def _format_response(self, result: Dict[str, Any]) -> str:
+        """Format result into readable response"""
+        try:
             agent_results = result.get("agent_results", {})
 
             response = ""
             if agent_results:
                 for agent_name, agent_result in agent_results.items():
-                    if isinstance(agent_result, dict):
-                        # If agent returns a response (success or failure), use it directly
-                        if "response" in agent_result:
-                            response += f"\n{agent_result['response']}\n"
-                        else:
-                            # Fallback to old format for other agents
-                            success_status = "✅ Success" if agent_result.get("success") else "❌ Failed"
-                            response += f"\n**{agent_name.replace('_', ' ').title()}:** {success_status}\n"
+                    if isinstance(agent_result, dict) and "response" in agent_result:
+                        response += agent_result['response']
 
-                            if agent_result.get("success"):
-                                if "analysis" in agent_result:
-                                    analysis = agent_result["analysis"]
-                                    if isinstance(analysis, dict):
-                                        response += f"- Risk Assessment: {analysis.get('risk_assessment', 'N/A')}\n"
-                                        response += f"- Confidence: {analysis.get('confidence', 0):.1%}\n"
-
-                                if "scan_results" in agent_result:
-                                    response += f"- Scan completed successfully\n"
-                            else:
-                                error = agent_result.get("error", "Unknown error")
-                                response += f"- Error: {error}\n"
-
-            return response
+            return response if response else "Analysis completed successfully."
 
         except Exception as e:
-            logger.error(f"Error formatting LangGraph response: {e}")
-            return f"LangGraph analysis completed, but I encountered an issue formatting the detailed response."
+            logger.error(f"Error formatting response: {e}")
+            return "Analysis completed, but encountered an issue formatting the response."
 
-    def create_security_agent(self):
-        """Create a basic security agent for fallback"""
-        class BasicSecurityAgent(BaseAgent):
-            def setup_tools(self):
-                return []
+    async def process_message_question_streaming(
+        self,
+        question: str
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Process a message question and yield streaming events (like ChatGPT/Claude)
 
-            def create_prompt_template(self):
-                return "You are a security assistant."
+        Args:
+            question: The security question to process
 
-            def process_observation(self, observation):
-                return {"processed": True}
-
-            def execute_task(self, task):
-                return {"success": False, "message": "Basic agent - limited functionality"}
-
-            def answer_security_question(self, question):
-                """Synchronous method to answer security questions"""
-                try:
-                    response = self.query_llm(f"Security question: {question}")
-                    return {
-                        "success": True,
-                        "answer": response,
-                        "agent": self.name
-                    }
-                except Exception as e:
-                    logger.error(f"Security agent error: {e}")
-                    return {
-                        "success": False,
-                        "answer": "I apologize, but I'm currently unable to process this security question.",
-                        "error": str(e)
-                    }
-
-        return BasicSecurityAgent(
-            name="BasicSecurityAgent",
-            role=AgentRole.THREAT_INTELLIGENCE_AGENT
-        )
-
-    def _fallback_to_security_agent(self, question: str, security_agent) -> str:
-        """Fallback to single security agent if multi-agent fails"""
-        if security_agent:
-            try:
-                result = security_agent.answer_security_question(question)
-
-                if result.get("success"):
-                    return result.get("answer", "")
-                else:
-                    return result.get("answer", "I apologize, but I couldn't process your security question at this time.")
-
-            except Exception as e:
-                logger.error(f"Error with fallback security agent: {e}")
-                return "I apologize, but I'm experiencing technical difficulties. Please try again later."
-        else:
-            return f"Thank you for your question: '{question}'. I'm currently unable to provide detailed security analysis, but I recommend consulting with security professionals for specific security concerns."
-
-    def process_message_question(self, question: str):
-        """Process a message question and return an appropriate answer"""
-        security_agent = self.create_security_agent()
-
+        Yields:
+            Dict[str, Any]: Streaming events:
+                - {"type": "thinking", "thought": str, "agent": str}
+                - {"type": "tool_start", "tool_name": str, "agent": str}
+                - {"type": "tool_output", "output": Any, "agent": str}
+                - {"type": "tool_end", "tool_name": str, "agent": str}
+                - {"type": "delta", "text": str, "agent": str} - LLM text chunks
+                - {"type": "result", "data": Dict, "agent": str}
+                - {"type": "error", "error": str, "agent": str}
+        """
         try:
-            task_type = self._analyze_question_type(question)
-            coordination_task = {
-                "type": task_type,
-                "question": question,
-                "target": self._extract_target_from_question(question),
-                "vulnerability_data": self._extract_vulnerability_data(question)
+            task_type = "security_analysis"
+
+            # Yield initial thinking event
+            yield {
+                "type": "thinking",
+                "agent": "SecurityCoordinator",
+                "thought": "Analyzing security question and determining workflow",
+                "roadmap": [
+                    {
+                        "step": "1",
+                        "description": "Route to appropriate security agent"
+                    },
+                    {
+                        "step": "2",
+                        "description": "Execute security analysis with LLM"
+                    },
+                    {
+                        "step": "3",
+                        "description": "Stream response to user"
+                    }
+                ]
             }
-            result = self.execute_security_task(coordination_task)
 
-            if result.get("success"):
-                return self._format_langgraph_response(result, question)
-            else:
-                return self._fallback_to_security_agent(question, security_agent)
+            # Create agent
+            agent_class = self.available_agents.get("analysis")
+            if not agent_class:
+                yield {
+                    "type": "error",
+                    "error": "Analysis agent not available",
+                    "agent": "SecurityCoordinator"
+                }
+                return
+
+            agent = agent_class(
+                db_session=self.db_session,
+                workspace_id=self.workspace_id,
+                user_id=self.user_id
+            )
+
+            # Prepare task
+            task = {
+                "action": "analyze_vulnerabilities",
+                "question": question,
+                "target": None,
+                "vulnerability_data": {}
+            }
+
+            # Stream agent execution
+            async for event in agent.execute_task_streaming(task):
+                yield event
+
         except Exception as e:
-            logger.error(f"Error with coordination: {e}")
-            return self._fallback_to_security_agent(question, security_agent)
+            logger.error(f"Error in streaming coordination: {e}", exc_info=True)
 
+            yield {
+                "type": "error",
+                "error_type": "StreamingCoordinationError",
+                "error_message": str(e),
+                "agent": "SecurityCoordinator"
+            }

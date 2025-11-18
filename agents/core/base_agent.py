@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, AsyncGenerator
 import uuid
 
+from langchain_core.messages import BaseMessage
 from common.logger import logger
 
 
@@ -35,9 +36,9 @@ class AgentCapability:
 
 class BaseAgent(ABC):
     """
-    Simplified Base Agent Interface
+    Base Agent Interface with streaming support
 
-    Provides minimal structure for all agents without heavy dependencies.
+    Provides structure for all agents with both synchronous and streaming execution modes.
     Agents can override and extend as needed.
     """
 
@@ -116,5 +117,87 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute agent task"""
+        """
+        Execute agent task (synchronous)
+
+        Args:
+            task: Task dictionary with action and parameters
+
+        Returns:
+            Result dictionary with success status and data
+        """
         pass
+
+    async def execute_task_streaming(self, task: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
+        """
+        Execute agent task with streaming (asynchronous)
+
+        This is the default implementation that falls back to synchronous execution.
+        Agents should override this method to provide true streaming support.
+
+        Args:
+            task: Task dictionary with action and parameters
+
+        Yields:
+            Streaming events:
+            - {"type": "thinking", "thought": str, "agent": str}
+            - {"type": "tool_start", "tool_name": str, "agent": str}
+            - {"type": "tool_output", "output": Any, "agent": str}
+            - {"type": "delta", "text": str, "agent": str}
+            - {"type": "result", "data": Dict, "agent": str}
+            - {"type": "error", "error": str, "agent": str}
+        """
+        try:
+            # Yield thinking event
+            yield {
+                "type": "thinking",
+                "thought": f"{self.name} is processing the task",
+                "agent": self.name
+            }
+
+            # Execute synchronously (fallback)
+            result = self.execute_task(task)
+
+            # Yield result
+            yield {
+                "type": "result",
+                "data": result,
+                "agent": self.name
+            }
+
+        except Exception as e:
+            logger.error(f"Streaming task execution failed: {e}", exc_info=True)
+            yield {
+                "type": "error",
+                "error": str(e),
+                "agent": self.name
+            }
+
+    async def stream_llm_response(
+        self,
+        llm: Any,
+        prompt: Any,
+        **kwargs
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream LLM response chunks (like ChatGPT/Claude)
+
+        This is a utility method for agents to stream LLM responses naturally.
+
+        Args:
+            llm: LLM instance with astream support
+            prompt: Prompt to send to LLM
+            **kwargs: Additional LLM parameters
+
+        Yields:
+            Text chunks from LLM as they are generated
+        """
+        try:
+            async for chunk in llm.astream(prompt, **kwargs):
+                if isinstance(chunk, BaseMessage) and chunk.content:
+                    yield chunk.content
+                elif isinstance(chunk, str):
+                    yield chunk
+        except Exception as e:
+            logger.error(f"LLM streaming failed: {e}", exc_info=True)
+            raise
