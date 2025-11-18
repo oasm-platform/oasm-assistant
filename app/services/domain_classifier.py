@@ -144,8 +144,15 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
 
             # Extract categories from LLM result
             for cat_data in llm_result.get('categories', []):
-                category = cat_data.get('category', 'unknown')
-                confidence = cat_data.get('confidence', 0.0)
+                # Handle both dict and string formats
+                if isinstance(cat_data, dict):
+                    category = cat_data.get('category', 'unknown')
+                    confidence = cat_data.get('confidence', 0.0)
+                elif isinstance(cat_data, str):
+                    category = cat_data
+                    confidence = 0.7  # Default confidence for string format
+                else:
+                    continue
 
                 # Only include categories with confidence >= 0.6 as per prompt specification
                 if confidence >= 0.6:

@@ -28,6 +28,17 @@ def main():
         if not path.endswith('.py'):
             return False
 
+        # Ignore specific files (to avoid reloading heavy models)
+        ignore_files = [
+            'llm_manager.py',
+            'embedding_manager.py'
+        ]
+
+        # Check if filename matches any ignore file
+        filename = Path(path).name
+        if filename in ignore_files:
+            return False
+
         # Ignore common directories
         ignore_patterns = [
             'venv', '.venv', 'env', '.env',
