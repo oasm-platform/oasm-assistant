@@ -153,7 +153,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             logger.warning(f"Failed to retrieve similar templates: {e}", exc_info=True)
             return ""
 
-    def _generate_template_with_llm(self, question: str) -> str:
+    async def _generate_template_with_llm(self, question: str) -> str:
         """
         Generate Nuclei template using LLM with RAG support
 
@@ -181,7 +181,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             )
 
             # Invoke LLM to generate template
-            response = llm.invoke([HumanMessage(content=prompt)])
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
 
             # Extract template from response
             template = response.content.strip()
@@ -205,7 +205,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             logger.error(f"Error generating Nuclei template: {e}")
             raise
 
-    def CreateTemplate(self, request, context):
+    async def CreateTemplate(self, request, context):
         """
         gRPC endpoint for creating Nuclei templates
 
@@ -227,7 +227,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                     answer=""
                 )
             # Generate template using LLM
-            template = self._generate_template_with_llm(question)
+            template = await self._generate_template_with_llm(question)
 
             # Build response
             response = assistant_pb2.CreateTemplateResponse(

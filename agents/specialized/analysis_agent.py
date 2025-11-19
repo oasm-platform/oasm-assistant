@@ -3,9 +3,9 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 import asyncio
 import json
-import re
 
 from langchain_core.messages import BaseMessage
+from langchain_core.output_parsers import JsonOutputParser
 from agents.core import BaseAgent, AgentRole, AgentType
 from common.logger import logger
 from common.config import configs
@@ -221,55 +221,36 @@ class AnalysisAgent(BaseAgent):
             return None
 
     async def _select_tool_with_llm(self, question: str, all_tools: Dict) -> Optional[Dict]:
-        """Select appropriate MCP tool using LLM"""
-        prompt = AnalysisAgentPrompts.get_mcp_tool_selection_prompt(
+        """Select appropriate MCP tool using LLM with JsonOutputParser"""
+        # Define expected JSON schema
+        parser = JsonOutputParser()
+
+        # Get base prompt from AnalysisAgentPrompts
+        base_prompt = AnalysisAgentPrompts.get_mcp_tool_selection_prompt(
             question=question,
             workspace_id=str(self.workspace_id),
             tools_description=AnalysisAgentPrompts.format_tools_for_llm(all_tools)
         )
 
+        # Add format instructions for JSON output
+        format_instructions = parser.get_format_instructions()
+        enhanced_prompt = f"""{base_prompt}
+
+{format_instructions}
+
+You MUST respond with valid JSON containing exactly these fields:
+- "server": the server name (string)
+- "tool": the tool name (string)
+- "args": the tool arguments (object)
+
+Example response:
+{{"server": "nuclei", "tool": "get_vulnerabilities", "args": {{"workspace_id": "123"}}}}
+"""
+
         try:
-            content = self.llm.invoke(prompt).content.strip()
-            if not content:
-                logger.error("LLM returned empty response")
-                return None
-
-            # Extract JSON from markdown code blocks
-            original_content = content
-
-            if "```json" in content:
-                parts = content.split("```json")
-                if len(parts) > 1:
-                    content = parts[1].split("```")[0].strip()
-            elif "```" in content:
-                parts = content.split("```")
-                if len(parts) >= 3:
-                    content = parts[1].strip()
-
-            # Find JSON object
-            if not content.startswith("{"):
-                start_idx = content.find("{")
-                end_idx = content.rfind("}")
-                if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                    content = content[start_idx:end_idx + 1]
-
-            if not content or not content.strip():
-                logger.error("No JSON content found after extraction")
-                return None
-
-            # Clean up content
-            content = content.encode('utf-8', 'ignore').decode('utf-8')
-            content = content.replace('\u201c', '"').replace('\u201d', '"')
-            content = content.replace('\u2018', "'").replace('\u2019', "'")
-            content = re.sub(r',(\s*[}\]])', r'\1', content)
-
-            # Check if JSON is properly closed
-            open_braces = content.count('{')
-            close_braces = content.count('}')
-            if open_braces > close_braces:
-                content = content.rstrip() + ('}' * (open_braces - close_braces))
-
-            result = json.loads(content)
+            # Use LangChain's JsonOutputParser with automatic retry logic
+            chain = self.llm | parser
+            result = await chain.ainvoke(enhanced_prompt)
 
             # Validate required fields
             if not all(key in result for key in ["server", "tool", "args"]):
@@ -278,30 +259,6 @@ class AnalysisAgent(BaseAgent):
 
             return result
 
-        except json.JSONDecodeError as e:
-            logger.error(f"LLM response is not valid JSON: {e}")
-            # Try regex fallback
-            try:
-                server_match = re.search(r'"server"\s*:\s*"([^"]+)"', original_content)
-                tool_match = re.search(r'"tool"\s*:\s*"([^"]+)"', original_content)
-                args_match = re.search(r'"args"\s*:\s*(\{(?:[^{}]|\{[^{}]*\})*\})', original_content)
-
-                if server_match and tool_match and args_match:
-                    logger.info("Using regex fallback extraction")
-                    args_str = args_match.group(1)
-                    args_str = args_str.encode('utf-8', 'ignore').decode('utf-8')
-                    args_str = args_str.replace('\u201c', '"').replace('\u201d', '"')
-                    args_str = re.sub(r',(\s*[}\]])', r'\1', args_str)
-
-                    return {
-                        "server": server_match.group(1),
-                        "tool": tool_match.group(1),
-                        "args": json.loads(args_str)
-                    }
-            except Exception:
-                pass
-
-            return None
         except Exception as e:
             logger.error(f"LLM tool selection failed: {e}", exc_info=True)
             return None

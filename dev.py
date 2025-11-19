@@ -2,6 +2,7 @@
 Development server with auto-reload functionality using watchfiles
 """
 import sys
+import asyncio
 from pathlib import Path
 from watchfiles import run_process
 
@@ -9,9 +10,9 @@ from common.logger import logger
 
 
 def run_server():
-    """Entry point for watchfiles to run the server"""
+    """Entry point for watchfiles to run the async server"""
     from app.main import serve
-    serve()
+    asyncio.run(serve())
 
 
 def main():

@@ -55,7 +55,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
         }
 
 
-    def _classify_with_llm(self, domain: str, content: Optional[str] = None) -> Dict[str, any]:
+    async def _classify_with_llm(self, domain: str, content: Optional[str] = None) -> Dict[str, any]:
         """Classify using LLM - Step 2 of specification"""
         try:
             llm = self.llm_manager.get_llm()
@@ -68,7 +68,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             )
 
             logger.info(f"Sending domain classification request for: {domain}")
-            response = llm.invoke([HumanMessage(content=prompt)])
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
 
             # Parse response with improved error handling
             try:
@@ -123,7 +123,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             "reasoning": "Fallback parsing - JSON extraction failed"
         }
 
-    def classify_domain(self, domain: str) -> Dict[str, any]:
+    async def classify_domain(self, domain: str) -> Dict[str, any]:
         """Main classification method - Following specification: Step 1: Collect data, Step 2: LLM classification"""
         try:
             # Step 1: Collect data from URL/subdomain
@@ -136,7 +136,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
                 content = crawl_result
 
             # Step 2: Aggregate data and use LLM for labeling
-            llm_result = self._classify_with_llm(domain, content)
+            llm_result = await self._classify_with_llm(domain, content)
 
             # Process LLM results
             all_scores = {}
@@ -198,33 +198,33 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
                 "primary_category": ""
             }
 
-    def DomainClassify(self, request, context):
+    async def DomainClassify(self, request, context):
         """Domain classification endpoint"""
         try:
             domain = request.domain
-            
+
             if not domain:
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
                 context.set_details("Domain is required")
                 return assistant_pb2.DomainClassifyResponse(
                     labels=[]
                 )
-            
-            result = self.classify_domain(domain)
-            
+
+            result = await self.classify_domain(domain)
+
             # Build response (only using 'label' field from old proto)
             labels = result.get("labels", [])
-            
+
             response = assistant_pb2.DomainClassifyResponse(
                 labels=labels
             )
-            
+
             logger.info(f"Domain classification completed for {domain}: {labels}")
             return response
-            
+
         except Exception as e:
             logger.error(f"Domain classification error for {request.domain}: {e}")
-            
+
             return assistant_pb2.DomainClassifyResponse(
                 labels=[]
             )

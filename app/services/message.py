@@ -10,29 +10,6 @@ from llms import llm_manager
 from data.embeddings import embeddings_manager
 from app.services.streaming_handler import StreamingResponseBuilder
 import uuid
-import asyncio
-
-
-def async_generator_to_sync(async_gen):
-    """
-    Convert async generator to sync generator for gRPC compatibility
-
-    Args:
-        async_gen: Async generator to convert
-
-    Yields:
-        Items from the async generator
-    """
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        while True:
-            try:
-                yield loop.run_until_complete(async_gen.__anext__())
-            except StopAsyncIteration:
-                break
-    finally:
-        loop.close()
 
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
@@ -45,21 +22,21 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
 
     @get_metadata_interceptor
-    def GetMessages(self, request, context):
-        """Get all messages for a conversation"""
+    async def GetMessages(self, request, context):
+        """Get all messages for a conversation (async)"""
         try:
             conversation_id = request.conversation_id
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
-            
+
             with self.db.get_session() as session:
                 query = session.query(Message).join(Conversation).filter(
                     Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 )
-                
+
                 messages = query.all()
                 pb_messages = []
                 for msg in messages:
@@ -81,8 +58,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             return assistant_pb2.GetMessagesResponse(messages=[])
 
     @get_metadata_interceptor
-    def CreateMessage(self, request, context):
-        """Create a message with streaming response using security agents"""
+    async def CreateMessage(self, request, context):
+        """Create a message with ASYNC streaming response - NO bridge needed!"""
         try:
             # Extract request data
             conversation_id = request.conversation_id
@@ -108,7 +85,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             with self.db.get_session() as session:
                 # Handle conversation creation
                 if is_create_conversation:
-                    title_response = self.llm.invoke(ConversationPrompts.get_conversation_title_prompt(question=question))
+                    title_response = await self.llm.ainvoke(ConversationPrompts.get_conversation_title_prompt(question=question))
                     conversation = Conversation(
                         workspace_id=workspace_id,
                         user_id=user_id,
@@ -137,7 +114,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 )
 
                 try:
-                    # Create streaming response generator (async)
+                    # Create async streaming response
                     streaming_events = coordinator.process_message_question_streaming(question)
 
                     # Build async response stream
@@ -148,8 +125,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         response_generator=streaming_events
                     )
 
-                    # Convert async generator to sync for gRPC
-                    for stream_message in async_generator_to_sync(async_stream):
+                    # ✅ Direct async streaming - NO bridge needed!
+                    async for stream_message in async_stream:
                         # Accumulate delta text for database storage
                         if stream_message.type == "delta":
                             import json
@@ -202,8 +179,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             return
 
     @get_metadata_interceptor
-    def UpdateMessage(self, request, context):
-        """Update a message with streaming response if question changed"""
+    async def UpdateMessage(self, request, context):
+        """Update a message with ASYNC streaming response"""
         try:
             # Extract request data
             message_id = request.message_id
@@ -263,8 +240,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                             response_generator=streaming_events
                         )
 
-                        # Convert async generator to sync for gRPC
-                        for stream_message in async_generator_to_sync(async_stream):
+                        # ✅ Direct async streaming - NO bridge needed!
+                        async for stream_message in async_stream:
                             # Accumulate delta text
                             if stream_message.type == "delta":
                                 import json
@@ -327,11 +304,11 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             return
 
     @get_metadata_interceptor
-    def DeleteMessage(self, request, context):
-        """Delete a message"""
+    async def DeleteMessage(self, request, context):
+        """Delete a message (async)"""
         try:
             message_id = request.message_id
-            
+
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
@@ -342,7 +319,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 )
-                
+
                 message = query.first()
 
                 if not message:

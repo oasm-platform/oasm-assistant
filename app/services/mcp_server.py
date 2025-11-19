@@ -52,7 +52,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
 
         return self._managers[key]
 
-    def _handle_service_error(self, context, e: Exception, default_message: str, response_class):
+    async def _handle_service_error(self, context, e: Exception, default_message: str, response_class):
         """Common error handling"""
         if isinstance(e, ValueError):
             logger.error(f"Invalid input: {e}")
@@ -146,7 +146,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
             logger.error(f"Error during cleanup: {e}")
 
     @get_metadata_interceptor
-    def AddMCPServers(self, request, context):
+    async def AddMCPServers(self, request, context):
         """Add one or more servers to MCPConfig"""
         try:
             workspace_id = UUID(context.workspace_id)
@@ -226,10 +226,10 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
                 )
 
         except Exception as e:
-            return self._handle_service_error(context, e, "Error adding servers", assistant_pb2.AddMCPServersResponse)
+            return await self._handle_service_error(context, e, "Error adding servers", assistant_pb2.AddMCPServersResponse)
 
     @get_metadata_interceptor
-    def GetMCPServers(self, request, context):
+    async def GetMCPServers(self, request, context):
         """Get all servers from MCPConfig"""
         try:
             workspace_id = UUID(context.workspace_id)
@@ -262,7 +262,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
             return assistant_pb2.GetMCPServersResponse()
 
     @get_metadata_interceptor
-    def UpdateMCPServers(self, request, context):
+    async def UpdateMCPServers(self, request, context):
         """Update one or more servers in MCPConfig"""
         try:
             workspace_id = UUID(context.workspace_id)
@@ -328,10 +328,10 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
                 )
 
         except Exception as e:
-            return self._handle_service_error(context, e, "Error updating servers", assistant_pb2.UpdateMCPServersResponse)
+            return await self._handle_service_error(context, e, "Error updating servers", assistant_pb2.UpdateMCPServersResponse)
 
     @get_metadata_interceptor
-    def DeleteMCPServers(self, request, context):
+    async def DeleteMCPServers(self, request, context):
         """Delete one or more servers from MCPConfig"""
         try:
             workspace_id = UUID(context.workspace_id)
@@ -379,4 +379,4 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
                 )
 
         except Exception as e:
-            return self._handle_service_error(context, e, "Error deleting servers", assistant_pb2.DeleteMCPServersResponse)
+            return await self._handle_service_error(context, e, "Error deleting servers", assistant_pb2.DeleteMCPServersResponse)
