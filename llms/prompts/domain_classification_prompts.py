@@ -5,13 +5,15 @@ class DomainClassificationPrompts:
     """Prompts for domain classification tasks"""
 
     @staticmethod
-    def get_domain_classification_prompt(categories: List[str], domain: str, content: str = None) -> str:
+    def get_domain_classification_prompt(
+        categories: List[str],
+        domain: str,
+        content: str = None,
+        min_labels: int = 3,
+        max_labels: int = 5
+    ) -> str:
         """Get the improved domain classification prompt"""
-        prompt = f"""
-You are an AI system that classifies digital assets (domains and subdomains) using domain structure, HTML content, and metadata.
-
-TASK:
-Classify the domain "{domain}" using categories from the list below.
+        prompt = f"""You are a domain classification expert. Your task is to classify the domain "{domain}" into {min_labels} to {max_labels} categories.
 
 AVAILABLE CATEGORIES:
 {', '.join(categories)}
@@ -20,37 +22,32 @@ AVAILABLE CATEGORIES:
 
         if content:
             content_preview = content[:4000] + "..." if len(content) > 4000 else content
-            prompt += f"""
-INPUT DATA (TRUNCATED IF TOO LONG):
+            prompt += f"""WEBSITE CONTENT:
 {content_preview}
 
 """
 
-        prompt += f"""
-CLASSIFICATION RULES:
-1. Analyze domain/subdomain name patterns and keywords.
-2. Use metadata such as title, description, keywords, generator, schema types if available.
-3. Use main content and functional signals to determine purpose.
-4. Ignore ads, boilerplate, and unrelated tracking scripts.
-5. Assign labels strictly based on evidence — avoid speculation.
-6. Select at least 3 labels and at most 6 labels.
-7. All labels must exist in AVAILABLE CATEGORIES.
+        prompt += f"""CLASSIFICATION GUIDELINES:
+1. Analyze the domain name structure and keywords
+2. Review the website content, title, meta description, and main text
+3. Identify the primary purpose and functionality
+4. Consider secondary features and services
+5. Select {min_labels} to {max_labels} most relevant categories
+6. ALL categories MUST be from the AVAILABLE CATEGORIES list above (exact match)
 
-OUTPUT FORMAT (STRICT JSON):
+CRITICAL INSTRUCTIONS:
+- Return ONLY valid JSON - no explanations, no reasoning text, no additional commentary
+- Use exact category names from the list (case-sensitive: "E-Commerce", "Social Media", etc.)
+- Do not create new categories
+- Do not use lowercase or modified versions
+
+REQUIRED JSON FORMAT:
 {{
-  "primary_category": "the single most relevant category",
-  "categories": [
-    "category1",
-    "category2",
-    "category3"
-  ],
-  "reasoning": "Concise explanation referencing domain name, metadata, and/or content."
+  "categories": ["Category 1", "Category 2", "Category 3"]
 }}
 
-OUTPUT RULES:
-- primary_category must be included inside the `categories` list.
-- categories must contain at least 3 items and no more than 6.
-- No scoring, no confidence values.
-- Reasoning must cite actual observations (example: keywords detected, metadata hints, content themes).
-"""
+Example valid response:
+{{"categories": ["E-Commerce", "Business", "Technology"]}}
+
+Now classify the domain "{domain}" and respond with ONLY the JSON object:"""
         return prompt

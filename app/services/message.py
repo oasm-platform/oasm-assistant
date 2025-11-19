@@ -1,3 +1,6 @@
+import json
+import uuid
+
 from app.protos import assistant_pb2, assistant_pb2_grpc
 from data.database import postgres_db as database_instance
 from common.logger import logger
@@ -9,7 +12,6 @@ from llms.prompts import ConversationPrompts
 from llms import llm_manager
 from data.embeddings import embeddings_manager
 from app.services.streaming_handler import StreamingResponseBuilder
-import uuid
 
 
 class MessageService(assistant_pb2_grpc.MessageServiceServicer):
@@ -129,7 +131,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     async for stream_message in async_stream:
                         # Accumulate delta text for database storage
                         if stream_message.type == "delta":
-                            import json
                             content_data = json.loads(stream_message.content)
                             accumulated_answer.append(content_data.get("text", ""))
 
@@ -244,7 +245,6 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         async for stream_message in async_stream:
                             # Accumulate delta text
                             if stream_message.type == "delta":
-                                import json
                                 content_data = json.loads(stream_message.content)
                                 accumulated_answer.append(content_data.get("text", ""))
 

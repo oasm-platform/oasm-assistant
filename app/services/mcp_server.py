@@ -3,6 +3,7 @@ from data.database import postgres_db
 from data.database.models import MCPConfig
 from tools.mcp_client import MCPManager
 from common.logger import logger
+from common.config import configs
 from grpc import StatusCode
 from app.interceptors import get_metadata_interceptor
 from uuid import UUID
@@ -23,6 +24,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
         self._async_loop = None
         self._async_thread = None
         self._executor = ThreadPoolExecutor(max_workers=5)
+        self.mcp_timeout = configs.mcp_timeout
         self._setup_async_loop()
 
     def _setup_async_loop(self):
@@ -38,7 +40,7 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
     def _run_async(self, coro):
         """Run async coroutine and wait for result"""
         future = asyncio.run_coroutine_threadsafe(coro, self._async_loop)
-        return future.result(timeout=30)
+        return future.result(timeout=self.mcp_timeout)
 
     def _get_manager(self, workspace_id: UUID, user_id: UUID) -> MCPManager:
         """Get or create MCPManager (thread-safe)"""

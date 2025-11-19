@@ -242,9 +242,6 @@ You MUST respond with valid JSON containing exactly these fields:
 - "server": the server name (string)
 - "tool": the tool name (string)
 - "args": the tool arguments (object)
-
-Example response:
-{{"server": "nuclei", "tool": "get_vulnerabilities", "args": {{"workspace_id": "123"}}}}
 """
 
         try:

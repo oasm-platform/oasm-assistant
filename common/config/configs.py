@@ -102,6 +102,30 @@ class RAGConfigs(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
+class DomainClassifierConfigs(BaseSettings):
+    min_labels: int = Field(3, alias="DOMAIN_CLASSIFIER_MIN_LABELS")
+    max_labels: int = Field(5, alias="DOMAIN_CLASSIFIER_MAX_LABELS")
+    max_retries: int = Field(3, alias="DOMAIN_CLASSIFIER_MAX_RETRIES")
+    categories: list[str] = Field(
+        default=[
+            "E-Commerce", "News", "Blog", "Social Media", "Education",
+            "Business", "Technology", "Health", "Entertainment", "Sports",
+            "Finance", "Government", "Nonprofit", "Personal", "Forum",
+            "Documentation", "Portfolio", "Landing Page", "Adult",
+            "Travel", "Food", "Gaming", "Music", "Art", "Photography",
+            "Fashion", "Automotive", "Real Estate", "Job Portal", "Dating",
+            "Streaming", "Podcast", "Wiki", "Search Engine", "Cloud Service",
+            "API", "Marketplace", "Cryptocurrency", "Banking", "Insurance",
+            "Legal", "Consulting", "Marketing", "Design", "Startup",
+            "Agency", "SaaS", "Tools", "Utilities", "Weather"
+        ],
+        alias="DOMAIN_CLASSIFIER_CATEGORIES"
+    )
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
 
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
@@ -110,6 +134,7 @@ class Configs(BaseSettings):
     embedding: EmbeddingConfigs = EmbeddingConfigs()
     scheduler: SchedulerConfigs = SchedulerConfigs()
     rag: RAGConfigs = RAGConfigs()
+    domain_classifier: DomainClassifierConfigs = DomainClassifierConfigs()
 
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
@@ -122,6 +147,9 @@ class Configs(BaseSettings):
     crawl_timeout: int = Field(10, alias="CRAWL_TIMEOUT")
     crawl_max_retries: int = Field(3, alias="CRAWL_MAX_RETRIES")
     classification_confidence_threshold: float = Field(0.3, alias="CLASSIFICATION_CONFIDENCE_THRESHOLD")
+
+    # MCP service timeout
+    mcp_timeout: int = Field(30, alias="MCP_TIMEOUT")
 
     class Config:
         env_file = ".env"
