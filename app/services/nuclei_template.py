@@ -5,7 +5,9 @@ from llms import llm_manager
 from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
 from llms.prompts import NucleiGenerationPrompts
-from data.retrieval import HybridSearchEngine
+from data.retrieval import hybrid_search_engine
+from data.database import postgres_db
+from sqlalchemy import text
 
 
 class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
@@ -15,27 +17,18 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         """Initialize the Nuclei template service"""
         self.llm_manager = llm_manager
 
-        # Initialize RAG components
-        embed_dim = configs.embedding.dimensions or 384  # Default to 384 if not set
-        self.hybrid_search = HybridSearchEngine(
-            table_name=configs.rag.table_name,
-            embedding_model_name=configs.embedding.model_name,
-            vector_weight=configs.rag.vector_weight,
-            keyword_weight=configs.rag.keyword_weight,
-            embed_dim=embed_dim
-        )
+        # Use singleton hybrid search engine
+        self.hybrid_search = hybrid_search_engine
 
-        # Load documents from database for BM25 indexing
-        self._initialize_bm25_index()
+        # Load documents from database for BM25 indexing (only if not already initialized)
+        if not self.hybrid_search.keyword_retriever.is_ready():
+            self._initialize_bm25_index()
 
-        logger.info("NucleiTemplateService initialized with HybridSearchEngine")
+        logger.info("NucleiTemplateService initialized with singleton HybridSearchEngine")
 
     def _initialize_bm25_index(self):
         """Load documents from database and build BM25 index"""
         try:
-            from data.database import postgres_db
-            from sqlalchemy import text
-
             # Fetch all templates from database
             with postgres_db.get_session() as session:
                 result = session.execute(text("""
@@ -72,7 +65,6 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
 
             # Index documents into BM25
             self.hybrid_search.keyword_retriever.index_documents(documents)
-            logger.info(f"BM25 index initialized with {len(documents)} templates")
 
         except Exception as e:
             logger.warning(f"Failed to initialize BM25 index: {e}. Keyword search will be unavailable.")
@@ -161,7 +153,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             logger.warning(f"Failed to retrieve similar templates: {e}", exc_info=True)
             return ""
 
-    def _generate_template_with_llm(self, question: str) -> str:
+    async def _generate_template_with_llm(self, question: str) -> str:
         """
         Generate Nuclei template using LLM with RAG support
 
@@ -189,7 +181,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             )
 
             # Invoke LLM to generate template
-            response = llm.invoke([HumanMessage(content=prompt)])
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
 
             # Extract template from response
             template = response.content.strip()
@@ -213,7 +205,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             logger.error(f"Error generating Nuclei template: {e}")
             raise
 
-    def CreateTemplate(self, request, context):
+    async def CreateTemplate(self, request, context):
         """
         gRPC endpoint for creating Nuclei templates
 
@@ -235,7 +227,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                     answer=""
                 )
             # Generate template using LLM
-            template = self._generate_template_with_llm(question)
+            template = await self._generate_template_with_llm(question)
 
             # Build response
             response = assistant_pb2.CreateTemplateResponse(

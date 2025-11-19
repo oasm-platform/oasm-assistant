@@ -1,3 +1,0 @@
-"""
-Real-time alert handling
-"""

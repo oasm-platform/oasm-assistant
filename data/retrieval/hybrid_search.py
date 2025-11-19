@@ -11,7 +11,7 @@ from common.config import configs
 
 class HybridSearchEngine:
     """
-    Hybrid search engine combining:
+    Hybrid search engine combining (Singleton):
     - Vector retrieval (HNSW) for semantic similarity
     - Keyword retrieval (BM25) for exact term matching
 
@@ -20,6 +20,31 @@ class HybridSearchEngine:
     - Handles both semantic and lexical matching
     - Configurable weights for different use cases
     """
+
+    _instance: Optional['HybridSearchEngine'] = None
+    _initialized = False
+
+    def __new__(
+        cls,
+        table_name: str = "nuclei_templates",
+        embedding_model_name: Optional[str] = None,
+        vector_weight: float = 0.7,
+        keyword_weight: float = 0.3,
+        embed_dim: int = 384,
+    ):
+        """
+        Singleton implementation - ensures only one instance exists
+
+        Args:
+            table_name: PostgreSQL table name (only used on first instantiation)
+            embedding_model_name: HuggingFace model (only used on first instantiation)
+            vector_weight: Weight for semantic search (only used on first instantiation)
+            keyword_weight: Weight for keyword search (only used on first instantiation)
+            embed_dim: Embedding dimension (only used on first instantiation)
+        """
+        if cls._instance is None:
+            cls._instance = super(HybridSearchEngine, cls).__new__(cls)
+        return cls._instance
 
     def __init__(
         self,
@@ -30,7 +55,7 @@ class HybridSearchEngine:
         embed_dim: int = 384,
     ):
         """
-        Initialize hybrid search engine
+        Initialize hybrid search engine - only runs once due to Singleton
 
         Args:
             table_name: PostgreSQL table name
@@ -39,6 +64,10 @@ class HybridSearchEngine:
             keyword_weight: Weight for keyword search (0-1)
             embed_dim: Embedding dimension
         """
+        # Only initialize once
+        if self._initialized:
+            return
+
         self.table_name = table_name
         self.vector_weight = vector_weight
         self.keyword_weight = keyword_weight
@@ -51,7 +80,7 @@ class HybridSearchEngine:
                 f"Results may be scaled differently."
             )
 
-        # Initialize retrievers
+        # Initialize retrievers (singletons)
         self.vector_retriever = VectorRetriever(
             table_name=table_name,
             embedding_model_name=embedding_model_name,
@@ -60,8 +89,10 @@ class HybridSearchEngine:
 
         self.keyword_retriever = KeywordRetriever()
 
+        # Mark as initialized
+        HybridSearchEngine._initialized = True
         logger.info(
-            f"HybridSearchEngine initialized "
+            f"HybridSearchEngine singleton initialized "
             f"(vector_weight={vector_weight}, keyword_weight={keyword_weight})"
         )
 

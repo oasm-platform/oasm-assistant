@@ -5,6 +5,8 @@ import os
 import shutil
 import threading
 import time
+import git
+import yaml
 from datetime import datetime
 from typing import Optional
 from pathlib import Path
@@ -13,9 +15,8 @@ from common.logger import logger
 from common.config import configs
 from data.database import postgres_db
 from data.database.models import NucleiTemplates
-from data.embeddings import get_embedding_model
+from data.embeddings import embeddings_manager
 from sqlalchemy import delete, text
-from common.logger import logger
 
 
 class NucleiTemplatesScheduler:
@@ -30,7 +31,7 @@ class NucleiTemplatesScheduler:
         self.thread: Optional[threading.Thread] = None
 
         # Use shared singleton embedding model
-        self.embedding_model = get_embedding_model()
+        self.embeddings_manager = embeddings_manager
 
         # Ensure TSV column and index exist for hybrid search
         self._ensure_tsv_column()
@@ -85,8 +86,6 @@ class NucleiTemplatesScheduler:
             bool: True if successful, False otherwise
         """
         try:
-            import git
-
             if os.path.exists(self.clone_dir):
                 # Pull latest changes
                 logger.info(f"Pulling latest changes from {self.repo_url}")
@@ -116,8 +115,6 @@ class NucleiTemplatesScheduler:
             dict: Parsed template data or None if failed
         """
         try:
-            import yaml
-
             with open(file_path, 'r', encoding='utf-8') as f:
                 template_data = yaml.safe_load(f)
 
@@ -306,8 +303,8 @@ class NucleiTemplatesScheduler:
 
                 text_to_embed = ' '.join(filter(None, embedding_parts))  # Remove empty strings
 
-                # Use encode() which returns List[List[float]], take first element
-                embedding = self.embedding_model.encode([text_to_embed])[0]
+                # Generate embedding using LangChain's embed_query method
+                embedding = self.embeddings_manager.embed_query(text_to_embed)
 
                 # Prepare data
                 batch_data.append({

@@ -3,7 +3,7 @@ from .conversations import Conversation
 from .base import BaseEntity
 from .knowledge_base import KnowledgeBase
 from .nuclei_templates import NucleiTemplates
-from .mcp_servers import MCPServer, ServerStatus
+from .mcp_config import MCPConfig
 
 __all__ = [
     "BaseEntity",
@@ -11,6 +11,5 @@ __all__ = [
     "Conversation",
     "KnowledgeBase",
     "NucleiTemplates",
-    "MCPServer",
-    "ServerStatus",
+    "MCPConfig",
 ]

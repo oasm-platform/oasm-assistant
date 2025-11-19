@@ -25,7 +25,7 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
         )
 
     @get_metadata_interceptor
-    def GetConversations(self, request, context):
+    async def GetConversations(self, request, context):
         try:
             # Extract workspace_id and user_id from context
             workspace_id = context.workspace_id
@@ -34,11 +34,11 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
             with self.db.get_session() as session:
                 conversations = session.query(Conversation).filter(Conversation.user_id == user_id,
                     Conversation.workspace_id == workspace_id).all()
-                
+
                 conversation_messages = [self._conversation_to_proto(conv) for conv in conversations]
-                
+
                 return assistant_pb2.GetConversationsResponse(conversations=conversation_messages)
-        
+
         except Exception as e:
             logger.error(f"Error getting conversations: {e}")
             context.set_code(StatusCode.INTERNAL)
@@ -47,12 +47,12 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
 
     
     @get_metadata_interceptor
-    def UpdateConversation(self, request, context):
+    async def UpdateConversation(self, request, context):
         try:
             conversation_id = request.conversation_id
             title = request.title
             description = request.description
-            
+
             # Extract workspace_id and user_id from context
             workspace_id = context.workspace_id
             user_id = context.user_id
@@ -61,18 +61,18 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
                 query = session.query(Conversation).filter(Conversation.conversation_id == conversation_id,
                 Conversation.workspace_id == workspace_id,
                 Conversation.user_id == user_id)
-                
+
                 conversation = query.first()
                 if not conversation:
                     context.set_code(StatusCode.NOT_FOUND)
                     context.set_details("Conversation not found")
                     return assistant_pb2.UpdateConversationResponse()
-                
+
                 conversation.title = title
                 conversation.description = description
                 session.commit()
                 return assistant_pb2.UpdateConversationResponse(conversation=self._conversation_to_proto(conversation))
-        
+
         except Exception as e:
             logger.error(f"Error updating conversation: {e}")
             context.set_code(StatusCode.INTERNAL)
@@ -80,10 +80,10 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
             return assistant_pb2.UpdateConversationResponse()
         
     @get_metadata_interceptor
-    def DeleteConversation(self, request, context):
+    async def DeleteConversation(self, request, context):
         try:
             conversation_id = request.conversation_id
-            
+
             # Extract workspace_id and user_id from context
             workspace_id = context.workspace_id
             user_id = context.user_id
@@ -92,7 +92,7 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
                 query = session.query(Conversation).filter(Conversation.conversation_id == conversation_id,
                 Conversation.workspace_id == workspace_id,
                 Conversation.user_id == user_id)
-                
+
                 conversation = query.first()
                 if not conversation:
                     context.set_code(StatusCode.NOT_FOUND)
@@ -101,34 +101,34 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
                         message="Conversation not found",
                         success=False
                     )
-                
+
                 session.delete(conversation)
                 session.commit()
                 return assistant_pb2.DeleteConversationResponse(
                     message="Conversation deleted",
                     success=True
                 )
-        
+
         except Exception as e:
             logger.error(f"Error deleting conversation: {e}")
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteConversationResponse(
                 message=str(e),
-                success=False 
+                success=False
             )
         
     @get_metadata_interceptor
-    def DeleteConversations(self, request, context):
+    async def DeleteConversations(self, request, context):
         try:
             # Extract workspace_id and user_id from context
             workspace_id = context.workspace_id
             user_id = context.user_id
-            
+
             with self.db.get_session() as session:
                 query = session.query(Conversation).filter(Conversation.workspace_id == workspace_id,
                 Conversation.user_id == user_id)
-                
+
                 conversations = query.all()
                 for conversation in conversations:
                     session.delete(conversation)
@@ -137,7 +137,7 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
                     message=f"Deleted {len(conversations)} conversations",
                     success=True
                 )
-        
+
         except Exception as e:
             logger.error(f"Error deleting conversations: {e}")
             context.set_code(StatusCode.INTERNAL)

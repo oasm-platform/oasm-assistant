@@ -1,3 +1,0 @@
-"""
-Attack pattern repository
-"""

@@ -1,3 +1,0 @@
-"""
-Threat intelligence feeds
-"""

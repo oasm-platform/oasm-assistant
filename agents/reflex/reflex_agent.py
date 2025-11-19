@@ -1,3 +1,0 @@
-"""
-Immediate response agents
-"""

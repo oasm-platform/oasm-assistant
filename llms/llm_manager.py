@@ -3,33 +3,77 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.chat_models import ChatOllama
+from langchain_ollama import ChatOllama
 from common.logger import logger
 from common.config import LlmConfigs
 
 
 class LLMManager:
-    """LLM Manager with LangChain integration and external configuration"""
+    """LLM Manager with LangChain integration and external configuration (Singleton)"""
 
-    def __init__(self,
-                 config: LlmConfigs):
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, config: LlmConfigs = None):
+        """
+        Singleton implementation - ensures only one instance exists
+
+        Args:
+            config: LlmConfigs instance with provider configuration (only used on first instantiation)
+        """
+        if cls._instance is None:
+            cls._instance = super(LLMManager, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, config: LlmConfigs = None):
         """
         Initialize LLM Manager with configurations
+        Only initializes once due to Singleton pattern
 
         Args:
             config: LlmConfigs instance with provider configuration
         """
+        # Only initialize once
+        if self._initialized:
+            return
+
+        if config is None:
+            raise ValueError("Config must be provided on first initialization")
+
         self.config = config
         self.providers = {}
-
         self._initialize_providers()
+
+        # Mark as initialized
+        LLMManager._initialized = True
 
     def _initialize_providers(self):
         """Initialize available LLM providers based on configurations"""
         try:
-            # Initialize configured provider if available
-            if self.config.provider and self.config.api_key:
-                self._initialize_single_provider(self.config.provider)
+            provider = self.config.provider
+
+            # Check if provider is configured
+            if not provider:
+                logger.warning("No LLM provider configured")
+                return
+
+            # Check API key requirement (Ollama doesn't need API key)
+            if provider != "ollama" and not self.config.api_key:
+                logger.warning(f"Provider '{provider}' requires API key but none provided")
+                return
+
+            # Initialize provider
+            if provider == "openai":
+                self.providers["openai"] = self._create_openai_provider
+            elif provider == "anthropic":
+                self.providers["anthropic"] = self._create_anthropic_provider
+            elif provider == "google":
+                self.providers["google"] = self._create_google_provider
+            elif provider == "ollama":
+                self.providers["ollama"] = self._create_ollama_provider
+            else:
+                logger.warning(f"Unknown provider: {provider}")
+                return
 
             if not self.providers:
                 logger.warning("No LLM providers available. Check configurations.")
@@ -37,19 +81,6 @@ class LLMManager:
         except Exception as e:
             logger.error(f"Error initializing LLM providers: {e}")
             raise
-
-    def _initialize_single_provider(self, provider: str):
-        """Initialize a single provider"""
-        if provider == "openai":
-            self.providers["openai"] = self._create_openai_provider
-        elif provider == "anthropic":
-            self.providers["anthropic"] = self._create_anthropic_provider
-        elif provider == "google":
-            self.providers["google"] = self._create_google_provider
-        elif provider == "ollama":
-            self.providers["ollama"] = self._create_ollama_provider
-        else:
-            logger.warning(f"Unknown provider: {provider}")
 
     def _create_openai_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
         """Create OpenAI LangChain provider"""

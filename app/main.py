@@ -1,5 +1,5 @@
 import grpc
-from concurrent import futures
+import asyncio
 import sys
 import traceback
 import atexit
@@ -13,8 +13,8 @@ from .services import (
 from common.logger import logger
 from common.config import configs as settings
 
-def serve():
-    """Start gRPC server with scheduler"""
+async def serve():
+    """Start async gRPC server with scheduler"""
     scheduler = None
 
     try:
@@ -30,20 +30,20 @@ def serve():
                 scheduler.stop()
         atexit.register(cleanup)
 
-        # Create server
-        server = grpc.server(
-            futures.ThreadPoolExecutor(max_workers=settings.max_workers),
+        # Create ASYNC server
+        server = grpc.aio.server(
             options=[
                 ('grpc.keepalive_time_ms', 30000),
                 ('grpc.keepalive_timeout_ms', 5000),
                 ('grpc.keepalive_permit_without_calls', True),
                 ('grpc.http2.max_pings_without_data', 0),
                 ('grpc.http2.min_time_between_pings_ms', 10000),
-                ('grpc.http2.min_ping_interval_without_data_ms', 300000)
+                ('grpc.http2.min_ping_interval_without_data_ms', 300000),
+                ('grpc.max_concurrent_streams', settings.max_workers)
             ]
         )
 
-        # Add servicer
+        # Add servicers
         assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthService(), server)
         assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifier(), server)
         assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationService(), server)
@@ -56,20 +56,20 @@ def serve():
         server.add_insecure_port(listen_addr)
 
         # Start server
-        server.start()
-        logger.info(f"gRPC server started on {listen_addr}")
+        await server.start()
+        logger.info(f"✓ Async gRPC server started on {listen_addr}")
         logger.info(f"Service: {settings.service_name} v{settings.version}")
         logger.info(f"Nuclei templates will sync daily at {settings.scheduler.nuclei_templates_sync_time}")
 
         try:
-            server.wait_for_termination()
+            await server.wait_for_termination()
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         finally:
             logger.info("Shutting down server...")
             if scheduler:
                 scheduler.stop()
-            server.stop(grace=5)
+            await server.stop(grace=5)
             logger.info("Server stopped")
 
     except Exception as e:
@@ -80,4 +80,4 @@ def serve():
         sys.exit(1)
 
 if __name__ == "__main__":
-    serve()
+    asyncio.run(serve())

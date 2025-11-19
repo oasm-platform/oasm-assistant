@@ -2,6 +2,7 @@
 Development server with auto-reload functionality using watchfiles
 """
 import sys
+import asyncio
 from pathlib import Path
 from watchfiles import run_process
 
@@ -9,9 +10,9 @@ from common.logger import logger
 
 
 def run_server():
-    """Entry point for watchfiles to run the server"""
+    """Entry point for watchfiles to run the async server"""
     from app.main import serve
-    serve()
+    asyncio.run(serve())
 
 
 def main():
@@ -26,6 +27,17 @@ def main():
         """Filter function to determine which files to watch"""
         # Only watch Python files
         if not path.endswith('.py'):
+            return False
+
+        # Ignore specific files (to avoid reloading heavy models)
+        ignore_files = [
+            'llm_manager.py',
+            'embedding_manager.py'
+        ]
+
+        # Check if filename matches any ignore file
+        filename = Path(path).name
+        if filename in ignore_files:
             return False
 
         # Ignore common directories

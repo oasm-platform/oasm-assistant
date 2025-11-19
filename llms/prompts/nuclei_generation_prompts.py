@@ -106,7 +106,7 @@ requests:
 
       - type: regex
         regex:
-          - 'vulnerability_pattern_\d+'
+          - 'vulnerability_pattern_\\d+'
         part: body
 ```
 
@@ -180,7 +180,7 @@ requests:
 
       - type: regex
         regex:
-          - 'ComponentName[/\s]+(v)?[0-9]+\.[0-9]+\.[0-9]+'
+          - 'ComponentName[/\\s]+(v)?[0-9]+\\.[0-9]+\\.[0-9]+'
         part: body
 ```
 
@@ -264,7 +264,7 @@ requests:
 1. ✅ Start directly with `id:` (no explanation before)
 2. ✅ Use 2-space indentation (not tabs)
 3. ✅ End with the last line of YAML (no explanation after)
-4. ❌ NO markdown code blocks (no \`\`\`yaml or \`\`\`)
+4. ❌ NO markdown code blocks (no ```yaml or ```)
 5. ❌ NO explanatory text or comments outside the YAML
 6. ✅ Use `{{{{BaseURL}}}}` with 4 curly braces for URL variables
 7. ✅ Follow exact YAML syntax from reference templates (if provided)

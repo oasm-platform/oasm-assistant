@@ -129,14 +129,14 @@ Central coordination and user interaction:
 
 ### RAG (Retrieval Augmented Generation)
 
-Built with **LlamaIndex** framework for advanced document retrieval:
+Built with **LangChain** framework for advanced document retrieval:
 
 - **Hybrid Search Strategy**:
-  - **HNSW (Hierarchical Navigable Small World)**: Vector similarity search for semantic matching
+  - **pgvector**: Vector similarity search for semantic matching using cosine distance
   - **BM25**: Keyword-based full-text search for precise term matching
   - Combined ranking for optimal retrieval accuracy
 - **Re-ranking**: Optimized result ordering using relevance scoring
-- **Embedding Generation**: Batch processing for efficient vector creation
+- **Embedding Generation**: Support for OpenAI, Google Gemini, and HuggingFace embeddings
 - Enhanced data sources:
   - Memory agent (conversation history and context)
   - Knowledge base (security standards, best practices)

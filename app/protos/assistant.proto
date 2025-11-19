@@ -58,9 +58,8 @@ message Conversation {
   string conversation_id = 1;
   string title = 2;
   string description = 3;
-  string embedding = 4;
-  string created_at = 5;
-  string updated_at = 6;
+  string created_at = 4;
+  string updated_at = 5;
 }
 
 message GetConversationsRequest {
@@ -102,17 +101,19 @@ message DeleteConversationsResponse {
 // ----------------
 service MessageService {
   rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse);
-  rpc CreateMessage(CreateMessageRequest) returns (CreateMessageResponse);
-  rpc UpdateMessage(UpdateMessageRequest) returns (UpdateMessageResponse);
+  rpc CreateMessage(CreateMessageRequest) returns (stream CreateMessageResponse);
+  rpc UpdateMessage(UpdateMessageRequest) returns (stream UpdateMessageResponse);
   rpc DeleteMessage(DeleteMessageRequest) returns (DeleteMessageResponse);
 }
 
 message Message {
   string message_id = 1;
   string question = 2;
-  string answer = 3;
-  string conversation_id = 4;
-  string embedding = 5;
+  // type = ["message_start","delta","message_end","thinking","tool_start",
+  // "tool_output","tool_end","state","error","done","system","event"]
+  string type = 3;
+  string content = 4;  // JSON string containing message-specific data
+  string conversation_id = 5;
   string created_at = 6;
   string updated_at = 7;
 }
@@ -157,55 +158,53 @@ message DeleteMessageResponse {
 // MCP Server
 // ----------------
 service MCPServerService {
-  rpc AddMCPServer(AddMCPServerRequest) returns (AddMCPServerResponse);
-  rpc ListMCPServers(ListMCPServersRequest) returns (ListMCPServersResponse);
-  rpc UpdateMCPServer(UpdateMCPServerRequest) returns (UpdateMCPServerResponse);
-  rpc DeleteMCPServer(DeleteMCPServerRequest) returns (DeleteMCPServerResponse);
+  rpc AddMCPServers(AddMCPServersRequest) returns (AddMCPServersResponse);
+  rpc GetMCPServers(GetMCPServersRequest) returns (GetMCPServersResponse);
+  rpc UpdateMCPServers(UpdateMCPServersRequest) returns (UpdateMCPServersResponse);
+  rpc DeleteMCPServers(DeleteMCPServersRequest) returns (DeleteMCPServersResponse);
 }
 
 message MCPServer {
-  string id = 1;
-  google.protobuf.Struct mcp_config = 2;  // MCP configuration as structured data
-  string server_status = 3;  // Server status: active, inactive, disabled
-  string created_at = 5;
-  string updated_at = 6;
+  google.protobuf.Struct config = 1;  // Server config (url/command, args, env, headers, disabled, etc.)
+  oneof status {
+    bool active = 2;      // true if server is connected and operational
+    string error = 3;     // error message if connection failed or server disabled
+  }
 }
 
-message AddMCPServerRequest {
-  google.protobuf.Struct mcp_config = 1;  // MCP configuration as structured data
+// Add one or more servers
+message AddMCPServersRequest {
+  google.protobuf.Struct mcp_config = 1;  // Claude Desktop format: {"mcpServers": {"name": {...}}}
 }
 
-message AddMCPServerResponse {
-  MCPServer server = 1;
-  bool success = 2;
-  string message = 3;
-}
-
-message ListMCPServersRequest {
-}
-
-message ListMCPServersResponse {
+message AddMCPServersResponse {
   repeated MCPServer servers = 1;
-  int32 total_count = 2;
-}
-
-message UpdateMCPServerRequest {
-  string mcp_server_id = 1;
-  google.protobuf.Struct mcp_config = 2;  // MCP configuration as structured data
-  string server_status = 3;  // Server status: "active", "inactive", "disabled"
-}
-
-message UpdateMCPServerResponse {
-  MCPServer server = 1;
   bool success = 2;
-  string message = 3;
 }
 
-message DeleteMCPServerRequest {
-  string server_id = 1;
+// Get all servers for workspace/user
+message GetMCPServersRequest {
 }
 
-message DeleteMCPServerResponse {
+message GetMCPServersResponse {
+  repeated MCPServer servers = 1; 
+}
+
+// Update one or more servers (full replace)
+message UpdateMCPServersRequest {
+  google.protobuf.Struct mcp_config = 1;  
+}
+
+message UpdateMCPServersResponse {
+  repeated MCPServer servers = 1;
+  bool success = 2;
+}
+
+// Delete one or more servers by name
+message DeleteMCPServersRequest {
+  repeated string server_names = 1;  // List of server names to delete
+}
+
+message DeleteMCPServersResponse {
   bool success = 1;
-  string message = 2;
 }

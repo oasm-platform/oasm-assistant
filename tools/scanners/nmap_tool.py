@@ -1,3 +1,0 @@
-"""
-Nmap network scanner
-"""

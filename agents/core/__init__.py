@@ -4,10 +4,10 @@ Provides base classes and utilities for AI agent implementation
 """
 
 from .base_agent import BaseAgent, AgentRole, AgentType, AgentCapability
-from .environment import AgentEnvironment, EnvironmentData
+from .environment import AgentEnvironment
 from .memory import AgentMemory
 from .perception import PerceptionSystem
-from .state import AgentState as AgentStateClass, SecurityAlertLevel
+from .state import AgentState as AgentStateClass
 
 __all__ = [
     # Base agent classes
@@ -18,9 +18,7 @@ __all__ = [
 
     # Core components
     "AgentEnvironment",
-    "EnvironmentData",
     "AgentMemory",
     "PerceptionSystem",
     "AgentStateClass",
-    "SecurityAlertLevel",
 ]

@@ -9,7 +9,7 @@ from common.logger import logger
 
 class KeywordRetriever:
     """
-    BM25-based keyword retriever for exact term matching
+    BM25-based keyword retriever for exact term matching (Singleton)
 
     Use cases:
     - Exact keyword matches (CVE IDs, product names, etc.)
@@ -17,12 +17,30 @@ class KeywordRetriever:
     - Complement to semantic search
     """
 
+    _instance: Optional['KeywordRetriever'] = None
+    _initialized = False
+
+    def __new__(cls):
+        """
+        Singleton implementation - ensures only one instance exists
+        """
+        if cls._instance is None:
+            cls._instance = super(KeywordRetriever, cls).__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        """Initialize keyword retriever"""
+        """Initialize keyword retriever - only runs once due to Singleton"""
+        # Only initialize once
+        if self._initialized:
+            return
+
         self.bm25_index: Optional[BM25Okapi] = None
         self.documents: List[str] = []
         self.metadata: List[Dict[str, Any]] = []
-        logger.info("KeywordRetriever initialized")
+
+        # Mark as initialized
+        KeywordRetriever._initialized = True
+        logger.info("KeywordRetriever singleton initialized")
 
     def index_documents(self, documents: List[Dict[str, Any]]) -> None:
         """
@@ -34,8 +52,6 @@ class KeywordRetriever:
                       - 'metadata': Document metadata (id, name, etc.)
         """
         try:
-            logger.info(f"Building BM25 index for {len(documents)} documents...")
-
             self.documents = [doc.get('text', '') for doc in documents]
             self.metadata = [doc.get('metadata', {}) for doc in documents]
 
@@ -44,8 +60,6 @@ class KeywordRetriever:
 
             # Build BM25 index
             self.bm25_index = BM25Okapi(tokenized_docs)
-
-            logger.info(f"BM25 index built successfully with {len(documents)} documents")
 
         except Exception as e:
             logger.error(f"Failed to build BM25 index: {e}")

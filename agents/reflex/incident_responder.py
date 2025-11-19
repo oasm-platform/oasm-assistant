@@ -1,3 +1,0 @@
-"""
-Automated incident response
-"""
