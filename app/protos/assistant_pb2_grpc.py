@@ -700,15 +700,15 @@ class MCPServerServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.AddMCPServers = channel.unary_unary(
-                '/app.MCPServerService/AddMCPServers',
-                request_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.SerializeToString,
-                response_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.FromString,
-                _registered_method=True)
         self.GetMCPServers = channel.unary_unary(
                 '/app.MCPServerService/GetMCPServers',
                 request_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServersRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServersResponse.FromString,
+                _registered_method=True)
+        self.AddMCPServers = channel.unary_unary(
+                '/app.MCPServerService/AddMCPServers',
+                request_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.FromString,
                 _registered_method=True)
         self.UpdateMCPServers = channel.unary_unary(
                 '/app.MCPServerService/UpdateMCPServers',
@@ -728,13 +728,13 @@ class MCPServerServiceServicer(object):
     ----------------
     """
 
-    def AddMCPServers(self, request, context):
+    def GetMCPServers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def GetMCPServers(self, request, context):
+    def AddMCPServers(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -755,15 +755,15 @@ class MCPServerServiceServicer(object):
 
 def add_MCPServerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'AddMCPServers': grpc.unary_unary_rpc_method_handler(
-                    servicer.AddMCPServers,
-                    request_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.FromString,
-                    response_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.SerializeToString,
-            ),
             'GetMCPServers': grpc.unary_unary_rpc_method_handler(
                     servicer.GetMCPServers,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServersRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServersResponse.SerializeToString,
+            ),
+            'AddMCPServers': grpc.unary_unary_rpc_method_handler(
+                    servicer.AddMCPServers,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.SerializeToString,
             ),
             'UpdateMCPServers': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateMCPServers,
@@ -790,33 +790,6 @@ class MCPServerService(object):
     """
 
     @staticmethod
-    def AddMCPServers(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/app.MCPServerService/AddMCPServers',
-            app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.SerializeToString,
-            app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
     def GetMCPServers(request,
             target,
             options=(),
@@ -833,6 +806,33 @@ class MCPServerService(object):
             '/app.MCPServerService/GetMCPServers',
             app_dot_protos_dot_assistant__pb2.GetMCPServersRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.GetMCPServersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AddMCPServers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.MCPServerService/AddMCPServers',
+            app_dot_protos_dot_assistant__pb2.AddMCPServersRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.AddMCPServersResponse.FromString,
             options,
             channel_credentials,
             insecure,

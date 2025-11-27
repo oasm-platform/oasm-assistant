@@ -184,12 +184,6 @@ class MCPManager:
             except Exception as e:
                 return (False, f"Server not responding: {str(e)}")
 
-        # Without test_connection, assume server is active if:
-        # - It's not disabled
-        # - Manager is initialized
-        # - Server is in loaded configs
-        # - Multi-client exists
-        # - Server didn't fail during initialization
         return (True, None)
 
 

@@ -28,6 +28,13 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
         """Get all messages for a conversation (async)"""
         try:
             conversation_id = request.conversation_id
+
+            # Validate conversation_id - reject empty string
+            if not conversation_id or conversation_id.strip() == '':
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("conversation_id cannot be empty")
+                return assistant_pb2.GetMessagesResponse(messages=[])
+
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
@@ -45,7 +52,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     pb_msg = assistant_pb2.Message(
                         message_id=str(msg.message_id),
                         question=msg.question,
-                        answer=msg.answer,
+                        type="message",  # Default type
+                        content=msg.answer if msg.answer else "",  # Put answer in content field
                         conversation_id=str(msg.conversation_id),
                         created_at=msg.created_at.isoformat() if msg.created_at else "",
                         updated_at=msg.updated_at.isoformat() if msg.updated_at else ""
@@ -64,7 +72,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
         """Create a message with ASYNC streaming response - NO bridge needed!"""
         try:
             # Extract request data
-            conversation_id = request.conversation_id
+            conversation_id = request.conversation_id if request.conversation_id else None
             question = request.question.strip()
             is_create_conversation = request.is_create_conversation
 
@@ -83,6 +91,10 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
             # Accumulated answer for database storage
             accumulated_answer = []
+
+            # Auto-detect if we should create conversation: if no conversation_id provided or is_create_conversation is True
+            if not conversation_id or is_create_conversation:
+                is_create_conversation = True
 
             with self.db.get_session() as session:
                 # Handle conversation creation
@@ -116,6 +128,15 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                 )
 
                 try:
+                    # Prepare conversation info for streaming (create once, reuse in loop)
+                    pb_conversation = assistant_pb2.Conversation(
+                        conversation_id=str(conversation.conversation_id),
+                        title=conversation.title or "",
+                        description=conversation.description or "",
+                        created_at=conversation.created_at.isoformat() if conversation.created_at else "",
+                        updated_at=conversation.updated_at.isoformat() if conversation.updated_at else ""
+                    )
+
                     # Create async streaming response
                     streaming_events = coordinator.process_message_question_streaming(question)
 
@@ -134,8 +155,11 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                             content_data = json.loads(stream_message.content)
                             accumulated_answer.append(content_data.get("text", ""))
 
-                        # Yield the streaming message
-                        yield assistant_pb2.CreateMessageResponse(message=stream_message)
+                        # Yield the streaming message with conversation info
+                        yield assistant_pb2.CreateMessageResponse(
+                            message=stream_message,
+                            conversation=pb_conversation
+                        )
 
                     # Save complete message to database
                     answer = "".join(accumulated_answer)
@@ -159,7 +183,30 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                     from app.services.streaming_handler import StreamingMessageHandler
                     handler = StreamingMessageHandler(message_id, conversation_id, question)
 
-                    yield assistant_pb2.CreateMessageResponse(message=handler.message_start())
+                    # Prepare conversation info for error response
+                    try:
+                        pb_conversation_error = assistant_pb2.Conversation(
+                            conversation_id=str(conversation.conversation_id),
+                            title=conversation.title or "",
+                            description=conversation.description or "",
+                            created_at=conversation.created_at.isoformat() if conversation.created_at else "",
+                            updated_at=conversation.updated_at.isoformat() if conversation.updated_at else ""
+                        )
+                    except Exception as conv_error:
+                        logger.error(f"Error creating conversation protobuf: {conv_error}", exc_info=True)
+                        # Create minimal conversation object
+                        pb_conversation_error = assistant_pb2.Conversation(
+                            conversation_id=conversation_id,
+                            title="",
+                            description="",
+                            created_at="",
+                            updated_at=""
+                        )
+
+                    yield assistant_pb2.CreateMessageResponse(
+                        message=handler.message_start(),
+                        conversation=pb_conversation_error
+                    )
                     yield assistant_pb2.CreateMessageResponse(
                         message=handler.error(
                             error_type="AgentProcessingError",
@@ -167,14 +214,22 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                             agent="MessageService",
                             recoverable=True,
                             retry_suggested=True
-                        )
+                        ),
+                        conversation=pb_conversation_error
                     )
-                    yield assistant_pb2.CreateMessageResponse(message=handler.message_end(success=False))
-                    yield assistant_pb2.CreateMessageResponse(message=handler.done(final_status="error"))
+                    yield assistant_pb2.CreateMessageResponse(
+                        message=handler.message_end(success=False),
+                        conversation=pb_conversation_error
+                    )
+                    yield assistant_pb2.CreateMessageResponse(
+                        message=handler.done(final_status="error"),
+                        conversation=pb_conversation_error
+                    )
 
         except Exception as e:
             error_msg = "Error in CreateMessage: " + str(e)
             logger.error(error_msg, exc_info=True)
+            logger.error(f"CreateMessage error details - conversation_id: {conversation_id if 'conversation_id' in locals() else 'NOT_SET'}, message_id: {message_id if 'message_id' in locals() else 'NOT_SET'}")
             context.set_code(StatusCode.INTERNAL)
             context.set_details("Internal server error: " + str(e))
             return
@@ -184,10 +239,16 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
         """Update a message with ASYNC streaming response"""
         try:
             # Extract request data
+            conversation_id = request.conversation_id
             message_id = request.message_id
             new_question = request.question.strip()
 
             # Validate input
+            if not conversation_id or not message_id:
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("conversation_id and message_id are required")
+                return
+
             if not new_question:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Question cannot be empty")
@@ -197,15 +258,16 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             workspace_id = context.workspace_id
             user_id = context.user_id
 
-            logger.info(f"Updating message {message_id}: {new_question[:100]}...")
+            logger.info(f"Updating message {message_id} in conversation {conversation_id}: {new_question[:100]}...")
 
             # Accumulated answer for database storage
             accumulated_answer = []
 
             with self.db.get_session() as session:
-                # Find message and verify permissions
+                # Find message and verify permissions using conversation_id from request
                 message = session.query(Message).join(Conversation).filter(
                     Message.message_id == message_id,
+                    Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 ).first()
@@ -307,15 +369,26 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
     async def DeleteMessage(self, request, context):
         """Delete a message (async)"""
         try:
+            conversation_id = request.conversation_id
             message_id = request.message_id
+
+            # Validate input
+            if not conversation_id or not message_id:
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("conversation_id and message_id are required")
+                return assistant_pb2.DeleteMessageResponse(message="conversation_id and message_id are required", success=False)
 
             # Extract workspace_id and user_id from metadata
             workspace_id = context.workspace_id
             user_id = context.user_id
 
+            logger.info(f"Deleting message {message_id} from conversation {conversation_id}")
+
             with self.db.get_session() as session:
+                # Find message and verify permissions using conversation_id from request
                 query = session.query(Message).join(Conversation).filter(
                     Message.message_id == message_id,
+                    Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 )
@@ -329,6 +402,7 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
                 session.delete(message)
                 session.commit()
+                logger.info(f"Message {message_id} deleted successfully")
                 return assistant_pb2.DeleteMessageResponse(message="Message deleted successfully", success=True)
 
         except Exception as e:

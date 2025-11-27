@@ -14,15 +14,34 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
         if not conversation:
             return None
             
-        conv_dict = conversation.to_dict()
-        return assistant_pb2.Conversation(
-            conversation_id=conv_dict.get('conversation_id', ''),
-            title=conv_dict.get('title', ''),
-            description=conv_dict.get('description', ''),
-            embedding=str(conv_dict.get('embedding', '')) if conv_dict.get('embedding') else '',
-            created_at=conv_dict.get('created_at', ''),
-            updated_at=conv_dict.get('updated_at', '')
-        )
+        try:
+            conv_dict = conversation.to_dict()
+            
+            # Safely extract and convert fields
+            conversation_id = str(conv_dict.get('conversation_id', ''))
+            title = str(conv_dict.get('title', '')) if conv_dict.get('title') else ''
+            description = str(conv_dict.get('description', '')) if conv_dict.get('description') else ''
+            created_at = str(conv_dict.get('created_at', '')) if conv_dict.get('created_at') else ''
+            updated_at = str(conv_dict.get('updated_at', '')) if conv_dict.get('updated_at') else ''
+            
+            return assistant_pb2.Conversation(
+                conversation_id=conversation_id,
+                title=title,
+                description=description,
+                created_at=created_at,
+                updated_at=updated_at
+            )
+        except Exception as e:
+            logger.error(f"Error converting conversation to proto: {e}", exc_info=True)
+            logger.error(f"Conversation data: {conversation.__dict__ if hasattr(conversation, '__dict__') else 'N/A'}")
+            # Return minimal valid conversation
+            return assistant_pb2.Conversation(
+                conversation_id='',
+                title='',
+                description='',
+                created_at='',
+                updated_at=''
+            )
 
     @get_metadata_interceptor
     async def GetConversations(self, request, context):
@@ -35,7 +54,12 @@ class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
                 conversations = session.query(Conversation).filter(Conversation.user_id == user_id,
                     Conversation.workspace_id == workspace_id).all()
 
-                conversation_messages = [self._conversation_to_proto(conv) for conv in conversations]
+                # Convert to proto and filter out invalid ones (with empty conversation_id)
+                conversation_messages = []
+                for conv in conversations:
+                    proto_conv = self._conversation_to_proto(conv)
+                    if proto_conv and proto_conv.conversation_id:  # Only add if conversion succeeded and has valid ID
+                        conversation_messages.append(proto_conv)
 
                 return assistant_pb2.GetConversationsResponse(conversations=conversation_messages)
 

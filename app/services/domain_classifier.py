@@ -11,7 +11,7 @@ from common.config import configs
 from app.protos import assistant_pb2, assistant_pb2_grpc
 import grpc
 from llms.prompts import DomainClassificationPrompts
-
+from app.interceptors import get_metadata_interceptor
 
 class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
     def __init__(self):
@@ -168,7 +168,7 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
                 "success": False,
                 "error": str(e)
             }
-
+    @get_metadata_interceptor
     async def DomainClassify(self, request, context):
         try:
             domain = request.domain

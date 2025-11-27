@@ -11,6 +11,8 @@ from google.protobuf.json_format import MessageToDict
 from google.protobuf.struct_pb2 import Struct
 import asyncio
 import threading
+import json
+from typing import Dict, Tuple, List, Optional, Any
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -19,15 +21,46 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
 
     def __init__(self):
         self.db = postgres_db
-        self._managers = {}  # Cache managers by (workspace_id, user_id)
+        self._managers: Dict[Tuple[str, str], MCPManager] = {}
         self._manager_lock = threading.Lock()
-        self._async_loop = None
-        self._async_thread = None
+        self._async_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._async_thread: Optional[threading.Thread] = None
         self._executor = ThreadPoolExecutor(max_workers=5)
         self.mcp_timeout = configs.mcp_timeout
         self._setup_async_loop()
 
-    def _setup_async_loop(self):
+    def _unwrap_struct_value(self, data: Any) -> Any:
+        """Recursively unwrap Protobuf Struct values to native Python types."""
+        if not isinstance(data, dict):
+            return data
+
+        # Unwrap typed values
+        type_mappings = {
+            'stringValue': lambda d: d['stringValue'],
+            'boolValue': lambda d: d['boolValue'],
+            'numberValue': lambda d: d['numberValue'],
+            'nullValue': lambda d: None
+        }
+        
+        for key, extractor in type_mappings.items():
+            if key in data:
+                return extractor(data)
+
+        # Unwrap struct
+        if 'structValue' in data and 'fields' in data['structValue']:
+            return {k: self._unwrap_struct_value(v) for k, v in data['structValue']['fields'].items()}
+        
+        if 'fields' in data and len(data) == 1:
+            return {k: self._unwrap_struct_value(v) for k, v in data['fields'].items()}
+
+        # Unwrap list
+        if 'listValue' in data and 'values' in data['listValue']:
+            return [self._unwrap_struct_value(v) for v in data['listValue']['values']]
+
+        # Recursively process nested dicts
+        return {k: self._unwrap_struct_value(v) for k, v in data.items()}
+
+    def _setup_async_loop(self) -> None:
         """Setup dedicated event loop for async operations"""
         def run_loop(loop):
             asyncio.set_event_loop(loop)
@@ -49,7 +82,6 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
         if key not in self._managers:
             with self._manager_lock:
                 if key not in self._managers:
-                    # Pass the async loop to the manager for testing connections
                     self._managers[key] = MCPManager(self.db, workspace_id, user_id, self._async_loop)
 
         return self._managers[key]
@@ -84,49 +116,94 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
 
         return config
 
-    def _get_server_status(self, manager: MCPManager, server_name: str, test_connection: bool = True) -> tuple:
-        """
-        Get actual server status by checking manager state
-
-        Args:
-            manager: MCPManager instance
-            server_name: Name of server to check
-            test_connection: If True, actually test the connection (slower but accurate)
-
-        Returns:
-            tuple: (is_active: bool, error_message: Optional[str])
-        """
+    def _get_server_status(self, manager: MCPManager, server_name: str, test_connection: bool = True) -> Tuple[bool, Optional[str]]:
+        """Get actual server status by checking manager state"""
         return manager.get_server_status(server_name, test_connection=test_connection)
 
-    def _server_to_proto(self, name: str, server_config: dict, is_active: bool, error: str = None) -> assistant_pb2.MCPServer:
-        """
-        Convert server config dict to protobuf
-
-        Args:
-            name: Server name
-            server_config: Server configuration dict
-            is_active: True if server is connected and operational
-            error: Error message if server failed or is disabled
-        """
-        # Build config with server name embedded in Claude Desktop format
-        full_config = {name: server_config}
-
-        # Create Struct and populate with dict
+    def _server_to_proto(self, name: str, server_config: dict, is_active: bool, error: Optional[str] = None) -> assistant_pb2.MCPServer:
+        """Convert server config dict to protobuf"""
         config_struct = Struct()
-        config_struct.update(full_config)
+        config_struct.update({name: server_config})
 
-        # Create MCPServer with config and status (oneof: active or error)
-        if is_active:
-            proto_server = assistant_pb2.MCPServer(
-                config=config_struct,
-                active=True
-            )
-        else:
-            proto_server = assistant_pb2.MCPServer(
-                config=config_struct,
-                error=error or "Unknown error"
-            )
-        return proto_server
+        return assistant_pb2.MCPServer(
+            config=config_struct,
+            active=True if is_active else None,
+            error=error or "Unknown error" if not is_active else None
+        )
+
+    def _extract_mcp_servers(self, request_config: Struct) -> Dict[str, Any]:
+        """Extract and validate mcpServers from protobuf Struct"""
+        config_json = MessageToDict(request_config, preserving_proto_field_name=True)
+        config_unwrapped = self._unwrap_struct_value(config_json)
+        return config_unwrapped.get("mcpServers") or config_unwrapped.get("mcp_servers") or {}
+
+    def _validate_server_config(self, server_config: dict) -> bool:
+        """Validate that server has required transport config"""
+        return "url" in server_config or "command" in server_config
+
+    def _initialize_manager(self, manager: MCPManager) -> None:
+        """Initialize manager if not already initialized"""
+        if not manager._initialized:
+            try:
+                self._run_async(manager.initialize())
+            except Exception as e:
+                logger.warning(f"Manager initialization failed: {e}")
+
+    def _process_servers_batch(
+        self, 
+        config: MCPConfig, 
+        mcp_servers: Dict[str, Any], 
+        operation: str  # "add" or "update"
+    ) -> Tuple[List[str], List[str]]:
+        """
+        Process a batch of servers for add/update operations
+        
+        Returns:
+            Tuple of (successful_servers, errors)
+        """
+        successful = []
+        errors = []
+
+        for server_name, server_config in mcp_servers.items():
+            try:
+                if not self._validate_server_config(server_config):
+                    errors.append(f"{server_name}: must have 'url' or 'command'")
+                    continue
+
+                if operation == "add" and server_name in config.servers:
+                    errors.append(f"{server_name}: already exists")
+                    continue
+
+                config.add_server(server_name, server_config)
+                successful.append(server_name)
+
+            except Exception as e:
+                errors.append(f"{server_name}: {str(e)}")
+
+        return successful, errors
+
+    def _build_proto_servers(
+        self, 
+        config: MCPConfig, 
+        manager: MCPManager, 
+        server_names: List[str]
+    ) -> List[assistant_pb2.MCPServer]:
+        """Build protobuf server list with status"""
+        proto_servers = []
+        
+        for server_name in server_names:
+            server_config = config.servers.get(server_name)
+            if not server_config:
+                continue
+                
+            try:
+                is_active, error = self._get_server_status(manager, server_name)
+                proto_servers.append(self._server_to_proto(server_name, server_config, is_active, error))
+            except Exception as e:
+                logger.warning(f"Failed to get status for {server_name}: {e}")
+                continue
+
+        return proto_servers
 
     def cleanup(self):
         """Cleanup resources"""
@@ -147,121 +224,134 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
 
-    @get_metadata_interceptor
-    async def AddMCPServers(self, request, context):
-        """Add one or more servers to MCPConfig"""
-        try:
-            workspace_id = UUID(context.workspace_id)
-            user_id = UUID(context.user_id)
+    def _enrich_config_with_status(self, config: MCPConfig, manager: MCPManager) -> Dict[str, Any]:
+        """
+        Enrich MCP config with live status for each server.
+        
+        Returns dict with active/status/error fields for each server.
+        """
+        enriched_servers = {}
 
-            # Convert Struct to dict - expect {"mcpServers": {"name": {...}}}
-            # Note: MessageToDict may return nested dicts with camelCase keys by default
-            request_data = MessageToDict(
-                request.mcp_config,
-                preserving_proto_field_name=True
-            )
+        for name, server_config in config.servers.items():
+            is_active, error = self._get_server_status(manager, name)
+            
+            enriched_server = dict(server_config)
+            enriched_server["active"] = is_active
+            
+            # Determine status: active > disabled > error
+            if is_active:
+                enriched_server["status"] = "active"
+            elif server_config.get("disabled"):
+                enriched_server["status"] = "disabled"
+            else:
+                enriched_server["status"] = "error"
+            
+            if error:
+                enriched_server["error"] = error
+            
+            enriched_servers[name] = enriched_server
+            logger.debug(f"Server '{name}': active={is_active}, status={enriched_server['status']}")
 
-            # Extract mcpServers - handle both camelCase and snake_case
-            mcp_servers = request_data.get('mcpServers') or request_data.get('mcp_servers', {})
-            if not mcp_servers:
-                context.set_code(StatusCode.INVALID_ARGUMENT)
-                msg = "Request must contain 'mcpServers' field with at least one server"
-                context.set_details(msg)
-                return assistant_pb2.AddMCPServersResponse(success=False)
+        return {"mcpServers": enriched_servers}
 
-            added_servers = []
-            errors = []
-
-            with self.db.get_session() as session:
-                config = self._get_or_create_config(session, workspace_id, user_id)
-
-                for server_name, server_config in mcp_servers.items():
-                    try:
-                        # Validate transport config
-                        if 'url' not in server_config and 'command' not in server_config:
-                            errors.append(f"{server_name}: must have 'url' or 'command'")
-                            continue
-
-                        # Check if server exists
-                        if server_name in config.servers:
-                            errors.append(f"{server_name}: already exists")
-                            continue
-
-                        # Add server
-                        config.add_server(server_name, server_config)
-                        # Store name for later status check
-                        added_servers.append(server_name)
-
-                    except Exception as e:
-                        errors.append(f"{server_name}: {str(e)}")
-
-                if added_servers:
-                    session.commit()
-                    # Refresh config to get latest state after commit
-                    session.refresh(config)
-
-                    # Reinitialize manager
-                    manager = self._get_manager(workspace_id, user_id)
-                    try:
-                        self._run_async(manager.initialize())
-                    except Exception as e:
-                        logger.warning(f"Manager reinit failed: {e}")
-
-                    # Build proto servers with actual connection status
-                    proto_servers = []
-                    for server_name in added_servers:
-                        try:
-                            server_config = config.servers.get(server_name)
-                            if server_config:
-                                is_active, error = self._get_server_status(manager, server_name)
-                                proto_servers.append(self._server_to_proto(server_name, server_config, is_active, error))
-                            else:
-                                logger.warning(f"Server config not found for: {server_name}")
-                        except Exception as e:
-                            logger.error(f"Error building proto for {server_name}: {e}", exc_info=True)
-                else:
-                    proto_servers = []
-
-                return assistant_pb2.AddMCPServersResponse(
-                    servers=proto_servers,
-                    success=len(added_servers) > 0
-                )
-
-        except Exception as e:
-            return await self._handle_service_error(context, e, "Error adding servers", assistant_pb2.AddMCPServersResponse)
+    def _build_enriched_response(self, config: MCPConfig, manager: MCPManager) -> str:
+        """
+        Build enriched response JSON with metadata and server status.
+        Used by Get/Add/Update operations for consistent response format.
+        """
+        # Enrich config with status
+        enriched_config = self._enrich_config_with_status(config, manager)
+        
+        # Build response with metadata
+        config_metadata = config.to_dict()
+        response_data = {
+            "id": config_metadata["id"],
+            "workspace_id": config_metadata["workspace_id"],
+            "user_id": config_metadata["user_id"],
+            "created_at": config_metadata["created_at"],
+            "updated_at": config_metadata["updated_at"],
+            "mcpServers": enriched_config["mcpServers"]
+        }
+        
+        logger.info(f"Returning enriched config with {len(enriched_config['mcpServers'])} servers")
+        return json.dumps(response_data)
 
     @get_metadata_interceptor
     async def GetMCPServers(self, request, context):
-        """Get all servers from MCPConfig"""
+        """Get all servers from MCPConfig with enriched status and metadata"""
         try:
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
 
             with self.db.get_session() as session:
                 config = self._get_or_create_config(session, workspace_id, user_id)
-
-                # Get manager and check connection status
                 manager = self._get_manager(workspace_id, user_id)
+                
+                # Initialize manager if needed
+                self._initialize_manager(manager)
 
-                if not manager._initialized:
-                    try:
-                        self._run_async(manager.initialize())
-                    except Exception as e:
-                        logger.error(f"Failed to initialize manager: {e}")
+                # Build enriched response
+                mcp_config_json = self._build_enriched_response(config, manager)
 
-                # Build response with connection status
-                proto_servers = []
-                for name, server_config in config.servers.items():
-                    is_active, error = self._get_server_status(manager, name)
-                    proto_servers.append(self._server_to_proto(name, server_config, is_active, error))
-
-                return assistant_pb2.GetMCPServersResponse(servers=proto_servers)
+                return assistant_pb2.GetMCPServersResponse(
+                    servers=[],  # Keep for backward compatibility
+                    mcp_config_json=mcp_config_json
+                )
 
         except Exception as e:
             logger.error(f"Error getting servers: {e}")
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.GetMCPServersResponse()
+
+
+    @get_metadata_interceptor
+    async def AddMCPServers(self, request, context):
+        """Add one or more MCP servers to the MCPConfig."""
+        try:
+            workspace_id = UUID(context.workspace_id)
+            user_id = UUID(context.user_id)
+
+            # Extract and validate mcpServers
+            mcp_servers = self._extract_mcp_servers(request.mcp_config)
+            if not mcp_servers:
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("Request must contain 'mcpServers' field with at least one server")
+                return assistant_pb2.AddMCPServersResponse(success=False)
+
+            with self.db.get_session() as session:
+                config = self._get_or_create_config(session, workspace_id, user_id)
+                
+                # Process servers batch
+                added_servers, errors = self._process_servers_batch(config, mcp_servers, operation="add")
+
+                if added_servers:
+                    session.commit()
+                    session.refresh(config)
+
+                    # Reinitialize manager
+                    manager = self._get_manager(workspace_id, user_id)
+                    self._initialize_manager(manager)
+
+                    # Build enriched response
+                    mcp_config_json = self._build_enriched_response(config, manager)
+                    
+                    return assistant_pb2.AddMCPServersResponse(
+                        servers=[],  # Keep for backward compatibility
+                        success=True,
+                        mcp_config_json=mcp_config_json
+                    )
+                else:
+                    return assistant_pb2.AddMCPServersResponse(
+                        servers=[],
+                        success=False,
+                        error="No servers were added"
+                    )
+
+        except Exception as e:
+            return await self._handle_service_error(
+                context, e, "Error adding servers", assistant_pb2.AddMCPServersResponse
+            )
 
     @get_metadata_interceptor
     async def UpdateMCPServers(self, request, context):
@@ -270,115 +360,110 @@ class MCPServerService(assistant_pb2_grpc.MCPServerServiceServicer):
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
 
-            # Convert Struct to dict - expect {"mcpServers": {"name": {...}}}
-            request_data = MessageToDict(request.mcp_config, preserving_proto_field_name=True)
-
-            # Extract mcpServers
-            mcp_servers = request_data.get('mcpServers', {})
+            # Extract and validate mcpServers
+            mcp_servers = self._extract_mcp_servers(request.mcp_config)
             if not mcp_servers:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
-                msg = "Request must contain 'mcpServers' field with at least one server"
-                context.set_details(msg)
+                context.set_details("Request must contain 'mcpServers' field with at least one server")
                 return assistant_pb2.UpdateMCPServersResponse(success=False)
-
-            updated_servers = []
-            errors = []
 
             with self.db.get_session() as session:
                 config = self._get_or_create_config(session, workspace_id, user_id)
-
-                for server_name, server_config in mcp_servers.items():
-                    try:
-                        # Validate transport config
-                        if 'url' not in server_config and 'command' not in server_config:
-                            errors.append(f"{server_name}: must have 'url' or 'command'")
-                            continue
-
-                        # Update server (add_server overwrites if exists)
-                        config.add_server(server_name, server_config)
-                        # Store name for later status check
-                        updated_servers.append(server_name)
-
-                    except Exception as e:
-                        errors.append(f"{server_name}: {str(e)}")
+                
+                # Process servers batch (update allows overwriting)
+                updated_servers, errors = self._process_servers_batch(config, mcp_servers, operation="update")
 
                 if updated_servers:
                     session.commit()
-                    # Refresh config to get latest state after commit
                     session.refresh(config)
 
                     # Reinitialize manager
                     manager = self._get_manager(workspace_id, user_id)
-                    try:
-                        self._run_async(manager.initialize())
-                    except Exception as e:
-                        logger.warning(f"Manager reinit failed: {e}")
+                    self._initialize_manager(manager)
 
-                    # Build proto servers with actual connection status
-                    proto_servers = []
-                    for server_name in updated_servers:
-                        server_config = config.servers.get(server_name)
-                        if server_config:
-                            is_active, error = self._get_server_status(manager, server_name)
-                            proto_servers.append(self._server_to_proto(server_name, server_config, is_active, error))
+                    # Build enriched response
+                    mcp_config_json = self._build_enriched_response(config, manager)
+                    
+                    return assistant_pb2.UpdateMCPServersResponse(
+                        servers=[],  # Keep for backward compatibility
+                        success=True,
+                        mcp_config_json=mcp_config_json
+                    )
                 else:
-                    proto_servers = []
-
-                return assistant_pb2.UpdateMCPServersResponse(
-                    servers=proto_servers,
-                    success=len(updated_servers) > 0
-                )
+                    return assistant_pb2.UpdateMCPServersResponse(
+                        servers=[],
+                        success=False
+                    )
 
         except Exception as e:
-            return await self._handle_service_error(context, e, "Error updating servers", assistant_pb2.UpdateMCPServersResponse)
+            return await self._handle_service_error(
+                context, e, "Error updating servers", assistant_pb2.UpdateMCPServersResponse
+            )
+
 
     @get_metadata_interceptor
     async def DeleteMCPServers(self, request, context):
-        """Delete one or more servers from MCPConfig"""
+        """Delete MCP config by ID"""
         try:
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
-            server_names = request.server_names
+            config_id = request.id
 
-            if not server_names:
+            if not config_id:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
-                msg = "Must provide at least one server name to delete"
-                context.set_details(msg)
-                return assistant_pb2.DeleteMCPServersResponse(success=False)
-
-            deleted_count = 0
-            errors = []
-
-            with self.db.get_session() as session:
-                config = self._get_or_create_config(session, workspace_id, user_id)
-
-                for server_name in server_names:
-                    try:
-                        # Check if server exists
-                        if server_name not in config.servers:
-                            errors.append(f"{server_name}: not found")
-                            continue
-
-                        # Remove server
-                        config.remove_server(server_name)
-                        deleted_count += 1
-
-                    except Exception as e:
-                        errors.append(f"{server_name}: {str(e)}")
-
-                if deleted_count > 0:
-                    session.commit()
-
-                    # Reinitialize manager
-                    manager = self._get_manager(workspace_id, user_id)
-                    try:
-                        self._run_async(manager.initialize())
-                    except Exception as e:
-                        logger.warning(f"Manager reinit failed: {e}")
-
+                context.set_details("Must provide config ID to delete")
                 return assistant_pb2.DeleteMCPServersResponse(
-                    success=deleted_count > 0
+                    success=False,
+                    message="Config ID is required"
                 )
 
+            with self.db.get_session() as session:
+                # Find config by ID, workspace_id, and user_id
+                config = session.query(MCPConfig).filter(
+                    MCPConfig.id == UUID(config_id),
+                    MCPConfig.workspace_id == workspace_id,
+                    MCPConfig.user_id == user_id
+                ).first()
+
+                if not config:
+                    context.set_code(StatusCode.NOT_FOUND)
+                    context.set_details(f"MCP Config with ID {config_id} not found")
+                    return assistant_pb2.DeleteMCPServersResponse(
+                        success=False,
+                        message=f"MCP Config with ID {config_id} not found"
+                    )
+
+                # Count servers before deletion
+                server_count = len(config.servers)
+                
+                # Delete the entire config
+                session.delete(config)
+                session.commit()
+
+                # Reinitialize manager to clear cached connections
+                manager = self._get_manager(workspace_id, user_id)
+                self._initialize_manager(manager)
+
+                message = f"Successfully deleted MCP config with {server_count} server(s)"
+                logger.info(f"Deleted MCP config {config_id} with {server_count} servers")
+                
+                return assistant_pb2.DeleteMCPServersResponse(
+                    success=True,
+                    message=message
+                )
+
+        except ValueError as e:
+            context.set_code(StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid config ID format: {str(e)}")
+            return assistant_pb2.DeleteMCPServersResponse(
+                success=False,
+                message=f"Invalid config ID format: {str(e)}"
+            )
         except Exception as e:
-            return await self._handle_service_error(context, e, "Error deleting servers", assistant_pb2.DeleteMCPServersResponse)
+            logger.error(f"Error deleting MCP config: {e}")
+            context.set_code(StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return assistant_pb2.DeleteMCPServersResponse(
+                success=False,
+                message=f"Error deleting MCP config: {str(e)}"
+            )
