@@ -263,20 +263,32 @@ class EmbeddingManager:
         """Get current configuration"""
         return self.config
 
-    def generate_message_embedding(self, question: str, answer: str) -> Optional[List[float]]:
+    async def generate_message_embedding_async(self, question: str, answer: str) -> Optional[List[float]]:
         """
-        Generate embedding from question + answer concatenation for semantic search
+        Generate embedding asynchronously from question + answer concatenation for semantic search
+
+        Args:
+            question: User's question
+            answer: Agent's answer
+
+        Returns:
+            Embedding vector or None if failed
         """
         try:
             # Concatenate question and answer for better semantic search
             text = f"Question: {question}\nAnswer: {answer}"
 
-            # Generate embedding using embed_query method
-            embedding = self.embed_query(text)
+            # Check if embedding model supports async
+            if hasattr(self.embedding_model, 'aembed_query'):
+                # Use async method if available (OpenAI, Google support this)
+                embedding = await self.embedding_model.aembed_query(text)
+            else:
+                # Fallback to sync method wrapped in asyncio
+                import asyncio
+                embedding = await asyncio.to_thread(self.embed_query, text)
 
-            # embed_query already returns List[float], so just return it
             return embedding
 
         except Exception as e:
-            logger.error(f"[EmbeddingManager] Failed to generate message embedding: {e}")
+            logger.error(f"Failed to generate message embedding async: {e}")
             return None

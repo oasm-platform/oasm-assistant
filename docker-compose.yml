@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   # PostgreSQL with pgvector extension
@@ -36,7 +36,7 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"  # gRPC port
+      - "8000:8000" # gRPC port
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -89,7 +89,7 @@ services:
         max-size: "1m"
         max-file: "1"
 
-  # Ollama - LLM Runtime for Llama3 8B
+  # Ollama - LLM Runtime
   ollama:
     container_name: oasm-assistant-ollama
     image: ollama/ollama:latest
@@ -100,6 +100,21 @@ services:
       - ollama-data:/root/.ollama
     networks:
       - oasm-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_NUM_PARALLEL=2 # Handle 2 requests in parallel
+      - OLLAMA_MAX_LOADED_MODELS=1 # Load only 1 model into VRAM
+      - OLLAMA_FLASH_ATTENTION=1 # Enable flash attention
+      - OLLAMA_KV_CACHE_TYPE=q8_0 # Reduce VRAM for KV cache
+      - CUDA_VISIBLE_DEVICES=0 # Specify which GPU to use
+      - OLLAMA_NUM_GPU=1 # Use 1 GPU
+      - OLLAMA_GPU_LAYERS=33 # Offload layers to GPU (adjust based on model size)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
@@ -134,7 +149,7 @@ services:
       retries: 5
       start_period: 60s
     profiles:
-      - tools  # Only start when explicitly specified
+      - tools # Only start when explicitly specified
 
 networks:
   oasm-network:

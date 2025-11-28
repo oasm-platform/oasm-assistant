@@ -19,6 +19,7 @@ numpy
 
 # LangChain - complete set for all providers
 langchain
+langchain-core
 langchain-anthropic
 langchain-openai
 langchain-google-genai

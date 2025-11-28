@@ -4,10 +4,32 @@ from common.logger import logger
 from grpc import StatusCode
 from data.database.models import Conversation
 from app.interceptors import get_metadata_interceptor
+from llms.prompts import ConversationPrompts
+from llms import llm_manager
 
 class ConversationService(assistant_pb2_grpc.ConversationServiceServicer):
     def __init__(self):
         self.db = postgres_db
+        self.llm = llm_manager.get_llm()
+
+    async def update_conversation_title_async(self, conversation_id: str, question: str):
+        """Generate and update conversation title in background"""
+        try:
+            title_response = await self.llm.ainvoke(
+                ConversationPrompts.get_conversation_title_prompt(question=question)
+            )
+
+            with self.db.get_session() as session:
+                conversation = session.query(Conversation).filter(
+                    Conversation.conversation_id == conversation_id
+                ).first()
+
+                if conversation:
+                    conversation.title = title_response.content
+                    session.commit()
+                    logger.info(f"Conversation {conversation_id} title updated: {title_response.content}")
+        except Exception as e:
+            logger.error(f"Failed to update conversation title: {e}", exc_info=True)
 
     def _conversation_to_proto(self, conversation):
         """Chuyển đổi từ SQLAlchemy model sang protobuf message"""

@@ -1,5 +1,6 @@
 import json
 import uuid
+import asyncio
 
 from app.protos import assistant_pb2, assistant_pb2_grpc
 from data.database import postgres_db as database_instance
@@ -21,7 +22,9 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
         self.db = database_instance
         self.llm = llm_manager.get_llm()
         self.embeddings_manager = embeddings_manager
-
+        # Import here to avoid circular dependency
+        from app.services.conversation import ConversationService
+        self.conversation_service = ConversationService()
 
     @get_metadata_interceptor
     async def GetMessages(self, request, context):
@@ -99,16 +102,21 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
             with self.db.get_session() as session:
                 # Handle conversation creation
                 if is_create_conversation:
-                    title_response = await self.llm.ainvoke(ConversationPrompts.get_conversation_title_prompt(question=question))
+                    # Create conversation with temporary title (fast, no LLM call)
                     conversation = Conversation(
                         workspace_id=workspace_id,
                         user_id=user_id,
-                        title=title_response.content
+                        title="New conversation"  # Temporary title
                     )
                     session.add(conversation)
                     session.commit()
                     session.refresh(conversation)
                     conversation_id = str(conversation.conversation_id)
+
+                    # Generate real title in background (non-blocking)
+                    asyncio.create_task(
+                        self.conversation_service.update_conversation_title_async(conversation_id, question)
+                    )
                 else:
                     conversation = session.query(Conversation).filter(
                         Conversation.conversation_id == conversation_id,
@@ -163,7 +171,9 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
 
                     # Save complete message to database
                     answer = "".join(accumulated_answer)
-                    embedding = self.embeddings_manager.generate_message_embedding(question, answer)
+
+                    # Generate embedding asynchronously (non-blocking)
+                    embedding = await self.embeddings_manager.generate_message_embedding_async(question, answer)
 
                     message = Message(
                         conversation_id=conversation_id,
@@ -316,7 +326,8 @@ class MessageService(assistant_pb2_grpc.MessageServiceServicer):
                         new_answer = "".join(accumulated_answer)
                         message.question = new_question
                         message.answer = new_answer
-                        message.embedding = self.embeddings_manager.generate_message_embedding(new_question, new_answer)
+                        # Generate embedding asynchronously
+                        message.embedding = await self.embeddings_manager.generate_message_embedding_async(new_question, new_answer)
 
                         session.commit()
                         session.refresh(message)
