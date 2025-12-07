@@ -32,6 +32,29 @@ message DomainClassifyResponse {
 }
 
 // ----------------
+// Issue bot service
+// ----------------
+service IssueService {
+  rpc ResolveIssueServers(ResolveIssueRequest) returns (ResolveIssueResponse);
+}
+
+enum IssueType {
+  ISSUE_TYPE_UNSPECIFIED = 0;
+  ISSUE_TYPE_SSL = 1;
+  ISSUE_TYPE_VULNERABILITY = 2;
+}
+
+message ResolveIssueRequest {
+  string question = 1;
+  IssueType issue_type = 2;
+  google.protobuf.Struct metadata = 3;
+}
+
+message ResolveIssueResponse {
+  string message = 1;
+}
+
+// ----------------
 // Nuclei template gen 
 // ----------------
 service NucleiTemplateService {

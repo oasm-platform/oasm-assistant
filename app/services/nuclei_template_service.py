@@ -1,16 +1,13 @@
 from langchain_core.messages import HumanMessage
+from sqlalchemy import text
 from common.logger import logger
 from common.config import configs
 from llms import llm_manager
-from app.protos import assistant_pb2, assistant_pb2_grpc
-import grpc
 from llms.prompts import NucleiGenerationPrompts
 from data.retrieval import hybrid_search_engine
 from data.database import postgres_db
-from sqlalchemy import text
 
-
-class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
+class NucleiTemplateService:
     """Service for generating Nuclei security templates using LLM with RAG"""
 
     def __init__(self):
@@ -75,17 +72,7 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         k: int = None,
         similarity_threshold: float = None
     ) -> str:
-        """
-        Retrieve similar templates from database using RAG with quality filtering
-
-        Args:
-            question: User's request
-            k: Number of similar templates to retrieve (default from config)
-            similarity_threshold: Minimum similarity score (0-1). Only templates above this are included (default from config)
-
-        Returns:
-            Formatted context string with similar templates
-        """
+        """Retrieve similar templates from database using RAG with quality filtering"""
         try:
             # Use config values if not provided
             if k is None:
@@ -94,7 +81,6 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                 similarity_threshold = configs.rag.similarity_threshold
 
             # Use hybrid search to get relevant templates
-            # Get more candidates for filtering
             candidates_k = min(
                 k * configs.rag.candidates_multiplier,
                 configs.rag.max_candidates
@@ -139,13 +125,13 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
                 context_parts.append(f"Name: {name}")
                 if description:
                     context_parts.append(f"Description: {description}")
-                context_parts.append(f"Relevance: {score:.2%}")  # Show as percentage
+                context_parts.append(f"Relevance: {score:.2%}")
 
                 # Add actual template YAML (most important part)
                 if template_content:
                     context_parts.append(f"\nTemplate YAML:\n{template_content}")
 
-                context_parts.append("")  # Empty line separator
+                context_parts.append("")
 
             return "\n".join(context_parts)
 
@@ -153,31 +139,18 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
             logger.warning(f"Failed to retrieve similar templates: {e}", exc_info=True)
             return ""
 
-    async def _generate_template_with_llm(self, question: str) -> str:
-        """
-        Generate Nuclei template using LLM with RAG support
-
-        Args:
-            question: User's request for template generation
-
-        Returns:
-            Generated Nuclei template as YAML string
-        """
+    async def generate_template(self, question: str) -> str:
+        """Generate Nuclei template using LLM with RAG support"""
         try:
             llm = self.llm_manager.get_llm()
 
             # Retrieve similar templates using RAG
-            # Use config values for k and similarity_threshold
-            rag_context = self._retrieve_similar_templates(
-                question=question
-                # k and similarity_threshold will use config defaults
-            )
+            rag_context = self._retrieve_similar_templates(question=question)
 
-
-            # Pass RAG context directly to prompt (NEW: proper parameter)
+            # Pass RAG context directly to prompt
             prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(
                 question=question,
-                rag_context=rag_context  # Properly structured now
+                rag_context=rag_context
             )
 
             # Invoke LLM to generate template
@@ -188,12 +161,12 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
 
             # Clean up markdown code blocks if present
             if template.startswith("```yaml"):
-                template = template[7:]  # Remove ```yaml
+                template = template[7:]
             elif template.startswith("```"):
-                template = template[3:]  # Remove ```
+                template = template[3:]
 
             if template.endswith("```"):
-                template = template[:-3]  # Remove trailing ```
+                template = template[:-3]
 
             template = template.strip()
 
@@ -204,43 +177,3 @@ class NucleiTemplateService(assistant_pb2_grpc.NucleiTemplateServiceServicer):
         except Exception as e:
             logger.error(f"Error generating Nuclei template: {e}")
             raise
-
-    async def CreateTemplate(self, request, context):
-        """
-        gRPC endpoint for creating Nuclei templates
-
-        Args:
-            request: CreateTemplateRequest containing the question
-            context: gRPC context
-
-        Returns:
-            CreateTemplateResponse containing the generated template
-        """
-        try:
-            question = request.question
-
-            # Validate input
-            if not question or not question.strip():
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("Question is required and cannot be empty")
-                return assistant_pb2.CreateTemplateResponse(
-                    answer=""
-                )
-            # Generate template using LLM
-            template = await self._generate_template_with_llm(question)
-
-            # Build response
-            response = assistant_pb2.CreateTemplateResponse(
-                answer=template
-            )
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Error in CreateTemplate endpoint: {e}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(f"Internal error: {str(e)}")
-
-            return assistant_pb2.CreateTemplateResponse(
-                answer=f"Error generating template: {str(e)}"
-            )

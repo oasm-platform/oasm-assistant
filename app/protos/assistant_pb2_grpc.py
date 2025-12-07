@@ -187,6 +187,87 @@ class DomainClassify(object):
             _registered_method=True)
 
 
+class IssueServiceStub(object):
+    """----------------
+    Issue bot service
+    ----------------
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.ResolveIssueServers = channel.unary_unary(
+                '/app.IssueService/ResolveIssueServers',
+                request_serializer=app_dot_protos_dot_assistant__pb2.ResolveIssueRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.ResolveIssueResponse.FromString,
+                _registered_method=True)
+
+
+class IssueServiceServicer(object):
+    """----------------
+    Issue bot service
+    ----------------
+    """
+
+    def ResolveIssueServers(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_IssueServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'ResolveIssueServers': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResolveIssueServers,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.ResolveIssueRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.ResolveIssueResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'app.IssueService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('app.IssueService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class IssueService(object):
+    """----------------
+    Issue bot service
+    ----------------
+    """
+
+    @staticmethod
+    def ResolveIssueServers(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.IssueService/ResolveIssueServers',
+            app_dot_protos_dot_assistant__pb2.ResolveIssueRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.ResolveIssueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
 class NucleiTemplateServiceStub(object):
     """----------------
     Nuclei template gen 

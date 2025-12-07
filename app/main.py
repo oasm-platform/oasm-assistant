@@ -3,12 +3,22 @@ import asyncio
 import sys
 import traceback
 import atexit
+from grpc_reflection.v1alpha import reflection
 
 from .protos import assistant_pb2_grpc
+from .protos import assistant_pb2
 
-from .services import (
-    HealthService, DomainClassifier, ConversationService, MessageService,
-    MCPServerService, NucleiTemplateService, get_scheduler )
+from .grpc_server import (
+    HealthCheckServicer,
+    DomainClassifyServicer,
+    ConversationServicer,
+    MessageServiceServicer,
+    MCPServerServiceServicer,
+    NucleiTemplateServiceServicer,
+    IssueServicer
+)
+
+from .services import get_scheduler
 
 from common.logger import logger
 from common.config import configs as settings
@@ -44,13 +54,28 @@ async def serve():
         )
 
         # Add servicers
-        assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthService(), server)
-        assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifier(), server)
-        assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationService(), server)
-        assistant_pb2_grpc.add_MessageServiceServicer_to_server(MessageService(), server)
-        assistant_pb2_grpc.add_MCPServerServiceServicer_to_server(MCPServerService(), server)
-        assistant_pb2_grpc.add_NucleiTemplateServiceServicer_to_server(NucleiTemplateService(), server)
+        # Servicers are instantiated here. They will internally instantiate their respective Services.
+        assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthCheckServicer(), server)
+        assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifyServicer(), server)
+        assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationServicer(), server)
+        assistant_pb2_grpc.add_MessageServiceServicer_to_server(MessageServiceServicer(), server)
+        assistant_pb2_grpc.add_MCPServerServiceServicer_to_server(MCPServerServiceServicer(), server)
+        assistant_pb2_grpc.add_NucleiTemplateServiceServicer_to_server(NucleiTemplateServiceServicer(), server)
+        assistant_pb2_grpc.add_IssueServiceServicer_to_server(IssueServicer(), server)
 
+        # Register reflection service   
+        SERVICE_NAMES = (
+            assistant_pb2.DESCRIPTOR.services_by_name['HealthCheck'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['DomainClassify'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['ConversationService'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['MessageService'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['MCPServerService'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['NucleiTemplateService'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['IssueService'].full_name,
+            reflection.SERVICE_NAME,  # reflection service itself
+        )
+        
+        reflection.enable_server_reflection(SERVICE_NAMES, server)
         # Add insecure port
         listen_addr = f"{settings.host}:{settings.port}"
         server.add_insecure_port(listen_addr)
