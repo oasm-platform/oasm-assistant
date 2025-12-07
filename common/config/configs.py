@@ -1,6 +1,6 @@
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, Optional
 import os
 
 
@@ -142,6 +142,9 @@ class Configs(BaseSettings):
     max_workers: int = Field(10, alias="MAX_WORKERS")
     service_name: str = Field("oasm-assistant", alias="SERVICE_NAME")
     version: str = Field("1.0.0", alias="VERSION")
+    oasm_cloud_apikey: str = Field("change_me", alias="OASM_CLOUD_APIKEY")
+    oasm_core_api_url: str = Field("http://localhost:6276", alias="OASM_CORE_API_URL")
+    searxng_url: str = Field("http://localhost:8080", alias="SEARXNG_URL")
 
     # Add missing fields used in domain_classifier.py
     crawl_timeout: int = Field(10, alias="CRAWL_TIMEOUT")
