@@ -154,7 +154,6 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      - HF_TOKEN=${HF_TOKEN}
       - LLM_API_KEY=${LLM_API_KEY}
       - VLLM_MODEL=${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQ}
       - VLLM_GPU_MEMORY_UTILIZATION=${LLM_GPU_MEMORY_UTILIZATION:-0.85}
@@ -165,8 +164,6 @@ services:
       --model ${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQ}
       --host 0.0.0.0
       --port 8000
-      --download-dir /root/.cache/huggingface
-      --trust-remote-code
       --gpu-memory-utilization ${LLM_GPU_MEMORY_UTILIZATION:-0.85}
       --max-model-len ${LLM_MAX_TOKENS:-4096}
       --tensor-parallel-size ${LLM_TENSOR_PARALLEL_SIZE:-1}
