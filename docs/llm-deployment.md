@@ -14,7 +14,7 @@ OASM Assistant supports multiple LLM providers through a unified configuration. 
 ### 1. Start Ollama
 
 ```bash
-docker compose up -d ollama
+docker compose up -d oasm-assistant-ollama
 ```
 
 ### 2. Pull Llama3 8B Model
@@ -30,7 +30,7 @@ Add to `.env`:
 ```bash
 # LLM Configuration
 LLM_PROVIDER=ollama
-LLM_BASE_URL=http://ollama:11434
+LLM_BASE_URL=http://oasm-assistant-ollama:11434
 LLM_MODEL_NAME=llama3
 LLM_TEMPERATURE=0.7
 LLM_MAX_TOKENS=4000
@@ -130,7 +130,7 @@ docker exec oasm-assistant-ollama ollama list
 Remove GPU requirements from `docker-compose.yml`:
 
 ```yaml
-ollama:
+oasm-assistant-ollama:
   image: ollama/ollama:latest
   ports:
     - "11434:11434"
@@ -170,7 +170,7 @@ docker exec oasm-assistant-ollama ollama pull llama3
 curl http://localhost:11434/api/tags
 
 # Restart if needed
-docker compose restart ollama
+docker compose restart oasm-assistant-ollama
 ```
 
 ## Best Practices

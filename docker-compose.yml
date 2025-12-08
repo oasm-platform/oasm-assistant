@@ -1,6 +1,6 @@
 services:
   # PostgreSQL with pgvector extension
-  postgresql:
+  oasm-assistant-postgresql:
     image: pgvector/pgvector:pg16
     container_name: oasm-assistant-postgresql
     restart: unless-stopped
@@ -23,7 +23,7 @@ services:
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8
 
   # OASM Assistant Application
-  app:
+  oasm-assistant-app:
     container_name: oasm-assistant-app
     build:
       context: .
@@ -38,14 +38,14 @@ services:
     ports:
       - "8000:8000" # gRPC port
     environment:
-      - POSTGRES_HOST=postgresql
+      - POSTGRES_HOST=oasm-assistant-postgresql
       - POSTGRES_PORT=5432
-      - SEARXNG_URL=http://searxng:8080
-      - LLM_BASE_URL=http://ollama:11434
+      - SEARXNG_URL=http://oasm-assistant-searxng:8080
+      - LLM_BASE_URL=http://oasm-assistant-ollama:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - app-logs:/app/logs  # Use named volume instead of bind mount to avoid permission issues
+      - app-logs:/app/logs # Use named volume instead of bind mount to avoid permission issues
       - ./data:/app/data
       - ./knowledge:/app/knowledge
       - ./app:/app/app
@@ -54,9 +54,9 @@ services:
       - ./llms:/app/llms
       - ./tools:/app/tools
     depends_on:
-      postgresql:
+      oasm-assistant-postgresql:
         condition: service_healthy
-      searxng:
+      oasm-assistant-searxng:
         condition: service_started
     networks:
       - oasm-network
@@ -75,7 +75,7 @@ services:
         max-file: "3"
 
   # SearXNG - Meta search engine
-  searxng:
+  oasm-assistant-searxng:
     container_name: oasm-assistant-searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
@@ -102,7 +102,7 @@ services:
         max-file: "1"
 
   # Ollama - LLM Runtime
-  ollama:
+  oasm-assistant-ollama:
     container_name: oasm-assistant-ollama
     image: ollama/ollama:latest
     restart: unless-stopped

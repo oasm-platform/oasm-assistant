@@ -232,12 +232,11 @@ You MUST respond with valid JSON containing exactly these fields:
 - "args": the tool arguments (object)
 - "reasoning": brief explanation (string)
 """
-
         try:
             chain = self.llm | parser
             result = await chain.ainvoke(enhanced_prompt)
 
-            required_fields = ["server", "tool", "args", "question_type"]
+            required_fields = ["server", "tool", "args", "question_type", "reasoning"]
             if not all(key in result for key in required_fields):
                 logger.error(f"Missing required fields in JSON: {result}")
                 return None

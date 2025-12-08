@@ -34,8 +34,7 @@ RUN ARCH=$(uname -m) && \
     if [ -f "/usr/lib/${LIBARCH}-linux-gnu/libstdc++.so.6" ]; then cp /usr/lib/${LIBARCH}-linux-gnu/libstdc++.so.6 /lib/multi-arch/; fi && \
     if [ -f "/usr/lib/${LIBARCH}-linux-gnu/libffi.so.8" ]; then cp /usr/lib/${LIBARCH}-linux-gnu/libffi.so.8 /lib/multi-arch/; fi && \
     if [ -f "/usr/lib/${LIBARCH}-linux-gnu/libpcre2-8.so.0" ]; then cp /usr/lib/${LIBARCH}-linux-gnu/libpcre2-8.so.0 /lib/multi-arch/; fi && \
-    mkdir -p /tmp/logs && \
-    chmod 777 /tmp/logs
+    mkdir -p /tmp/logs
 
 # Detect Python version dynamically
 RUN PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2) && \
