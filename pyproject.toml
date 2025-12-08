@@ -1,0 +1,103 @@
+[project]
+name = "oasm-assistant"
+version = "0.1.0"
+description = "OASM Assistant - AI-powered security assistant with gRPC API"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # gRPC
+    "grpcio>=1.60.0",
+    "grpcio-tools>=1.60.0",
+    "grpcio-status>=1.60.0",
+    "grpcio-reflection>=1.60.0",
+    "googleapis-common-protos>=1.60.0",
+    "watchfiles>=0.21.0",
+    
+    # Configuration & Settings
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    
+    # Database
+    "sqlalchemy>=2.0.0",
+    "pgvector>=0.2.4",
+    "psycopg2-binary>=2.9.9",
+    
+    # AI/ML Core
+    "numpy>=1.26.0",
+    
+    # LangChain - complete set for all providers
+    "langchain>=0.1.0",
+    "langchain-core>=0.1.0",
+    "langchain-anthropic>=0.1.0",
+    "langchain-openai>=0.0.5",
+    "langchain-google-genai>=0.0.5",
+    "langchain-ollama>=0.0.1",
+    "langchain-mcp-adapters>=0.1.0",
+    
+    # Document Processing
+    "pypdf>=3.17.0",
+    
+    # LangGraph for agent workflow
+    "langgraph>=0.0.20",
+    
+    # Logging
+    "loguru>=0.7.2",
+    
+    # Utilities
+    "aiohttp>=3.9.0",
+    "nest-asyncio>=1.5.8",
+    
+    # Web Search
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    
+    # LangChain Community & PostgreSQL Vector Store
+    "langchain-community>=0.0.10",
+    "langchain-postgres>=0.0.1",
+    "langchain-huggingface>=0.0.1",
+    "psycopg[binary]>=3.1.0",
+    
+    # PyTorch CPU-only (much smaller and faster to install than CUDA version)
+    # Must be listed BEFORE sentence-transformers to ensure CPU version is used
+    "torch>=2.0.0",
+    
+    # Sentence Transformers for HuggingFace embeddings
+    "sentence-transformers>=2.2.0",
+    
+    # BM25 for keyword search
+    "rank-bm25>=0.2.2",
+    
+    # Git operations
+    "GitPython>=3.1.40",
+    
+    # YAML parsing
+    "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "agents", "common", "llms", "tools"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+# Use PyTorch CPU-only builds to reduce image size and build time
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }

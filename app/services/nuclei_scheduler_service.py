@@ -389,8 +389,13 @@ class NucleiTemplatesScheduler:
         try:
             now = datetime.now()
             sync_hour, sync_minute = map(int, self.sync_time.split(':'))
-
-            return now.hour == sync_hour and now.minute == sync_minute
+            
+            # Check if current time is at or past the sync time
+            # This prevents missing the sync window due to 60-second check interval
+            current_minutes = now.hour * 60 + now.minute
+            sync_minutes = sync_hour * 60 + sync_minute
+            
+            return current_minutes >= sync_minutes
         except Exception as e:
             logger.error(f"Error checking sync time: {e}")
             return False
@@ -402,14 +407,19 @@ class NucleiTemplatesScheduler:
 
         while self.running:
             try:
+                current_date = datetime.now().date()
+                current_time = datetime.now().strftime("%H:%M:%S")
+                
                 if self._should_run_sync():
-                    current_date = datetime.now().date()
-
                     # Only sync once per day
                     if last_sync_date != current_date:
-                        logger.info("Scheduled sync time reached, starting sync...")
+                        logger.info(f"Scheduled sync time reached at {current_time}, starting sync...")
                         self.sync_templates()
                         last_sync_date = current_date
+                    else:
+                        logger.debug(f"Sync already completed today ({current_date}), skipping...")
+                else:
+                    logger.debug(f"Current time {current_time} has not reached sync time {self.sync_time} yet")
 
                 # Sleep for 60 seconds before next check
                 time.sleep(60)

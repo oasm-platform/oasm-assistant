@@ -80,9 +80,13 @@ You MUST classify the question into ONE of these types: {valid_types_str}
     "question_type": {valid_types_str},
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{"workspaceId": "{workspace_id}"}},
+    "args": {{ "arg_name": "value", "workspaceId": "{workspace_id}" }},
     "reasoning": "brief explanation"
 }}
+
+**Note on args:** 
+- Include "workspaceId": "{workspace_id}" if the tool supports it (e.g. internal tools).
+- ALWAYS include the tool's required parameters (e.g. "query" for search).
 
 **Examples:**
 - "Thời tiết Hà Nội?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
@@ -119,7 +123,8 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 - You MUST respond with ONLY valid JSON, nothing else
 - Do NOT include any explanation, commentary, or markdown formatting
 - Do NOT wrap the JSON in code blocks (no ```)
-- workspaceId is REQUIRED for all tools: "{workspace_id}"
+- workspaceId optional: "{workspace_id}" (include if tool needs context)
+- Check "Required Parameters" for each tool and include them in args
 - Only use tools from the list above
 - Choose based on tool description and user question intent
 
@@ -127,7 +132,7 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 {{
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{"workspaceId": "{workspace_id}"}},
+    "args": {{ "arg_name": "value", "workspaceId": "{workspace_id}" }},
     "reasoning": "brief explanation why you selected this tool"
 }}
 
@@ -338,11 +343,16 @@ Analyze the provided data and generate a helpful, natural response that:
 
         for server_name, tools in all_tools.items():
             for tool in tools:
+                schema = tool.get('input_schema', {})
+                properties = schema.get('properties', {})
+                required = schema.get('required', [])
+                
                 tool_info = f"""
 Server: {server_name}
 Tool: {tool['name']}
 Description: {tool['description']}
-Required Parameters: {json.dumps(tool.get('input_schema', {}).get('required', []))}
+Input Schema: {json.dumps(properties)}
+Required: {json.dumps(required)}
 """
                 formatted.append(tool_info.strip())
 

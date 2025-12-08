@@ -2,8 +2,9 @@
 grpcio
 grpcio-tools
 grpcio-status
+grpcio-reflection
 googleapis-common-protos
-watchfiles
+watchfiles 
 
 # Configuration & Settings
 pydantic
