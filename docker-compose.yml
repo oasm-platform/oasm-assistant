@@ -157,12 +157,12 @@ services:
       - VLLM_MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-8192}
       - VLLM_TENSOR_PARALLEL_SIZE=${VLLM_TENSOR_PARALLEL_SIZE:-1}
     command: >
-      --model ${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      --model ${VLLM_MODEL}
       --host 0.0.0.0
       --port 8000
-      --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION:-0.9}
-      --max-model-len ${VLLM_MAX_MODEL_LEN:-8192}
-      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE:-1}
+      --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}
+      --max-model-len ${VLLM_MAX_MODEL_LEN}
+      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -197,12 +197,12 @@ services:
       - SGLANG_TP_SIZE=${SGLANG_TP_SIZE:-1}
     command: >
       python3 -m sglang.launch_server
-      --model-path ${SGLANG_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      --model-path ${SGLANG_MODEL}
       --host 0.0.0.0
       --port 30000
-      --mem-fraction-static ${SGLANG_MEM_FRACTION:-0.9}
-      --context-length ${SGLANG_CONTEXT_LENGTH:-8192}
-      --tp-size ${SGLANG_TP_SIZE:-1}
+      --mem-fraction-static ${SGLANG_MEM_FRACTION}
+      --context-length ${SGLANG_CONTEXT_LENGTH}
+      --tp-size ${SGLANG_TP_SIZE}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:30000/health"]
       interval: 30s
