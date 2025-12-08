@@ -52,7 +52,7 @@ coverage.xml
 *.log
 .hypothesis/
 
-# Poetry
+# Poetry (không dùng nữa, đã chuyển sang UV)
 poetry.lock
 
 # Git
@@ -114,5 +114,15 @@ learning/
 # Knowledge base (mounted as volume)
 knowledge/
 
-# pyproject.toml (not needed if using requirements.txt)
-pyproject.toml
+# Keep these files for UV build
+!pyproject.toml
+!uv.lock
+
+# Miniconda installer (nếu có)
+Miniconda.sh
+*.sh
+
+# Development files
+dev.py
+environment.yml
+

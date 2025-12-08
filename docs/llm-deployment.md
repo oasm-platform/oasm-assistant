@@ -14,7 +14,7 @@ OASM Assistant supports multiple LLM providers through a unified configuration. 
 ### 1. Start Ollama
 
 ```bash
-docker compose up -d ollama
+docker compose up -d oasm-assistant-ollama
 ```
 
 ### 2. Pull Llama3 8B Model
@@ -30,7 +30,7 @@ Add to `.env`:
 ```bash
 # LLM Configuration
 LLM_PROVIDER=ollama
-LLM_BASE_URL=http://ollama:11434
+LLM_BASE_URL=http://oasm-assistant-ollama:11434
 LLM_MODEL_NAME=llama3
 LLM_TEMPERATURE=0.7
 LLM_MAX_TOKENS=4000
@@ -52,25 +52,25 @@ docker exec oasm-assistant-ollama ollama run llama3 "What is OWASP Top 10?"
 
 The application uses `common/config/configs.py` with the following LLM settings:
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LLM_PROVIDER` | - | Provider name (ollama, openai, anthropic, etc.) |
-| `LLM_BASE_URL` | - | API endpoint URL |
-| `LLM_MODEL_NAME` | - | Model identifier |
-| `LLM_TEMPERATURE` | 0.1 | Randomness (0.0-1.0) |
-| `LLM_MAX_TOKENS` | 4000 | Max response length |
-| `LLM_TIMEOUT` | 60 | Request timeout (seconds) |
-| `LLM_MAX_RETRIES` | 3 | Retry attempts on failure |
-| `LLM_API_KEY` | - | API key (if required) |
+| Variable          | Default | Description                                     |
+| ----------------- | ------- | ----------------------------------------------- |
+| `LLM_PROVIDER`    | -       | Provider name (ollama, openai, anthropic, etc.) |
+| `LLM_BASE_URL`    | -       | API endpoint URL                                |
+| `LLM_MODEL_NAME`  | -       | Model identifier                                |
+| `LLM_TEMPERATURE` | 0.1     | Randomness (0.0-1.0)                            |
+| `LLM_MAX_TOKENS`  | 4000    | Max response length                             |
+| `LLM_TIMEOUT`     | 60      | Request timeout (seconds)                       |
+| `LLM_MAX_RETRIES` | 3       | Retry attempts on failure                       |
+| `LLM_API_KEY`     | -       | API key (if required)                           |
 
 ## Available Models
 
-| Model | Size | RAM | Use Case |
-|-------|------|-----|----------|
-| llama3 | 4.7GB | 8GB | General security analysis |
-| mistral | 4.1GB | 8GB | Fast inference |
-| codellama | 3.8GB | 8GB | Code analysis |
-| phi3 | 2.3GB | 4GB | Lightweight tasks |
+| Model     | Size  | RAM | Use Case                  |
+| --------- | ----- | --- | ------------------------- |
+| llama3    | 4.7GB | 8GB | General security analysis |
+| mistral   | 4.1GB | 8GB | Fast inference            |
+| codellama | 3.8GB | 8GB | Code analysis             |
+| phi3      | 2.3GB | 4GB | Lightweight tasks         |
 
 ```bash
 # Pull additional models
@@ -130,7 +130,7 @@ docker exec oasm-assistant-ollama ollama list
 Remove GPU requirements from `docker-compose.yml`:
 
 ```yaml
-ollama:
+oasm-assistant-ollama:
   image: ollama/ollama:latest
   ports:
     - "11434:11434"
@@ -142,11 +142,13 @@ ollama:
 ### Out of Memory
 
 Use a smaller model:
+
 ```bash
 docker exec oasm-assistant-ollama ollama pull phi3
 ```
 
 Update `.env`:
+
 ```bash
 LLM_MODEL_NAME=phi3
 ```
@@ -168,7 +170,7 @@ docker exec oasm-assistant-ollama ollama pull llama3
 curl http://localhost:11434/api/tags
 
 # Restart if needed
-docker compose restart ollama
+docker compose restart oasm-assistant-ollama
 ```
 
 ## Best Practices
@@ -178,6 +180,25 @@ docker compose restart ollama
 3. **Monitoring**: Regularly check resource usage with `docker stats`
 4. **Backups**: Volume `ollama-data` persists downloaded models
 5. **Updates**: Pull latest models periodically for improvements
+
+## AI Model Comparison Analysis
+
+| Criteria                        | Phi-3.5 Mini (3.8B) | Mistral 7B      | LLaMA 3.1 8B         | Gemma 2 9B     | Qwen-7B         |
+| :------------------------------ | :------------------ | :-------------- | :------------------- | :------------- | :-------------- |
+| **Fine-tune on GPU T4**         | ✅ Very Good        | ⚡ Good         | ✅ OK                | ⚠ Difficult    | ✅ Good         |
+| **Inference on CPU**            | ✅ Very Good        | ⚡ Good         | ⚠ Average            | ❌ Slow        | ⚡ Good         |
+| **Domain Cybersecurity**        | ⭐⭐ Average        | ⭐⭐⭐⭐ Good   | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐ Good  | ⭐⭐⭐⭐ Good   |
+| **Chat / Agent**                | ⭐⭐ Average        | ⭐⭐⭐ Good     | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐ Good  | ⭐⭐⭐⭐ Good   |
+| **RAG / Embedding**             | ⚡ Light & Fast     | ⚡ Light & Fast | ⭐⭐⭐⭐ Good        | ⭐⭐⭐ Average | ⚡ Light & Fast |
+| **Code / Log Analysis**         | ⭐⭐ Average        | ⭐⭐⭐ Good     | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐ Good    | ⭐⭐⭐⭐ Good   |
+| **Safety / Filter**             | ⭐⭐⭐              | ⭐⭐⭐          | ⭐⭐⭐⭐             | ⭐⭐⭐⭐       | ⭐⭐⭐⭐        |
+| **Deployment**                  | ✅ Easy             | ⚡ Medium       | ⚠ Quite Heavy        | ❌ Difficult   | ⚡ Good         |
+| **Inference Speed (CPU)**       | ✅ Very Fast        | ⚡ Good         | ⚠ Slow               | ❌ Very Slow   | ⚡ Good         |
+| **Inference Speed (GPU T4)**    | ✅ Very Fast        | ✅ Fast         | ✅ Good              | ⚡ Slow        | ✅ Good         |
+| **VRAM Req. (Fine-tune QLoRA)** | ~8 GB               | ~10–11 GB       | ~12–13 GB            | ~14–16 GB      | ~10 GB          |
+| **RAM Req. (CPU Inference)**    | 8–16 GB             | 16–24 GB        | 16–32 GB             | 24–32 GB       | 12–20 GB        |
+| **Max Context Length**          | 2k–4k tokens        | 4k tokens       | 4k–8k tokens         | 4k tokens      | 8k tokens       |
+| **Scalability / Upgrade**       | ⚡ Easy             | ⚡ Medium       | ⭐ Good              | ⚠ Difficult    | ⚡ Good         |
 
 ## References
 

@@ -22,7 +22,7 @@ from common.config import LlmConfigs
 MCP_CONFIG = {
     "mcpServers": {
         "oasm-platform": {
-            "url": "http://localhost:3000/api/mcp",
+            "url": "http://localhost:6276/api/mcp",
             "headers": {
                 "api-key": "8zV20IaGzatzSXKEAPr3m7ddnArDhT3cjnvr"
             }

@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   # PostgreSQL with pgvector extension
-  postgresql:
+  oasm-assistant-postgresql:
     image: pgvector/pgvector:pg16
     container_name: oasm-assistant-postgresql
     restart: unless-stopped
@@ -25,37 +23,51 @@ services:
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8
 
   # OASM Assistant Application
-  app:
+  oasm-assistant-app:
     container_name: oasm-assistant-app
     build:
       context: .
       dockerfile: Dockerfile
       args:
         - BUILDKIT_INLINE_CACHE=1
+      # Multi-arch support
+
     restart: unless-stopped
     env_file:
       - .env
     ports:
-      - "8000:8000"  # gRPC port
+      - "8000:8000" # gRPC port
+    environment:
+      - POSTGRES_HOST=oasm-assistant-postgresql
+      - POSTGRES_PORT=5432
+      - SEARXNG_URL=http://oasm-assistant-searxng:8080
+      - LLM_BASE_URL=http://oasm-assistant-ollama:11434
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./logs:/app/logs
+      - app-logs:/app/logs # Use named volume instead of bind mount to avoid permission issues
       - ./data:/app/data
       - ./knowledge:/app/knowledge
+      - ./app:/app/app
+      - ./agents:/app/agents
+      - ./common:/app/common
+      - ./llms:/app/llms
+      - ./tools:/app/tools
     depends_on:
-      postgresql:
+      oasm-assistant-postgresql:
         condition: service_healthy
-      searxng:
+      oasm-assistant-searxng:
         condition: service_started
     networks:
       - oasm-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${APP_PORT:-8000}/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # Distroless has no curl, health check should be done by gRPC health check
+    # or external monitoring tool
+    # healthcheck:
+    #   test: ["CMD", "grpc_health_probe", "-addr=:8000"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     logging:
       driver: "json-file"
       options:
@@ -63,7 +75,7 @@ services:
         max-file: "3"
 
   # SearXNG - Meta search engine
-  searxng:
+  oasm-assistant-searxng:
     container_name: oasm-assistant-searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
@@ -89,8 +101,8 @@ services:
         max-size: "1m"
         max-file: "1"
 
-  # Ollama - LLM Runtime for Llama3 8B
-  ollama:
+  # Ollama - LLM Runtime
+  oasm-assistant-ollama:
     container_name: oasm-assistant-ollama
     image: ollama/ollama:latest
     restart: unless-stopped
@@ -100,41 +112,24 @@ services:
       - ollama-data:/root/.ollama
     networks:
       - oasm-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_FLASH_ATTENTION=1
+      - OLLAMA_KV_CACHE_TYPE=q8_0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-
-  # Nessus vulnerability scanner (optional)
-  # Start with: docker compose up -d --force-recreate nessus
-  nessus:
-    container_name: oasm-assistant-nessus
-    image: anhnmt/nessus:latest
-    restart: "no"
-    ports:
-      - "8834:8834"
-    volumes:
-      - nessus-data:/opt/nessus
-    environment:
-      - TZ=Asia/Ho_Chi_Minh
-    cap_add:
-      - LINUX_IMMUTABLE
-    networks:
-      - oasm-network
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          'curl -skf https://localhost:8834/server/status | grep -q ''"code":200''',
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    profiles:
-      - tools  # Only start when explicitly specified
 
 networks:
   oasm-network:
@@ -146,7 +141,7 @@ volumes:
     name: oasm-assistant-postgres-data
   searxng-data:
     name: oasm-assistant-searxng-data
-  nessus-data:
-    name: oasm-assistant-nessus-data
   ollama-data:
     name: oasm-assistant-ollama-data
+  app-logs:
+    name: oasm-assistant-app-logs

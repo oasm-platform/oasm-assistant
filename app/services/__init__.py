@@ -1,19 +1,21 @@
 from .health_service import HealthService
-from .domain_classifier import DomainClassifier
-from .conversation import ConversationService
-from .message import MessageService
-from .mcp_server import MCPServerService
-from .nuclei_template import NucleiTemplateService
-from .nuclei_scheduler import NucleiTemplatesScheduler, get_scheduler
+from .domain_classifier_service import DomainClassifierService
+from .conversation_service import ConversationService
+from .message_service import MessageService
+from .mcp_server_service import MCPServerService
+from .nuclei_template_service import NucleiTemplateService
+from .nuclei_scheduler_service import NucleiTemplatesScheduler, get_scheduler
+from .issue_service import IssueService
 
 
 __all__ = [
     "HealthService",
-    "DomainClassifier",
+    "DomainClassifierService",
     "ConversationService",
     "MessageService",
     "MCPServerService",
     "NucleiTemplateService",
     "NucleiTemplatesScheduler",
     "get_scheduler",
+    "IssueService",
 ]

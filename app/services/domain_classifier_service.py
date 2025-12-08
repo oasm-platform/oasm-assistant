@@ -1,4 +1,4 @@
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import re
 import json
 
@@ -8,12 +8,9 @@ from common.logger import logger
 from llms import llm_manager
 from tools.crawl_web import CrawlWeb
 from common.config import configs
-from app.protos import assistant_pb2, assistant_pb2_grpc
-import grpc
 from llms.prompts import DomainClassificationPrompts
 
-
-class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
+class DomainClassifierService:
     def __init__(self):
         self.llm_manager = llm_manager
         self.crawler = CrawlWeb(
@@ -28,24 +25,14 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
         # LangChain JSON parser
         self.json_parser = JsonOutputParser()
 
-    def _extract_domain_info(self, domain: str) -> Dict[str, str]:
+    def _extract_domain_info(self, domain: str) -> str:
         domain = domain.lower().strip()
         if domain.startswith('http'):
             domain = domain.split('://')[1]
         if '/' in domain:
             domain = domain.split('/')[0]
-
-        parts = domain.split('.')
-        tld = parts[-1] if len(parts) > 1 else ""
-        subdomain = parts[0] if len(parts) > 2 else ""
-        main_domain = parts[-2] if len(parts) > 1 else parts[0]
-
-        return {
-            "domain": domain,
-            "main_domain": main_domain,
-            "tld": tld,
-            "subdomain": subdomain
-        }
+        
+        return domain
 
     async def _classify_with_llm(self, domain: str, content: Optional[str] = None, retry_count: int = 0) -> List[str]:
         """
@@ -114,23 +101,24 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             logger.error(f"LLM classification error for {domain}: {e}")
             return []
 
-    async def classify_domain(self, domain: str) -> Dict[str, any]:
+    async def classify_domain(self, domain: str) -> Dict[str, Any]:
         """
         Main classification method with retry logic
         """
         try:
-            domain_info = self._extract_domain_info(domain)
+            cleaned_domain = self._extract_domain_info(domain)
 
             content = None
             crawl_result = self.crawler.crawl(domain)
             if crawl_result:
-                content = crawl_result
+                # Truncate content to avoid too much unnecessary info
+                content = crawl_result[:10000] if isinstance(crawl_result, str) else str(crawl_result)[:10000]
 
             labels = []
             retry_count = 0
 
             while len(labels) < self.min_labels and retry_count < self.max_retries:
-                labels = await self._classify_with_llm(domain, content, retry_count)
+                labels = await self._classify_with_llm(cleaned_domain, content, retry_count)
 
                 if len(labels) >= self.min_labels:
                     break
@@ -154,8 +142,11 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
             if len(labels) > self.max_labels:
                 labels = labels[:self.max_labels]
 
+            # Ensure all labels are formatted as Title Case
+            labels = [label.title() for label in labels]
+
             return {
-                "domain": domain_info["domain"],
+                "domain": cleaned_domain,
                 "labels": labels,
                 "success": True,
             }
@@ -168,23 +159,3 @@ class DomainClassifier(assistant_pb2_grpc.DomainClassifyServicer):
                 "success": False,
                 "error": str(e)
             }
-
-    async def DomainClassify(self, request, context):
-        try:
-            domain = request.domain
-            logger.info(f"Domain classification request for: {domain}")
-            if not domain:
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("Domain is required")
-                return assistant_pb2.DomainClassifyResponse(labels=[])
-
-            result = await self.classify_domain(domain)
-            labels = result.get("labels", [])
-
-            logger.info(f"Domain classification completed for {domain}: {labels}")
-
-            return assistant_pb2.DomainClassifyResponse(labels=labels)
-
-        except Exception as e:
-            logger.error(f"Domain classification error for {request.domain}: {e}")
-            return assistant_pb2.DomainClassifyResponse(labels=[])

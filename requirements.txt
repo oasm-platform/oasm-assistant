@@ -2,8 +2,9 @@
 grpcio
 grpcio-tools
 grpcio-status
+grpcio-reflection
 googleapis-common-protos
-watchfiles
+watchfiles 
 
 # Configuration & Settings
 pydantic
@@ -19,6 +20,7 @@ numpy
 
 # LangChain - complete set for all providers
 langchain
+langchain-core
 langchain-anthropic
 langchain-openai
 langchain-google-genai

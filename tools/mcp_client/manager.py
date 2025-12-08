@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 import warnings
 import logging
 import nest_asyncio
+from common.config import configs
 
 # Enable nested asyncio for MCP calls within event loop
 nest_asyncio.apply()
@@ -95,22 +96,57 @@ class MCPManager:
             self._initialized = True  # Mark as initialized even with no servers
 
     def _load_servers(self) -> List[MCPConnection]:
-        """Load MCP config from database and convert to connections (only enabled/not disabled servers)"""
+        """Load MCP config from database and convert to connections (only enabled/not disabled servers)"""        
         with self.database.get_session() as session:
             mcp_config = session.query(MCPConfig).filter(
                 MCPConfig.workspace_id == self.workspace_id,
                 MCPConfig.user_id == self.user_id
             ).first()
 
+            all_connections = []
+            
+            # Load from DB if exists
             if mcp_config:
-                # Only load servers that are not disabled
                 all_connections = mcp_config_to_connections(mcp_config)
-                enabled_connections = [
+                # Filter disabled ones
+                all_connections = [
                     conn for conn in all_connections
                     if not mcp_config.is_server_disabled(conn.name)
                 ]
-                return enabled_connections
-            return []
+            
+            # Define default servers
+            default_servers = [
+                MCPConnection(
+                    name="oasm-assistant-mcp",
+                    workspace_id=self.workspace_id,
+                    user_id=self.user_id,
+                    transport_type="sse",
+                    url=configs.oasm_core_api_url + "/api/mcp",
+                    headers={"api-key": configs.oasm_cloud_apikey}
+                ),
+                MCPConnection(
+                    name="searxng",
+                    workspace_id=self.workspace_id,
+                    user_id=self.user_id,
+                    transport_type="stdio",
+                    command="npx",
+                    args=["-y", "mcp-searxng"],
+                    env={"SEARXNG_URL": configs.searxng_url}
+                )
+            ]
+
+            # Add default servers if not present (DB overrides defaults if same name exists)
+            existing_names = {conn.name for conn in all_connections}
+            
+            for server in default_servers:
+                if server.name not in existing_names:
+                    # Check if disabled in DB config
+                    if mcp_config and mcp_config.is_server_disabled(server.name):
+                        continue
+                        
+                    all_connections.append(server)
+                    
+            return all_connections
 
     def get_server_status(self, server_name: str, test_connection: bool = False) -> tuple[bool, Optional[str]]:
         """
@@ -184,12 +220,6 @@ class MCPManager:
             except Exception as e:
                 return (False, f"Server not responding: {str(e)}")
 
-        # Without test_connection, assume server is active if:
-        # - It's not disabled
-        # - Manager is initialized
-        # - Server is in loaded configs
-        # - Multi-client exists
-        # - Server didn't fail during initialization
         return (True, None)
 
 

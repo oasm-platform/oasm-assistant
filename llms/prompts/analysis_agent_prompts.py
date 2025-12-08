@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 import json
+from common.types import QuestionType
 
 
 class AnalysisAgentPrompts:
@@ -28,10 +29,82 @@ You have access to security tools and databases. Use your expertise to provide c
 
 
     @staticmethod
+    def get_combined_classification_and_tool_selection_prompt(
+        question: str,
+        workspace_id: str,
+        tools_description: str
+    ) -> str:
+        """
+        OPTIMIZED: Combined prompt for question classification AND tool selection in ONE LLM call.
+        This reduces latency by 50% compared to separate calls.
+        """
+        # Get valid question types from enum
+        valid_types = QuestionType.list_values()
+        valid_types_str = " or ".join([f'"{qt}"' for qt in valid_types])
+
+        return f"""Analyze the user's question and respond with a JSON containing classification and tool selection.
+
+**User Question:**
+{question}
+
+**Available MCP Tools:**
+{tools_description}
+
+**Question Type Classification:**
+
+You MUST classify the question into ONE of these types: {valid_types_str}
+
+1. **{QuestionType.SECURITY_RELATED.value}** - ONLY if question is explicitly about:
+   - Security vulnerabilities, CVEs, exploits
+   - Security scans, penetration testing results
+   - Security assets, targets, attack surface (in security context)
+   - Threat intelligence, security statistics
+   - Security tools, configurations
+   - Keywords: vulnerability, CVE, scan, threat, exploit, security
+
+2. **{QuestionType.GENERAL_KNOWLEDGE.value}** - ALL other questions:
+   - Weather, news, current events
+   - Educational topics (learning languages, courses, studying)
+   - General facts, how-to guides, recommendations
+   - ANY topic NOT explicitly about cybersecurity
+   - If unsure → default to {QuestionType.GENERAL_KNOWLEDGE.value}
+
+**Your Task:**
+1. Classify the question into one of the valid types: {valid_types}
+2. IF {QuestionType.SECURITY_RELATED.value}: Select the MOST appropriate security MCP tool
+3. IF {QuestionType.GENERAL_KNOWLEDGE.value}: Select a general-purpose tool (like web_search if available)
+
+**CRITICAL: Respond with ONLY valid JSON (no markdown, no explanation):**
+
+{{
+    "question_type": {valid_types_str},
+    "server": "server-name",
+    "tool": "tool-name",
+    "args": {{ "arg_name": "value", "workspaceId": "{workspace_id}" }},
+    "reasoning": "brief explanation"
+}}
+
+**Note on args:** 
+- Include "workspaceId": "{workspace_id}" if the tool supports it (e.g. internal tools).
+- ALWAYS include the tool's required parameters (e.g. "query" for search).
+
+**Examples:**
+- "Thời tiết Hà Nội?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
+- "Đưa cho tôi lộ trình học tiếng anh B1" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
+- "How to learn Python?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
+- "Show vulnerabilities" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
+- "Có bao nhiêu lỗ hổng nghiêm trọng?" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
+
+**Your JSON response:**"""
+
+    @staticmethod
     def get_mcp_tool_selection_prompt(question: str, workspace_id: str, tools_description: str) -> str:
         """
         Prompt for LLM to select the best MCP tool for a given question.
         Used in dynamic tool discovery and selection (like ChatGPT/Claude).
+        
+        NOTE: Consider using get_combined_classification_and_tool_selection_prompt() 
+        for better performance (50% faster).
         """
         return f"""You are a security analysis assistant with access to MCP (Model Context Protocol) tools.
 
@@ -50,7 +123,8 @@ You have access to security tools and databases. Use your expertise to provide c
 - You MUST respond with ONLY valid JSON, nothing else
 - Do NOT include any explanation, commentary, or markdown formatting
 - Do NOT wrap the JSON in code blocks (no ```)
-- workspaceId is REQUIRED for all tools: "{workspace_id}"
+- workspaceId optional: "{workspace_id}" (include if tool needs context)
+- Check "Required Parameters" for each tool and include them in args
 - Only use tools from the list above
 - Choose based on tool description and user question intent
 
@@ -58,7 +132,7 @@ You have access to security tools and databases. Use your expertise to provide c
 {{
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{"workspaceId": "{workspace_id}"}},
+    "args": {{ "arg_name": "value", "workspaceId": "{workspace_id}" }},
     "reasoning": "brief explanation why you selected this tool"
 }}
 
@@ -269,15 +343,111 @@ Analyze the provided data and generate a helpful, natural response that:
 
         for server_name, tools in all_tools.items():
             for tool in tools:
+                schema = tool.get('input_schema', {})
+                properties = schema.get('properties', {})
+                required = schema.get('required', [])
+                
                 tool_info = f"""
 Server: {server_name}
 Tool: {tool['name']}
 Description: {tool['description']}
-Required Parameters: {json.dumps(tool.get('input_schema', {}).get('required', []))}
+Input Schema: {json.dumps(properties)}
+Required: {json.dumps(required)}
 """
                 formatted.append(tool_info.strip())
 
         return "\n---\n".join(formatted)
+
+    @staticmethod
+    def get_question_classification_prompt(question: str) -> str:
+        """Prompt for classifying question type (general knowledge vs security-related)"""
+        # Get valid question types from enum
+        valid_types = QuestionType.list_values()
+
+        return f"""You are a question classifier for a security analysis system. Analyze the user's question and classify it.
+
+**Valid Question Types:** {valid_types}
+
+1. **{QuestionType.SECURITY_RELATED.value}**: ONLY questions explicitly about:
+   - Security vulnerabilities, CVEs, exploits
+   - Security scans, penetration testing results
+   - Security assets, targets, attack surface
+   - Threat intelligence, security statistics
+   - Security tools, security configurations
+   - Questions containing keywords: vulnerability, CVE, scan, security, threat, exploit, asset (in security context)
+
+2. **{QuestionType.GENERAL_KNOWLEDGE.value}**: ALL other questions including:
+   - Weather, news, current events
+   - Educational topics (learning English, studying, courses)
+   - General facts, definitions, how-to guides
+   - Recommendations, advice (non-security)
+   - ANY topic NOT explicitly related to cybersecurity
+
+**CRITICAL RULES:**
+- If the question does NOT contain security/vulnerability/scan keywords → {QuestionType.GENERAL_KNOWLEDGE.value}
+- If unsure → default to {QuestionType.GENERAL_KNOWLEDGE.value}
+- Educational/learning questions → {QuestionType.GENERAL_KNOWLEDGE.value}
+- Only classify as {QuestionType.SECURITY_RELATED.value} if CLEARLY about cybersecurity
+
+**User's Question:**
+"{question}"
+
+**Examples:**
+- "What's the weather in Hanoi?" → {QuestionType.GENERAL_KNOWLEDGE.value}
+- "Thời tiết ngày 27/11 thế nào ở Hà Nội?" → {QuestionType.GENERAL_KNOWLEDGE.value}
+- "Đưa cho tôi lộ trình học tiếng anh B1" → {QuestionType.GENERAL_KNOWLEDGE.value}
+- "How to learn Python?" → {QuestionType.GENERAL_KNOWLEDGE.value}
+- "Recommend a good restaurant" → {QuestionType.GENERAL_KNOWLEDGE.value}
+- "What are the critical vulnerabilities?" → {QuestionType.SECURITY_RELATED.value}
+- "Show me security statistics" → {QuestionType.SECURITY_RELATED.value}
+- "Có bao nhiêu lỗ hổng nghiêm trọng?" → {QuestionType.SECURITY_RELATED.value}
+- "List all scanned assets" → {QuestionType.SECURITY_RELATED.value}
+
+**Your classification (must be one of {valid_types}):**"""
+
+    @staticmethod
+    def get_general_knowledge_prompt(question: str, context: Any = None) -> str:
+        """Prompt for answering general knowledge questions using MCP tools"""
+        context_str = ""
+        if context:
+            try:
+                context_str = f"\n\n**Retrieved Information:**\n```json\n{json.dumps(context, indent=2)[:2000]}\n```"
+            except Exception:
+                context_str = f"\n\n**Retrieved Information:**\n{str(context)[:2000]}"
+
+        return f"""You are a helpful AI assistant with access to various information sources.
+
+**User's Question:**
+"{question}"
+{context_str}
+
+**Your Task:**
+Provide a comprehensive, detailed answer to the user's question based on the information available.
+
+**CRITICAL LANGUAGE REQUIREMENT:**
+- **MUST respond in EXACTLY the same language as the user's question**
+- If question is in Vietnamese → answer in Vietnamese ONLY
+- If question is in English → answer in English ONLY
+- If question is in another language → answer in that language ONLY
+- DO NOT mix languages or translate the question language
+
+**Response Guidelines:**
+1. **Provide detailed, comprehensive information** - include specific facts, numbers, dates, and relevant details
+2. **Use all relevant retrieved information** - extract and present key details from the context
+3. **Structure your answer clearly**:
+   - Start with a direct answer to the main question
+   - Provide supporting details and explanations
+   - Include specific examples or data points when available
+4. **Be thorough but organized** - aim for 4-8 sentences with rich information
+5. **Be conversational and friendly** - don't mention that you're a security agent
+6. **If information is incomplete**, explain what you know and what's missing
+7. **Include relevant context** that helps the user understand the topic better
+
+**Examples of Detail Level Expected:**
+- Instead of: "It will be sunny"
+- Provide: "The temperature will reach 28°C with clear skies and 60% humidity. Wind speed is expected at 15 km/h from the east."
+
+**Your detailed response:"""
 
     @staticmethod
     def get_no_data_response_prompt(question: str) -> str:

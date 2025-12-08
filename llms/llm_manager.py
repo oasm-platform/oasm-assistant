@@ -134,23 +134,31 @@ class LLMManager:
 
         params = {
             "google_api_key": self.config.api_key,
-            "model": model or self.config.model_name or "gemini-pro",
+            "model": model or self.config.model_name or "gemini-2.0-flash",
             "temperature": kwargs.get("temperature", self.config.temperature),
             **self.config.extra_params
         }
 
         max_tokens = kwargs.get("max_tokens", self.config.max_tokens)
 
+        # Add aggressive rate limit handling
+        max_retries = kwargs.get("max_retries", 2)  # Reduce retries from default 6
+        timeout = kwargs.get("timeout", 60)
+
         try:
             return ChatGoogleGenerativeAI(
                 **params,
-                max_output_tokens=max_tokens
+                max_output_tokens=max_tokens,
+                max_retries=max_retries,
+                timeout=timeout
             )
         except TypeError:
             # Fallback for different versions
             return ChatGoogleGenerativeAI(
                 **params,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                max_retries=max_retries,
+                timeout=timeout
             )
 
     def _create_ollama_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
