@@ -65,6 +65,12 @@ class EmbeddingManager:
                 self.embedding_model = self._create_google_embedding()
             elif provider == "huggingface":
                 self.embedding_model = self._create_huggingface_embedding()
+            elif provider == "vllm":
+                self.embedding_model = self._create_vllm_embedding()
+            elif provider == "ollama":
+                self.embedding_model = self._create_ollama_embedding()
+            elif provider == "sglang":
+                self.embedding_model = self._create_sglang_embedding()
             else:
                 logger.warning(f"Unknown provider '{provider}', falling back to HuggingFace")
                 self.embedding_model = self._create_huggingface_embedding()
@@ -151,6 +157,90 @@ class EmbeddingManager:
             )
         except Exception as e:
             raise ValueError(f"Failed to create HuggingFace embedding: {e}")
+
+    def _create_vllm_embedding(self) -> Embeddings:
+        """Create vLLM embedding using OpenAI-compatible API"""
+        try:
+            from langchain_openai import OpenAIEmbeddings
+
+            # vLLM uses OpenAI-compatible API for embeddings
+            base_url = self.config.base_url or "http://localhost:8006/v1"
+            model_name = self.config.model_name or "BAAI/bge-small-en-v1.5"
+
+            params = {
+                "api_key": "EMPTY",  # vLLM doesn't require API key
+                "base_url": base_url,
+                "model": model_name,
+            }
+
+            # Add optional parameters
+            if self.config.dimensions:
+                params["dimensions"] = self.config.dimensions
+
+            logger.info(f"[EmbeddingManager] Creating vLLM embedding with model: {model_name} at {base_url}")
+            return OpenAIEmbeddings(**params)
+
+        except ImportError:
+            raise ImportError(
+                "OpenAI embeddings not available. Install with: "
+                "pip install langchain-openai"
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create vLLM embedding: {e}")
+
+    def _create_ollama_embedding(self) -> Embeddings:
+        """Create Ollama embedding using LangChain"""
+        try:
+            from langchain_ollama import OllamaEmbeddings
+
+            base_url = self.config.base_url or "http://localhost:8005"
+            model_name = self.config.model_name or "nomic-embed-text"
+
+            params = {
+                "model": model_name,
+                "base_url": base_url,
+            }
+
+            logger.info(f"[EmbeddingManager] Creating Ollama embedding with model: {model_name} at {base_url}")
+            return OllamaEmbeddings(**params)
+
+        except ImportError:
+            raise ImportError(
+                "Ollama embeddings not available. Install with: "
+                "pip install langchain-ollama"
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create Ollama embedding: {e}")
+
+    def _create_sglang_embedding(self) -> Embeddings:
+        """Create SGLang embedding using OpenAI-compatible API"""
+        try:
+            from langchain_openai import OpenAIEmbeddings
+
+            # SGLang uses OpenAI-compatible API for embeddings
+            base_url = self.config.base_url or "http://localhost:8007/v1"
+            model_name = self.config.model_name or "BAAI/bge-small-en-v1.5"
+
+            params = {
+                "api_key": "EMPTY",  # SGLang doesn't require API key
+                "base_url": base_url,
+                "model": model_name,
+            }
+
+            # Add optional parameters
+            if self.config.dimensions:
+                params["dimensions"] = self.config.dimensions
+
+            logger.info(f"[EmbeddingManager] Creating SGLang embedding with model: {model_name} at {base_url}")
+            return OpenAIEmbeddings(**params)
+
+        except ImportError:
+            raise ImportError(
+                "OpenAI embeddings not available. Install with: "
+                "pip install langchain-openai"
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to create SGLang embedding: {e}")
 
     def get_embedding(self) -> Embeddings:
         """
@@ -253,11 +343,38 @@ class EmbeddingManager:
                 return 768
             elif provider == "huggingface":
                 return 384
+            elif provider == "vllm":
+                # Common vLLM embedding models dimensions
+                model_name = self.config.model_name or "BAAI/bge-small-en-v1.5"
+                if "large" in model_name:
+                    return 1024
+                elif "base" in model_name:
+                    return 768
+                else:  # small
+                    return 384
+            elif provider == "ollama":
+                # Common Ollama embedding models dimensions
+                model_name = self.config.model_name or "nomic-embed-text"
+                if "nomic" in model_name:
+                    return 768
+                elif "mxbai" in model_name:
+                    return 1024
+                else:
+                    return 768
+            elif provider == "sglang":
+                # Common SGLang embedding models dimensions (same as vLLM)
+                model_name = self.config.model_name or "BAAI/bge-small-en-v1.5"
+                if "large" in model_name:
+                    return 1024
+                elif "base" in model_name:
+                    return 768
+                else:  # small
+                    return 384
             return 384
 
     def get_available_providers(self) -> List[str]:
         """Get list of available providers"""
-        return ["openai", "google", "huggingface"]
+        return ["openai", "google", "huggingface", "vllm", "ollama", "sglang"]
 
     def get_provider_config(self) -> EmbeddingConfigs:
         """Get current configuration"""

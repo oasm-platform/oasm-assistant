@@ -71,6 +71,10 @@ class LLMManager:
                 self.providers["google"] = self._create_google_provider
             elif provider == "ollama":
                 self.providers["ollama"] = self._create_ollama_provider
+            elif provider == "vllm":
+                self.providers["vllm"] = self._create_vllm_provider
+            elif provider == "sglang":
+                self.providers["sglang"] = self._create_sglang_provider
             else:
                 logger.warning(f"Unknown provider: {provider}")
                 return
@@ -167,12 +171,12 @@ class LLMManager:
         if self.config.provider == "ollama":
             base_model = self.config.model_name or "llama2"
             base_temp = self.config.temperature
-            base_url = self.config.base_url or "http://localhost:11434"
+            base_url = self.config.base_url or "http://localhost:8005"
             extra_params = self.config.extra_params
         else:
             base_model = "llama2"
             base_temp = 0.1
-            base_url = "http://localhost:11434"
+            base_url = "http://localhost:8005"
             extra_params = {}
 
         params = {
@@ -190,6 +194,60 @@ class LLMManager:
                 return ChatOllama(**params)
         else:
             return ChatOllama(**params)
+
+    def _create_vllm_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
+        """Create vLLM LangChain provider using OpenAI-compatible API"""
+        # vLLM uses OpenAI-compatible API, so we use ChatOpenAI with custom base_url
+        if self.config.provider == "vllm":
+            base_model = self.config.model_name or "Qwen/Qwen2.5-7B-Instruct"
+            base_temp = self.config.temperature
+            base_url = self.config.base_url or "http://localhost:8006/v1"
+            extra_params = self.config.extra_params
+        else:
+            base_model = "Qwen/Qwen2.5-7B-Instruct"
+            base_temp = 0.1
+            base_url = "http://localhost:8006/v1"
+            extra_params = {}
+
+        params = {
+            "model": model or base_model,
+            "temperature": kwargs.get("temperature", base_temp),
+            "base_url": kwargs.get("base_url", base_url),
+            "api_key": "EMPTY",  # vLLM doesn't require API key but ChatOpenAI needs one
+            "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+            "timeout": kwargs.get("timeout", self.config.timeout),
+            "max_retries": kwargs.get("max_retries", self.config.max_retries),
+            **extra_params
+        }
+
+        return ChatOpenAI(**params)
+
+    def _create_sglang_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
+        """Create SGLang LangChain provider using OpenAI-compatible API"""
+        # SGLang uses OpenAI-compatible API, so we use ChatOpenAI with custom base_url
+        if self.config.provider == "sglang":
+            base_model = self.config.model_name or "Qwen/Qwen2.5-7B-Instruct"
+            base_temp = self.config.temperature
+            base_url = self.config.base_url or "http://localhost:8007/v1"
+            extra_params = self.config.extra_params
+        else:
+            base_model = "Qwen/Qwen2.5-7B-Instruct"
+            base_temp = 0.1
+            base_url = "http://localhost:8007/v1"
+            extra_params = {}
+
+        params = {
+            "model": model or base_model,
+            "temperature": kwargs.get("temperature", base_temp),
+            "base_url": kwargs.get("base_url", base_url),
+            "api_key": "EMPTY",  # SGLang doesn't require API key but ChatOpenAI needs one
+            "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
+            "timeout": kwargs.get("timeout", self.config.timeout),
+            "max_retries": kwargs.get("max_retries", self.config.max_retries),
+            **extra_params
+        }
+
+        return ChatOpenAI(**params)
 
     def get_llm(self, provider: str = None, model: str = None, **kwargs) -> BaseLanguageModel:
         """Get an LLM instance"""
