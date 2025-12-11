@@ -105,33 +105,22 @@ class AnalysisAgent(BaseAgent):
         """Analyze with streaming - single LLM call for classification and tool selection"""
         logger.info(f"Streaming analysis: {question[:100]}...")
 
-        scan_data = await self._fetch_mcp_data(question)
+        # Use streaming version of data fetching to emit events during the process
+        scan_data = None
+        tool_executed = False
+        
+        async for event in self._fetch_mcp_data_streaming(question):
+            if event["type"] == "result_data":
+                scan_data = event["data"]
+                tool_executed = True
+            else:
+                yield event
+
         question_type = self._ensure_question_type_enum(scan_data.get("question_type") if scan_data else None)
 
-        # Extract tool info for events
-        if scan_data:
-            tool_name = scan_data.get("tool", "mcp_tool")
-            tool_description = scan_data.get("tool_description", "Fetching data from MCP")
-            full_tool_name = f"{scan_data.get('server', 'unknown')}/{tool_name}"
-        else:
-            tool_name = "mcp_tool_selection"
-            tool_description = "Searching for appropriate MCP tool"
-            full_tool_name = tool_name
-
-        # Yield tool execution events
-        yield {"type": "tool_start", "tool_name": tool_name, "tool_description": tool_description, "agent": self.name}
-        yield {
-            "type": "tool_output",
-            "tool_name": tool_name,
-            "status": "success" if scan_data else "no_data",
-            "output": {
-                "has_data": bool(scan_data),
-                "source": scan_data.get("source") if scan_data else None,
-                "full_tool_name": full_tool_name
-            },
-            "agent": self.name
-        }
-        yield {"type": "tool_end", "tool_name": tool_name, "agent": self.name}
+        # If no tool was executed (e.g. MCP disabled or no tool selected), we might need generic events
+        if not tool_executed and not scan_data:
+             yield {"type": "thinking", "thought": "No appropriate tool found or MCP disabled. Proceeding with general analysis.", "agent": self.name}
 
         # Stream LLM analysis
         async for event in self._generate_analysis_streaming(question, scan_data, question_type):
@@ -147,6 +136,109 @@ class AnalysisAgent(BaseAgent):
             },
             "agent": self.name
         }
+
+    async def _fetch_mcp_data_streaming(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
+        """Fetch data from MCP with events streaming"""
+        if not self.mcp_manager:
+            logger.warning("MCP not available")
+            return
+
+        try:
+            yield {"type": "thinking", "thought": "Initializing MCP tools...", "agent": self.name}
+            await self.mcp_manager.initialize()
+
+            all_tools = await self.mcp_manager.get_all_tools()
+            if not all_tools:
+                logger.warning("No MCP tools available")
+                return
+
+            tool_count = sum(len(tools) for tools in all_tools.values())
+            yield {
+                "type": "thinking", 
+                "thought": f"Exploring {tool_count} tools from {len(all_tools)} servers to find the best match...", 
+                "agent": self.name
+            }
+            logger.info(f"Discovered {tool_count} MCP tools from {len(all_tools)} servers")
+
+            selected = await self._classify_and_select_tool_combined(question, all_tools)
+            if not selected:
+                logger.warning("LLM could not classify and select tool")
+                yield {"type": "thinking", "thought": "Could not determine appropriate tool.", "agent": self.name}
+                return
+
+            server_name = selected["server"]
+            tool_name = selected["tool"]
+            tool_args = selected["args"]
+            question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
+
+            # Get tool description before execution
+            tool_description = "Fetching data from MCP"
+            for server, tools in all_tools.items():
+                if server == server_name:
+                    for tool_info in tools:
+                        if tool_info.get("name") == tool_name:
+                            tool_description = tool_info.get("description", tool_description)
+                            break
+
+            logger.info(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
+            
+            # Yield tool start event BEFORE execution
+            yield {
+                "type": "tool_start", 
+                "tool_name": tool_name, 
+                "tool_description": tool_description, 
+                "parameters": tool_args,
+                "agent": self.name
+            }
+
+            # Execute tool
+            result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
+
+            if not result or result.get("isError"):
+                error_msg = result.get('content') if result else 'No response'
+                logger.warning(f"MCP call failed: {error_msg}")
+                yield {
+                    "type": "tool_output",
+                    "tool_name": tool_name,
+                    "status": "error",
+                    "error": error_msg,
+                    "agent": self.name
+                }
+                return
+
+            has_data = self._has_data(result, tool_name)
+            if not has_data:
+                logger.warning(f"MCP returned empty data for {tool_name}")
+            
+            # Yield tool output event AFTER execution
+            full_tool_name = f"{server_name}/{tool_name}"
+            yield {
+                "type": "tool_output",
+                "tool_name": tool_name,
+                "status": "success",
+                "output": {
+                    "has_data": has_data,
+                    "source": f"MCP ({full_tool_name})",
+                    "full_tool_name": full_tool_name
+                },
+                "agent": self.name
+            }
+
+            final_data = {
+                "source": f"MCP ({server_name}/{tool_name})",
+                "stats": result,
+                "tool": tool_name,
+                "server": server_name,
+                "tool_description": tool_description,
+                "question_type": question_type
+            }
+            
+            # Yield internal result data for the caller to use
+            yield {"type": "result_data", "data": final_data}
+
+        except Exception as e:
+            logger.error(f"MCP fetch streaming error: {e}", exc_info=True)
+            yield {"type": "error", "error": str(e), "agent": self.name}
 
     async def _fetch_mcp_data(self, question: str) -> Optional[Dict[str, Any]]:
         """Fetch data from MCP with combined classification and tool selection"""

@@ -9,6 +9,7 @@ from uuid import UUID
 from contextlib import asynccontextmanager
 import warnings
 import logging
+import asyncio
 import nest_asyncio
 from common.config import configs
 
@@ -148,7 +149,31 @@ class MCPManager:
                     
             return all_connections
 
-    def get_server_status(self, server_name: str, test_connection: bool = False) -> tuple[bool, Optional[str]]:
+    def _get_server_timeout(self, server_name: str) -> int:
+        """Get timeout for a server from database config, default 60 seconds"""
+        with self.database.get_session() as session:
+            mcp_config = session.query(MCPConfig).filter(
+                MCPConfig.workspace_id == self.workspace_id,
+                MCPConfig.user_id == self.user_id
+            ).first()
+            
+            if mcp_config:
+                return mcp_config.get_timeout(server_name)
+            return 60
+    
+    def _get_allowed_tools(self, server_name: str) -> Optional[List[str]]:
+        """Get allowed tools for a server from database config. None means all tools allowed"""
+        with self.database.get_session() as session:
+            mcp_config = session.query(MCPConfig).filter(
+                MCPConfig.workspace_id == self.workspace_id,
+                MCPConfig.user_id == self.user_id
+            ).first()
+            
+            if mcp_config:
+                return mcp_config.get_allowed_tools(server_name)
+            return None
+
+    async def get_server_status(self, server_name: str, test_connection: bool = False) -> tuple[bool, Optional[str]]:
         """
         Get connection status for a specific server
 
@@ -197,25 +222,20 @@ class MCPManager:
             return (False, "MCP client not initialized")
 
         # If test_connection is requested, actually try to use the connection
-        if test_connection and self._async_loop:
+        if test_connection:
             try:
                 # Test by trying to list tools from the server
                 # This will fail if the server is down
-                import asyncio
-
-                async def test_server():
-                    async with self._multi_client.session(server_name) as session:
-                        tools = await load_mcp_tools(session)
-                        return tools
-
-                future = asyncio.run_coroutine_threadsafe(
-                    test_server(),
-                    self._async_loop
-                )
-                # Wait for result with reasonable timeout
-                future.result(timeout=10)
-                return (True, None)
-            except TimeoutError:
+                async with self._multi_client.session(server_name) as session:
+                    # Make a direct call to the session to check server status with timeout
+                    # This should force an actual connection attempt
+                    tools_result = await asyncio.wait_for(session.list_tools(), timeout=5.0)
+                    # Verify we got a valid response
+                    if tools_result and hasattr(tools_result, 'tools'):
+                        return (True, None)
+                    else:
+                        return (False, "Server returned invalid response")
+            except asyncio.TimeoutError:
                 return (False, "Server response timeout")
             except Exception as e:
                 return (False, f"Server not responding: {str(e)}")
@@ -282,6 +302,73 @@ class MCPManager:
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
             return {"content": str(e), "isError": True}
 
+    async def call_tool_with_timeout(self, server: str, tool: str, args: Dict = None, timeout: int = None) -> Optional[Dict]:
+        """
+        Call a tool on an MCP server with custom timeout
+        
+        Args:
+            server: Server name
+            tool: Tool name
+            args: Tool arguments
+            timeout: Custom timeout in seconds, if None uses server's configured timeout
+        
+        Returns:
+            Tool result as dict, or None if error
+        """        
+        if timeout is None:
+            timeout = self._get_server_timeout(server)
+        
+        try:
+            return await asyncio.wait_for(
+                self.call_tool(server, tool, args),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Tool call timeout after {timeout}s: {server}.{tool}")
+            return {"content": f"Tool call timeout after {timeout} seconds", "isError": True}
+        except Exception as e:
+            logger.error(f"call_tool_with_timeout error: {e}", exc_info=True)
+            return {"content": str(e), "isError": True}
+
+    async def get_tools(self, server_name: str, apply_filter: bool = True) -> List[Dict]:
+        """
+        Get tools for a specific server
+        Args:
+            server_name: Server name
+            apply_filter: Whether to filter tools based on allowed_tools config (default: True)
+        Returns:
+            List of tool definitions
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._multi_client or server_name not in self._server_configs:
+            logger.warning(f"MCP server '{server_name}' not found or not connected")
+            return []
+
+        try:
+            async with self._multi_client.session(server_name) as session:
+                tools_result = await session.list_tools()
+                all_tools = [
+                    {
+                        "name": tool.name,
+                        "description": tool.description or "No description",
+                        "input_schema": tool.inputSchema if hasattr(tool, 'inputSchema') else {}
+                    }
+                    for tool in tools_result.tools
+                ]
+                
+                if apply_filter:
+                    # Filter by allowed_tools if configured
+                    allowed_tools = self._get_allowed_tools(server_name)
+                    if allowed_tools is not None:
+                        all_tools = [t for t in all_tools if t["name"] in allowed_tools]
+                
+                return all_tools
+        except Exception as e:
+            logger.error(f"Failed to get tools from {server_name}: {e}", exc_info=True)
+            return []
+
     async def get_all_tools(self) -> Dict[str, List[Dict]]:
         """
         Get all tools from all connected servers using native MCP protocol
@@ -294,22 +381,7 @@ class MCPManager:
 
         result = {}
         for server_name in self._server_configs.keys():
-            try:
-                async with self._multi_client.session(server_name) as session:
-                    # Session is already a ClientSession from mcp package
-                    # Call list_tools() directly
-                    tools_result = await session.list_tools()
-                    result[server_name] = [
-                        {
-                            "name": tool.name,
-                            "description": tool.description or "No description",
-                            "input_schema": tool.inputSchema if hasattr(tool, 'inputSchema') else {}
-                        }
-                        for tool in tools_result.tools
-                    ]
-            except Exception as e:
-                logger.error(f"Failed to get tools from {server_name}: {e}", exc_info=True)
-                result[server_name] = []
+            result[server_name] = await self.get_tools(server_name)
 
         return result
 
@@ -341,6 +413,30 @@ class MCPManager:
             logger.error(f"read_resource error: {e}")
             return None
 
+    async def get_resources(self, server_name: str) -> List[Dict]:
+        """
+        Get resources for a specific server
+        Args:
+            server_name: Server name
+        Returns:
+            List of resources
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        if not self._multi_client or server_name not in self._server_configs:
+            return []
+
+        try:
+            async with self._multi_client.session(server_name) as session:
+                if hasattr(session, '_session'):
+                    res = await session._session.list_resources()
+                    return [r.model_dump() for r in res.resources] if hasattr(res, 'resources') else []
+                return []
+        except Exception as e:
+            logger.error(f"Failed to get resources from {server_name}: {e}")
+            return []
+
     async def get_all_resources(self) -> Dict[str, List[Dict]]:
         """
         Get all resources from all connected servers
@@ -353,16 +449,7 @@ class MCPManager:
 
         result = {}
         for server_name in self._server_configs.keys():
-            try:
-                async with self._multi_client.session(server_name) as session:
-                    if hasattr(session, '_session'):
-                        res = await session._session.list_resources()
-                        result[server_name] = [r.model_dump() for r in res.resources] if hasattr(res, 'resources') else []
-                    else:
-                        result[server_name] = []
-            except Exception as e:
-                logger.error(f"Failed to get resources from {server_name}: {e}")
-                result[server_name] = []
+            result[server_name] = await self.get_resources(server_name)
 
         return result
 

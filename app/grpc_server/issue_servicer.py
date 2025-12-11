@@ -3,11 +3,13 @@ from app.services.issue_service import IssueService
 from common.logger import logger
 import grpc
 from google.protobuf.json_format import MessageToDict
+from app.interceptors import get_metadata_interceptor
 
 class IssueServicer(assistant_pb2_grpc.IssueServiceServicer):
     def __init__(self, service: IssueService = None):
         self.service = service or IssueService()
 
+    @get_metadata_interceptor
     async def ResolveIssueServers(self, request, context):
         try:
             question = request.question

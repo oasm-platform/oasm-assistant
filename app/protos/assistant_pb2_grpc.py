@@ -801,6 +801,11 @@ class MCPServerServiceStub(object):
                 request_serializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersRequest.SerializeToString,
                 response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersResponse.FromString,
                 _registered_method=True)
+        self.GetMCPServerHealth = channel.unary_unary(
+                '/app.MCPServerService/GetMCPServerHealth',
+                request_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServerHealthRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServerHealthResponse.FromString,
+                _registered_method=True)
 
 
 class MCPServerServiceServicer(object):
@@ -833,6 +838,12 @@ class MCPServerServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetMCPServerHealth(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_MCPServerServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -855,6 +866,11 @@ def add_MCPServerServiceServicer_to_server(servicer, server):
                     servicer.DeleteMCPServers,
                     request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersRequest.FromString,
                     response_serializer=app_dot_protos_dot_assistant__pb2.DeleteMCPServersResponse.SerializeToString,
+            ),
+            'GetMCPServerHealth': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMCPServerHealth,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetMCPServerHealthRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.GetMCPServerHealthResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -968,6 +984,33 @@ class MCPServerService(object):
             '/app.MCPServerService/DeleteMCPServers',
             app_dot_protos_dot_assistant__pb2.DeleteMCPServersRequest.SerializeToString,
             app_dot_protos_dot_assistant__pb2.DeleteMCPServersResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetMCPServerHealth(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.MCPServerService/GetMCPServerHealth',
+            app_dot_protos_dot_assistant__pb2.GetMCPServerHealthRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.GetMCPServerHealthResponse.FromString,
             options,
             channel_credentials,
             insecure,
