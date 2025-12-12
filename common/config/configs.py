@@ -22,6 +22,19 @@ class PostgresConfigs(BaseSettings):
         extra = "ignore"  
 
 
+class RedisConfigs(BaseSettings):
+    url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
+    max_connections: int = Field(10, alias="REDIS_MAX_CONNECTIONS")
+    socket_timeout: int = Field(5, alias="REDIS_SOCKET_TIMEOUT")
+    socket_connect_timeout: int = Field(5, alias="REDIS_SOCKET_CONNECT_TIMEOUT")
+    decode_responses: bool = Field(True, alias="REDIS_DECODE_RESPONSES")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
+
 class AppConfigs(BaseSettings):
     host: str = Field("0.0.0.0", alias="APP_HOST")
     port: int = Field(8000, alias="APP_PORT")
@@ -129,6 +142,7 @@ class DomainClassifierConfigs(BaseSettings):
 
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
+    redis: RedisConfigs = RedisConfigs()
     app: AppConfigs = AppConfigs()
     llm: LlmConfigs = LlmConfigs()
     embedding: EmbeddingConfigs = EmbeddingConfigs()
