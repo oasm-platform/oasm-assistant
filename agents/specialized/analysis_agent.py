@@ -80,8 +80,23 @@ class AnalysisAgent(BaseAgent):
                 yield {"type": "error", "error": f"Unknown action: {action}", "agent": self.name}
 
         except Exception as e:
-            logger.error(f"Streaming task execution failed: {e}", exc_info=True)
-            yield {"type": "error", "error": str(e), "agent": self.name}
+            import traceback
+            error_details = traceback.format_exc()
+            # Use %s formatting to avoid KeyError with curly braces in error messages
+            logger.error("Streaming task execution failed: %s", str(e), exc_info=True)
+            logger.error("Error details: %s", error_details)
+            
+            error_message = str(e) if str(e) else "Unknown error occurred during task execution"
+            
+            yield {
+                "type": "error", 
+                "error": error_message,
+                "error_type": "TaskExecutionError",
+                "error_message": f"Failed to execute task: {error_message}",
+                "agent": self.name,
+                "recoverable": True,
+                "retry_suggested": True
+            }
 
     async def analyze_vulnerabilities(self, question: str) -> Dict[str, Any]:
         """Analyze vulnerabilities with combined classification and tool selection"""
@@ -237,8 +252,24 @@ class AnalysisAgent(BaseAgent):
             yield {"type": "result_data", "data": final_data}
 
         except Exception as e:
-            logger.error(f"MCP fetch streaming error: {e}", exc_info=True)
-            yield {"type": "error", "error": str(e), "agent": self.name}
+            import traceback
+            error_details = traceback.format_exc()
+            # Use %s formatting to avoid KeyError with curly braces in error messages
+            logger.error("MCP fetch streaming error: %s", str(e), exc_info=True)
+            logger.error("Error details: %s", error_details)
+            
+            # Provide user-friendly error message
+            error_message = str(e) if str(e) else "Unknown error occurred while fetching MCP data"
+            
+            yield {
+                "type": "error", 
+                "error": error_message,
+                "error_type": "MCPFetchError",
+                "error_message": f"Failed to fetch data from MCP tools: {error_message}",
+                "agent": self.name,
+                "recoverable": True,
+                "retry_suggested": True
+            }
 
     async def _fetch_mcp_data(self, question: str) -> Optional[Dict[str, Any]]:
         """Fetch data from MCP with combined classification and tool selection"""
@@ -344,7 +375,8 @@ You MUST respond with valid JSON containing exactly these fields:
             return result
 
         except Exception as e:
-            logger.error(f"LLM combined classification and tool selection failed: {e}", exc_info=True)
+            # Use %s formatting to avoid KeyError with curly braces in error messages
+            logger.error("LLM combined classification and tool selection failed: %s", str(e), exc_info=True)
             return None
 
     def _ensure_question_type_enum(self, question_type: Any) -> QuestionType:
@@ -456,7 +488,8 @@ You MUST respond with valid JSON containing exactly these fields:
             async for buffered_text in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
                 yield {"type": "delta", "text": buffered_text, "agent": self.name}
         except Exception as e:
-            logger.error(f"Failed to stream analysis: {e}", exc_info=True)
+            # Use %s formatting to avoid KeyError with curly braces in error messages
+            logger.error("Failed to stream analysis: %s", str(e), exc_info=True)
             if scan_data:
                 stats = scan_data.get("stats", {})
                 yield {"type": "delta", "text": f"\n\nAnalysis data:\n{json.dumps(stats, indent=2)[:500]}", "agent": self.name}

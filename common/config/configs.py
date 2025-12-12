@@ -32,12 +32,12 @@ class LlmConfigs(BaseSettings):
     api_key: str = Field("", alias="LLM_API_KEY")
     model_name: str = Field("", alias="LLM_MODEL_NAME")
     temperature: float = Field(0.1, alias="LLM_TEMPERATURE")
-    max_tokens: int = Field(4000, alias="LLM_MAX_TOKENS")
+    max_tokens: int = Field(4096, alias="LLM_MAX_TOKENS")
     timeout: int = Field(60, alias="LLM_TIMEOUT")
     max_retries: int = Field(3, alias="LLM_MAX_RETRIES")
     base_url: str = Field("", alias="LLM_BASE_URL")
     extra_params: Dict[str, Any] = Field({}, alias="LLM_EXTRA_PARAMS")
-    min_chunk_size: int = Field(20, alias="LLM_MIN_CHUNK_SIZE")  # Minimum characters before sending chunk
+    min_chunk_size: int = Field(5, alias="LLM_MIN_CHUNK_SIZE")  # Minimum characters before sending chunk
 
     class Config:
         env_file = ".env"

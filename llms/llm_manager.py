@@ -57,8 +57,8 @@ class LLMManager:
                 logger.warning("No LLM provider configured")
                 return
 
-            # Check API key requirement (Ollama doesn't need API key)
-            if provider != "ollama" and not self.config.api_key:
+            # Check API key requirement (Ollama, vLLM, SGLang don't strictly need API key)
+            if provider not in ["ollama", "vllm", "sglang"] and not self.config.api_key:
                 logger.warning(f"Provider '{provider}' requires API key but none provided")
                 return
 

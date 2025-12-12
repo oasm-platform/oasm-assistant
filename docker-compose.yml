@@ -41,7 +41,7 @@ services:
       - POSTGRES_HOST=oasm-assistant-postgresql
       - POSTGRES_PORT=5432
       - SEARXNG_URL=http://oasm-assistant-searxng:8080
-      - LLM_BASE_URL=http://oasm-assistant-ollama:11434
+      - LLM_BASE_URL=http://oasm-assistant-vllm:8000/v1
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -57,6 +57,8 @@ services:
       oasm-assistant-postgresql:
         condition: service_healthy
       oasm-assistant-searxng:
+        condition: service_started
+      oasm-assistant-vllm:
         condition: service_started
     networks:
       - oasm-network
@@ -109,7 +111,7 @@ services:
     ports:
       - "8005:11434"
     volumes:
-      - ollama-data:/root/.ollama
+      - /home/ollama-data:/root/.ollama
     networks:
       - oasm-network
     deploy:
@@ -124,6 +126,8 @@ services:
       - OLLAMA_MAX_LOADED_MODELS=1
       - OLLAMA_FLASH_ATTENTION=1
       - OLLAMA_KV_CACHE_TYPE=q8_0
+      - OLLAMA_KEEP_ALIVE=${LLM_TIMEOUT}
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
       interval: 30s
@@ -139,7 +143,7 @@ services:
     ports:
       - "8006:8000"
     volumes:
-      - vllm-data:/root/.cache/huggingface
+      - /home/vllm-data:/root/.cache/huggingface
     networks:
       - oasm-network
     deploy:
@@ -150,19 +154,23 @@ services:
               count: all
               capabilities: [gpu]
     environment:
-      # Model configuration - change this to your preferred model
-      - VLLM_MODEL=${VLLM_MODEL:-Qwen/Qwen2.5-7B-Instruct}
-      # Performance tuning
-      - VLLM_GPU_MEMORY_UTILIZATION=${VLLM_GPU_MEMORY_UTILIZATION:-0.9}
-      - VLLM_MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-8192}
-      - VLLM_TENSOR_PARALLEL_SIZE=${VLLM_TENSOR_PARALLEL_SIZE:-1}
+      - HF_TOKEN=${HF_TOKEN}
+      - LLM_API_KEY=${LLM_API_KEY}
+      - VLLM_MODEL=${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQ}
+      - VLLM_GPU_MEMORY_UTILIZATION=${LLM_GPU_MEMORY_UTILIZATION:-0.85}
+      - VLLM_MAX_MODEL_LEN=${LLM_MAX_TOKENS:-4096}
+      - VLLM_TENSOR_PARALLEL_SIZE=${LLM_TENSOR_PARALLEL_SIZE:-1}
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
     command: >
-      --model ${VLLM_MODEL}
+      --model ${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQ}
       --host 0.0.0.0
       --port 8000
-      --gpu-memory-utilization ${VLLM_GPU_MEMORY_UTILIZATION}
-      --max-model-len ${VLLM_MAX_MODEL_LEN}
-      --tensor-parallel-size ${VLLM_TENSOR_PARALLEL_SIZE}
+      --download-dir /root/.cache/huggingface
+      --trust-remote-code
+      --gpu-memory-utilization ${LLM_GPU_MEMORY_UTILIZATION:-0.85}
+      --max-model-len ${LLM_MAX_TOKENS:-4096}
+      --tensor-parallel-size ${LLM_TENSOR_PARALLEL_SIZE:-1}
+
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -178,7 +186,7 @@ services:
     ports:
       - "8007:30000"
     volumes:
-      - sglang-data:/root/.cache/huggingface
+      - /home/sglang-data:/root/.cache/huggingface
     networks:
       - oasm-network
     deploy:
@@ -189,20 +197,21 @@ services:
               count: all
               capabilities: [gpu]
     environment:
+      - SGLANG_API_KEY=${LLM_API_KEY}
       # Model configuration
-      - SGLANG_MODEL=${SGLANG_MODEL:-Qwen/Qwen2.5-7B-Instruct}
+      - SGLANG_MODEL=${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQ}
       # Performance tuning
-      - SGLANG_MEM_FRACTION=${SGLANG_MEM_FRACTION:-0.9}
-      - SGLANG_CONTEXT_LENGTH=${SGLANG_CONTEXT_LENGTH:-8192}
-      - SGLANG_TP_SIZE=${SGLANG_TP_SIZE:-1}
+      - SGLANG_MEM_FRACTION=${LLM_GPU_MEMORY_UTILIZATION:-0.9}
+      - SGLANG_CONTEXT_LENGTH=${LLM_MAX_TOKENS:-4096}
+      - SGLANG_TP_SIZE=${LLM_TENSOR_PARALLEL_SIZE:-1}
     command: >
       python3 -m sglang.launch_server
-      --model-path ${SGLANG_MODEL}
+      --model-path ${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQQ}
       --host 0.0.0.0
       --port 30000
-      --mem-fraction-static ${SGLANG_MEM_FRACTION}
-      --context-length ${SGLANG_CONTEXT_LENGTH}
-      --tp-size ${SGLANG_TP_SIZE}
+      --mem-fraction-static ${LLM_GPU_MEMORY_UTILIZATION:-0.9}
+      --context-length ${LLM_MAX_TOKENS:-4096}
+      --tp-size ${LLM_TENSOR_PARALLEL_SIZE:-1}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:30000/health"]
       interval: 30s
@@ -226,5 +235,6 @@ volumes:
     name: oasm-assistant-vllm-data
   sglang-data:
     name: oasm-assistant-sglang-data
+
   app-logs:
     name: oasm-assistant-app-logs

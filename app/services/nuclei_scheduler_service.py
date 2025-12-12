@@ -80,29 +80,102 @@ class NucleiTemplatesScheduler:
 
     def _clone_or_pull_repo(self) -> bool:
         """
-        Clone or pull the latest Nuclei templates repository
+        Clone or pull the latest Nuclei templates repository with retry logic
+        and HTTP/2 error handling
 
         Returns:
             bool: True if successful, False otherwise
         """
-        try:
-            if os.path.exists(self.clone_dir):
-                # Pull latest changes
-                logger.info(f"Pulling latest changes from {self.repo_url}")
-                repo = git.Repo(self.clone_dir)
-                origin = repo.remotes.origin
-                origin.pull()
-                logger.info("Successfully pulled latest changes")
-            else:
-                # Clone repository
-                logger.info(f"Cloning repository from {self.repo_url}")
-                git.Repo.clone_from(self.repo_url, self.clone_dir, depth=1)
-                logger.info("Successfully cloned repository")
+        max_retries = 3
+        retry_delay = 5  # seconds
+        
+        for attempt in range(max_retries):
+            try:
+                if os.path.exists(self.clone_dir):
+                    # Pull latest changes
+                    logger.info(f"Pulling latest changes from {self.repo_url} (attempt {attempt + 1}/{max_retries})")
+                    repo = git.Repo(self.clone_dir)
+                    
+                    # Configure Git to handle HTTP/2 issues
+                    with repo.config_writer() as git_config:
+                        # Increase buffer size to handle large repositories
+                        git_config.set_value('http', 'postBuffer', '524288000')  # 500MB
+                        # Allow fallback to HTTP/1.1 if HTTP/2 fails
+                        git_config.set_value('http', 'version', 'HTTP/1.1')
+                        # Increase timeout
+                        git_config.set_value('http', 'lowSpeedLimit', '1000')
+                        git_config.set_value('http', 'lowSpeedTime', '60')
+                    
+                    # Perform pull with verbose output
+                    origin = repo.remotes.origin
+                    origin.pull(verbose=True)
+                    logger.info("Successfully pulled latest changes")
+                else:
+                    # Clone repository
+                    logger.info(f"Cloning repository from {self.repo_url} (attempt {attempt + 1}/{max_retries})")
+                    
+                    # Clone with shallow depth to reduce data transfer
+                    repo = git.Repo.clone_from(
+                        self.repo_url,
+                        self.clone_dir,
+                        depth=1
+                    )
+                    
+                    # Configure Git after cloning to handle HTTP/2 issues
+                    with repo.config_writer() as git_config:
+                        # Increase buffer size to handle large repositories
+                        git_config.set_value('http', 'postBuffer', '524288000')  # 500MB
+                        # Allow fallback to HTTP/1.1 if HTTP/2 fails
+                        git_config.set_value('http', 'version', 'HTTP/1.1')
+                        # Increase timeout
+                        git_config.set_value('http', 'lowSpeedLimit', '1000')
+                        git_config.set_value('http', 'lowSpeedTime', '60')
+                    
+                    logger.info("Successfully cloned repository")
 
-            return True
-        except Exception as e:
-            logger.error(f"Failed to clone/pull repository: {e}")
-            return False
+                return True
+                
+            except git.exc.GitCommandError as e:
+                logger.warning(f"Git command failed (attempt {attempt + 1}/{max_retries}): {e}")
+                
+                # Check if it's an HTTP/2 related error
+                if 'HTTP/2 stream' in str(e) or 'RPC failed' in str(e) or 'early EOF' in str(e):
+                    if attempt < max_retries - 1:
+                        logger.info(f"HTTP/2 error detected, retrying in {retry_delay} seconds...")
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        
+                        # If pull failed, try to reset and pull again
+                        if os.path.exists(self.clone_dir):
+                            try:
+                                logger.info("Attempting to reset repository and retry...")
+                                repo = git.Repo(self.clone_dir)
+                                repo.git.reset('--hard', 'HEAD')
+                                repo.git.clean('-fdx')
+                            except Exception as reset_error:
+                                logger.warning(f"Failed to reset repository: {reset_error}")
+                                # If reset fails, remove and try fresh clone
+                                logger.info("Removing corrupted repository for fresh clone...")
+                                shutil.rmtree(self.clone_dir, ignore_errors=True)
+                        continue
+                    else:
+                        logger.error(f"Failed after {max_retries} attempts due to HTTP/2 errors")
+                        return False
+                else:
+                    # Non-HTTP/2 error, don't retry
+                    logger.error(f"Git command failed with non-retryable error: {e}")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Unexpected error during clone/pull: {e}")
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                    continue
+                return False
+        
+        return False
 
     def _parse_template_file(self, file_path: Path) -> Optional[dict]:
         """
