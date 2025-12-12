@@ -44,7 +44,13 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             workspace_id = UUID(context.workspace_id)
             user_id = UUID(context.user_id)
 
-            result = self.service.get_server_config(workspace_id, user_id)
+            # Always include tools and resources for UI display
+            result = await self.service.get_server_config(
+                workspace_id, 
+                user_id,
+                skip_health_check=False, # Test real connections
+                include_tools=True         # Include tools and resources
+            )
             mcp_config_json = json.dumps(result)
 
             return assistant_pb2.GetMCPServersResponse(
@@ -70,7 +76,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
                 context.set_details("Request must contain 'mcpServers' field")
                 return assistant_pb2.AddMCPServersResponse(success=False)
 
-            success, error, config = self.service.add_servers(workspace_id, user_id, mcp_servers)
+            success, error, config = await self.service.add_servers(workspace_id, user_id, mcp_servers)
 
             if success:
                 return assistant_pb2.AddMCPServersResponse(
@@ -99,7 +105,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
                 context.set_details("Request must contain 'mcpServers' field")
                 return assistant_pb2.UpdateMCPServersResponse(success=False)
 
-            success, error, config = self.service.update_servers(workspace_id, user_id, mcp_servers)
+            success, error, config = await self.service.update_servers(workspace_id, user_id, mcp_servers)
 
             if success:
                 return assistant_pb2.UpdateMCPServersResponse(
@@ -139,3 +145,37 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteMCPServersResponse(success=False, message=str(e))
+
+    @get_metadata_interceptor
+    async def GetMCPServerHealth(self, request, context):
+        try:
+            workspace_id = UUID(context.workspace_id)
+            user_id = UUID(context.user_id)
+            server_name = request.server_name
+
+            if not server_name:
+                context.set_code(StatusCode.INVALID_ARGUMENT)
+                context.set_details("Must provide server name")
+                return assistant_pb2.GetMCPServerHealthResponse(
+                    is_active=False, 
+                    status="error", 
+                    error="Server name required"
+                )
+
+            is_active, status, error = await self.service.get_server_health(workspace_id, user_id, server_name)
+            
+            return assistant_pb2.GetMCPServerHealthResponse(
+                is_active=is_active,
+                status=status,
+                error=error or ""
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking server health: {e}")
+            context.set_code(StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return assistant_pb2.GetMCPServerHealthResponse(
+                is_active=False,
+                status="error",
+                error=str(e)
+            )

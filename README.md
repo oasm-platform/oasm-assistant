@@ -31,18 +31,18 @@ OASM Assistant is an AI-powered security platform that automates external attack
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/oasm-assistant.git
+git clone https://github.com/oasm-platform/oasm-assistant.git
 cd oasm-assistant
 
 # Configure
 cp .env.example .env
-nano .env  # Edit: POSTGRES_PASSWORD, LLM_PROVIDER
+nano .env # Edit environment variables
 
 # Start services
-docker compose up -d
+docker compose up -d oasm-assistant-postgresql oasm-assistant-app oasm-assistant-searxng oasm-assistant-ollama
 
-# Pull LLM model (if using Ollama)
-docker compose exec oasm-assistant-ollama ollama pull qwen2.5:7b
+# Pull model for Ollama (if using Ollama LLM)
+docker exec -it oasm-assistant-ollama ollama pull llama3
 ```
 
 📖 **[Detailed Installation Guide](docs/INSTALLATION.md)**
@@ -125,4 +125,4 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Built by Team OASM-Platform** • [Documentation](docs/) • [Issues](https://github.com/your-org/oasm-assistant/issues)
+**Built by Team OASM-Platform** • [Documentation](docs/) • [Issues](https://github.com/oasm-platform/oasm-assistant/issues)
