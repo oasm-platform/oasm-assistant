@@ -143,7 +143,7 @@ services:
     ports:
       - "8006:8000"
     volumes:
-      - /home/vllm-data:/root/.cache/huggingface
+      - vllm-data:/root/.cache/huggingface
     networks:
       - oasm-network
     deploy:
@@ -183,7 +183,7 @@ services:
     ports:
       - "8007:30000"
     volumes:
-      - /home/sglang-data:/root/.cache/huggingface
+      - sglang-data:/root/.cache/huggingface
     networks:
       - oasm-network
     deploy:
