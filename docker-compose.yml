@@ -111,7 +111,7 @@ services:
     ports:
       - "8005:11434"
     volumes:
-      - /home/ollama-data:/root/.ollama
+      - ollama-data:/root/.ollama
     networks:
       - oasm-network
     deploy:
@@ -203,7 +203,7 @@ services:
       - SGLANG_TP_SIZE=${LLM_TENSOR_PARALLEL_SIZE:-1}
     command: >
       python3 -m sglang.launch_server
-      --model-path ${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQQ}
+      --model-path ${LLM_MODEL_NAME:-Qwen/Qwen2.5-7B-Instruct-AWQ}
       --host 0.0.0.0
       --port 30000
       --mem-fraction-static ${LLM_GPU_MEMORY_UTILIZATION:-0.9}

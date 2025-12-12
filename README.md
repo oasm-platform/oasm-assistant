@@ -31,7 +31,7 @@ OASM Assistant is an AI-powered security platform that automates external attack
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/oasm-assistant.git
+git clone https://github.com/oasm-platform/oasm-assistant.git
 cd oasm-assistant
 
 # Configure
@@ -125,4 +125,4 @@ MIT License - see [LICENSE](LICENSE) file.
 
 ---
 
-**Built by Team OASM-Platform** • [Documentation](docs/) • [Issues](https://github.com/your-org/oasm-assistant/issues)
+**Built by Team OASM-Platform** • [Documentation](docs/) • [Issues](https://github.com/oasm-platform/oasm-assistant/issues)

@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 import asyncio
 import json
+import traceback
 
 from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import JsonOutputParser
@@ -80,7 +81,6 @@ class AnalysisAgent(BaseAgent):
                 yield {"type": "error", "error": f"Unknown action: {action}", "agent": self.name}
 
         except Exception as e:
-            import traceback
             error_details = traceback.format_exc()
             # Use %s formatting to avoid KeyError with curly braces in error messages
             logger.error("Streaming task execution failed: %s", str(e), exc_info=True)
@@ -252,7 +252,6 @@ class AnalysisAgent(BaseAgent):
             yield {"type": "result_data", "data": final_data}
 
         except Exception as e:
-            import traceback
             error_details = traceback.format_exc()
             # Use %s formatting to avoid KeyError with curly braces in error messages
             logger.error("MCP fetch streaming error: %s", str(e), exc_info=True)
