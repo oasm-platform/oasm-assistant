@@ -9,7 +9,8 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 # UV configuration
-ENV UV_LINK_MODE=copy
+ENV UV_LINK_MODE=copy \
+    UV_HTTP_TIMEOUT=1200
 
 # Install git (required by GitPython) and tzdata (for timezone support)
 RUN apt-get update && apt-get install -y --no-install-recommends git tzdata && rm -rf /var/lib/apt/lists/*

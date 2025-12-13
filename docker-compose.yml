@@ -53,13 +53,6 @@ services:
       - ./common:/app/common
       - ./llms:/app/llms
       - ./tools:/app/tools
-    depends_on:
-      oasm-assistant-postgresql:
-        condition: service_healthy
-      oasm-assistant-searxng:
-        condition: service_started
-      oasm-assistant-vllm:
-        condition: service_started
     networks:
       - oasm-network
     # Distroless has no curl, health check should be done by gRPC health check

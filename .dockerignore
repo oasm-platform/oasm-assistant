@@ -112,7 +112,10 @@ pytest.ini
 learning/
 
 # Knowledge base (mounted as volume)
-knowledge/
+
+# Nuclei templates (managed by updater)
+nuclei-templates/
+
 
 # Keep these files for UV build
 !pyproject.toml

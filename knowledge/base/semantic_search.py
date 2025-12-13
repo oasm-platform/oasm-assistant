@@ -1,3 +1,0 @@
-"""
-Semantic search capabilities
-"""

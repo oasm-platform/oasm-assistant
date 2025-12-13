@@ -1,3 +1,0 @@
-"""
-Knowledge graph implementation
-"""

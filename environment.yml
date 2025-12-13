@@ -91,6 +91,9 @@ dependencies:
       # YAML parsing
       - PyYAML
 
+      # Redis
+      - redis
+
       # Testing
       - pytest
       - pytest-asyncio

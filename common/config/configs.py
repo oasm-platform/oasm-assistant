@@ -23,7 +23,7 @@ class PostgresConfigs(BaseSettings):
 
 
 class RedisConfigs(BaseSettings):
-    url: str = Field("redis://localhost:6379/0", alias="REDIS_URL")
+    url: str = Field("redis://:password@localhost:6379/1", alias="REDIS_URL")
     max_connections: int = Field(10, alias="REDIS_MAX_CONNECTIONS")
     socket_timeout: int = Field(5, alias="REDIS_SOCKET_TIMEOUT")
     socket_connect_timeout: int = Field(5, alias="REDIS_SOCKET_CONNECT_TIMEOUT")
@@ -74,7 +74,7 @@ class EmbeddingConfigs(BaseSettings):
 
 class SchedulerConfigs(BaseSettings):
     """Scheduler configurations for periodic tasks"""
-    nuclei_templates_sync_time: str = Field("02:00", alias="NUCLEI_TEMPLATES_SYNC_TIME")
+    nuclei_templates_sync_time: str = Field("0 0 * * *", alias="NUCLEI_TEMPLATES_SYNC_TIME")
     nuclei_templates_repo_url: str = Field(
         "https://github.com/projectdiscovery/nuclei-templates.git",
         alias="NUCLEI_TEMPLATES_REPO_URL"

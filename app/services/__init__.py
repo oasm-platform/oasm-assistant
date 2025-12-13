@@ -4,7 +4,6 @@ from .conversation_service import ConversationService
 from .message_service import MessageService
 from .mcp_server_service import MCPServerService
 from .nuclei_template_service import NucleiTemplateService
-from .nuclei_scheduler_service import NucleiTemplatesScheduler, get_scheduler
 from .issue_service import IssueService
 
 
@@ -15,7 +14,5 @@ __all__ = [
     "MessageService",
     "MCPServerService",
     "NucleiTemplateService",
-    "NucleiTemplatesScheduler",
-    "get_scheduler",
     "IssueService",
 ]

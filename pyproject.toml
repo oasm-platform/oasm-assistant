@@ -72,6 +72,9 @@ dependencies = [
     
     # YAML parsing
     "PyYAML>=6.0.1",
+
+    # Redis
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]
