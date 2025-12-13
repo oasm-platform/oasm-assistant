@@ -1,3 +1,0 @@
-"""
-Validate new knowledge
-"""

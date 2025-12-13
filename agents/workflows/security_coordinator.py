@@ -40,7 +40,7 @@ class SecurityCoordinator:
             "orchestration": OrchestrationAgent
         }
         self.workflow_graph = self._build_workflow_graph()
-        logger.info(
+        logger.debug(
             f"SecurityCoordinator initialized "
             f"(DB: {'enabled' if db_session else 'disabled'}, "
             f"MCP: workspace={workspace_id}, user={user_id})"

@@ -18,27 +18,20 @@ from .grpc_server import (
     IssueServicer
 )
 
-from .services import get_scheduler
+# Use centralized Knowledge Base Updater
+from knowledge.updaters import get_kb_updater
 
 from common.logger import logger
 from common.config import configs as settings
 
 async def serve():
     """Start async gRPC server with scheduler"""
-    scheduler = None
+    kb_updater = None
 
     try:
-        # Start Nuclei templates scheduler
-        scheduler = get_scheduler()
-        scheduler.start()
-        logger.info("Nuclei templates scheduler started")
-
-        # Register cleanup handler
-        def cleanup():
-            if scheduler:
-                logger.info("Stopping scheduler...")
-                scheduler.stop()
-        atexit.register(cleanup)
+        # Start Knowledge Base Auto Updater
+        kb_updater = get_kb_updater()
+        await kb_updater.start()
 
         # Create ASYNC server
         server = grpc.aio.server(
@@ -54,7 +47,6 @@ async def serve():
         )
 
         # Add servicers
-        # Servicers are instantiated here. They will internally instantiate their respective Services.
         assistant_pb2_grpc.add_HealthCheckServicer_to_server(HealthCheckServicer(), server)
         assistant_pb2_grpc.add_DomainClassifyServicer_to_server(DomainClassifyServicer(), server)
         assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationServicer(), server)
@@ -92,16 +84,16 @@ async def serve():
             logger.info("Received interrupt signal")
         finally:
             logger.info("Shutting down server...")
-            if scheduler:
-                scheduler.stop()
+            if kb_updater:
+                await kb_updater.stop()
             await server.stop(grace=5)
             logger.info("Server stopped")
 
     except Exception as e:
         logger.error(f"Failed to start server: {e}")
         logger.error(traceback.format_exc())
-        if scheduler:
-            scheduler.stop()
+        if kb_updater:
+            await kb_updater.stop()
         sys.exit(1)
 
 if __name__ == "__main__":

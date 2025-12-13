@@ -75,7 +75,7 @@ class EmbeddingManager:
                 logger.warning(f"Unknown provider '{provider}', falling back to HuggingFace")
                 self.embedding_model = self._create_huggingface_embedding()
 
-            logger.info(f"[EmbeddingManager] Initialized {provider} embedding successfully")
+            logger.debug(f"[EmbeddingManager] Initialized {provider} embedding successfully")
 
         except Exception as e:
             logger.error(f"[EmbeddingManager] Failed to initialize embedding: {e}")
@@ -101,7 +101,7 @@ class EmbeddingManager:
             if self.config.base_url:
                 params["base_url"] = self.config.base_url
 
-            logger.info(f"[EmbeddingManager] Creating OpenAI embedding with model: {params['model']}")
+            logger.debug(f"[EmbeddingManager] Creating OpenAI embedding with model: {params['model']}")
             return OpenAIEmbeddings(**params)
 
         except ImportError:
@@ -125,7 +125,7 @@ class EmbeddingManager:
                 "model": self.config.model_name or "models/embedding-001",
             }
 
-            logger.info(f"[EmbeddingManager] Creating Google embedding with model: {params['model']}")
+            logger.debug(f"[EmbeddingManager] Creating Google embedding with model: {params['model']}")
             return GoogleGenerativeAIEmbeddings(**params)
 
         except ImportError:
@@ -147,7 +147,7 @@ class EmbeddingManager:
                 "model_name": model_name,
             }
 
-            logger.info(f"[EmbeddingManager] Creating HuggingFace embedding with model: {model_name}")
+            logger.debug(f"[EmbeddingManager] Creating HuggingFace embedding with model: {model_name}")
             return HuggingFaceEmbeddings(**params)
 
         except ImportError:

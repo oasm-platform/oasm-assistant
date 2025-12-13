@@ -38,9 +38,10 @@ class KeywordRetriever:
         self.documents: List[str] = []
         self.metadata: List[Dict[str, Any]] = []
 
-        # Mark as initialized
-        KeywordRetriever._initialized = True
-        logger.info("KeywordRetriever singleton initialized")
+        if not KeywordRetriever._initialized:
+            # Initialize any specific resources if needed
+            KeywordRetriever._initialized = True
+            logger.debug("KeywordRetriever singleton initialized")
 
     def index_documents(self, documents: List[Dict[str, Any]]) -> None:
         """

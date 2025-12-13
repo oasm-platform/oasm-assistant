@@ -43,7 +43,7 @@ class AnalysisAgent(BaseAgent):
 
         if workspace_id and user_id:
             self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
-            logger.info(f"✓ MCP enabled for workspace {workspace_id}")
+            logger.debug(f"✓ MCP enabled for workspace {workspace_id}")
         else:
             self.mcp_manager = None
             logger.warning("⚠ MCP disabled - no workspace/user provided")
@@ -173,7 +173,7 @@ class AnalysisAgent(BaseAgent):
                 "thought": f"Exploring {tool_count} tools from {len(all_tools)} servers to find the best match...", 
                 "agent": self.name
             }
-            logger.info(f"Discovered {tool_count} MCP tools from {len(all_tools)} servers")
+            logger.debug(f"Discovered {tool_count} MCP tools from {len(all_tools)} servers")
 
             selected = await self._classify_and_select_tool_combined(question, all_tools)
             if not selected:
@@ -195,7 +195,7 @@ class AnalysisAgent(BaseAgent):
                             tool_description = tool_info.get("description", tool_description)
                             break
 
-            logger.info(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
+            logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
             
             # Yield tool start event BEFORE execution
             yield {
@@ -284,7 +284,7 @@ class AnalysisAgent(BaseAgent):
                 logger.warning("No MCP tools available")
                 return None
 
-            logger.info(f"Discovered {sum(len(tools) for tools in all_tools.values())} MCP tools from {len(all_tools)} servers")
+            logger.debug(f"Discovered {sum(len(tools) for tools in all_tools.values())} MCP tools from {len(all_tools)} servers")
 
             selected = await self._classify_and_select_tool_combined(question, all_tools)
             if not selected:
@@ -305,7 +305,7 @@ class AnalysisAgent(BaseAgent):
                             tool_description = tool_info.get("description", tool_description)
                             break
 
-            logger.info(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
+            logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
             logger.debug(f"Arguments: {tool_args}")
 
             result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
