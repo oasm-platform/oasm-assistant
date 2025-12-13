@@ -33,7 +33,7 @@ class BaseUpdater(ABC):
         self.running = True
         # Schedule the loop in the event loop
         self._task = asyncio.create_task(self._run_loop())
-        logger.info(f"{self.name} started (AsyncIO)")
+        logger.debug(f"{self.name} started (AsyncIO)")
 
     async def stop(self):
         """Stop the updater loop"""
@@ -52,7 +52,7 @@ class BaseUpdater(ABC):
 
     async def _run_loop(self):
         """Internal async loop"""
-        logger.info(f"{self.name} loop running (interval: {self.interval_seconds}s)")
+        logger.debug(f"{self.name} loop running (interval: {self.interval_seconds}s)")
         
         while self.running:
             try:

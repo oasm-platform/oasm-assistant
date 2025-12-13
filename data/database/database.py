@@ -97,7 +97,7 @@ class PostgresDatabase:
             with self.get_session() as session:
                 session.execute(text('CREATE EXTENSION IF NOT EXISTS vector;'))
                 session.commit()
-            logger.info("Successfully ran database migrations (CREATE EXTENSION vector).")
+            logger.debug("Successfully ran database migrations (CREATE EXTENSION vector).")
         except Exception as e:
             logger.warning(f"Could not run database migrations: {e}. This might be fine if the user does not have superuser privileges.")
 

@@ -72,7 +72,7 @@ class BaseAgent(ABC):
         self.timeout = kwargs.get('timeout', 300)
         self.debug_mode = kwargs.get('debug_mode', False)
 
-        logger.info(f"Initialized agent: {self.name} ({self.role.value})")
+        logger.debug(f"Initialized agent: {self.name} ({self.role.value})")
 
     def to_langgraph_node(self, input_key: str = "task", output_key: str = "result"):
         """

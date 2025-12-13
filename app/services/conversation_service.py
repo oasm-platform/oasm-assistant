@@ -26,7 +26,7 @@ class ConversationService:
                 if conversation:
                     conversation.title = title_response.content
                     session.commit()
-                    logger.info(f"Conversation {conversation_id} title updated: {title_response.content}")
+                    logger.debug(f"Conversation {conversation_id} title updated: {title_response.content}")
         except Exception as e:
             logger.error(f"Failed to update conversation title: {e}", exc_info=True)
 

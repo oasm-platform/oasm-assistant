@@ -14,14 +14,9 @@ class NucleiTemplateService:
         """Initialize the Nuclei template service"""
         self.llm_manager = llm_manager
 
-        # Use singleton hybrid search engine
+        # Initialize Hybrid Search Engine
         self.hybrid_search = hybrid_search_engine
-
-        # Load documents from database for BM25 indexing (only if not already initialized)
-        if not self.hybrid_search.keyword_retriever.is_ready():
-            self._initialize_bm25_index()
-
-        logger.info("NucleiTemplateService initialized with singleton HybridSearchEngine")
+        logger.debug("NucleiTemplateService initialized with singleton HybridSearchEngine")
 
     def _initialize_bm25_index(self):
         """Load documents from database and build BM25 index"""

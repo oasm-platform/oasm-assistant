@@ -91,10 +91,7 @@ class HybridSearchEngine:
 
         # Mark as initialized
         HybridSearchEngine._initialized = True
-        logger.info(
-            f"HybridSearchEngine singleton initialized "
-            f"(vector_weight={vector_weight}, keyword_weight={keyword_weight})"
-        )
+        logger.debug(f"HybridSearchEngine singleton initialized (vector_weight={vector_weight}, keyword_weight={keyword_weight})")
 
     def load_vector_index(self) -> None:
         """Load existing vector index from database"""

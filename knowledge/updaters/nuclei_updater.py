@@ -23,6 +23,7 @@ from sqlalchemy import delete, text
 class NucleiTemplatesUpdater(BaseUpdater):
     """Updater for periodic Nuclei templates synchronization"""
 
+
     def __init__(self):
         """Initialize the updater"""
         # Initialize BaseUpdater with name and 60s interval
@@ -37,15 +38,38 @@ class NucleiTemplatesUpdater(BaseUpdater):
 
         # Ensure TSV column and index exist for hybrid search
         self._ensure_tsv_column()
+        
+        # Flag to track if we've performed the startup check
+        self._startup_check_done = False
 
-        logger.info(f"NucleiTemplatesUpdater initialized with sync time: {self.sync_time}")
+        logger.debug(f"NucleiTemplatesUpdater initialized with sync time: {self.sync_time}")
 
     async def update_logic(self):
         """
         Check cron schedule and run sync if needed.
+        Also check for initial empty DB on startup.
         """
-        # Use common utility for cron check
-        if is_cron_match(self.sync_time):
+        needs_sync = False
+        sync_reason = ""
+
+        # 1. Startup Check: If DB is empty, sync immediately
+        if not self._startup_check_done:
+            self._startup_check_done = True # Ensure we only check this once
+            
+            loop = asyncio.get_running_loop()
+            has_templates = await loop.run_in_executor(None, self._has_templates)
+            
+            if not has_templates:
+                logger.info("Startup check: Database is empty. Scheduling immediate sync.")
+                needs_sync = True
+                sync_reason = "Startup (Empty Database)"
+
+        # 2. Cron Check: If not already syncing from startup check
+        if not needs_sync and is_cron_match(self.sync_time):
+            needs_sync = True
+            sync_reason = "Cron Schedule"
+
+        if needs_sync:
             # Create a lock key
             lock_key = "nuclei-scheduler"
             
@@ -54,13 +78,22 @@ class NucleiTemplatesUpdater(BaseUpdater):
             acquired = await redis_client.async_client.set(lock_key, "locked", nx=True, ex=300)
             
             if acquired:
-                logger.info(f"Acquired lock {lock_key}, starting sync...")
+                logger.info(f"Acquired lock {lock_key}, starting sync (Reason: {sync_reason})...")
                 
                 # Execute heavy blocking task in a separate thread
                 loop = asyncio.get_running_loop()
                 await loop.run_in_executor(None, self.sync_templates)
             else:
                 pass # Silent wait
+    
+    def _has_templates(self) -> bool:
+        """Check if any templates exist in the database"""
+        try:
+            with postgres_db.get_session() as session:
+                return session.query(NucleiTemplates).first() is not None
+        except Exception as e:
+            logger.error(f"Error checking template existence: {e}")
+            return False
 
     def sync_templates(self):
         """Execute the full sync process"""
@@ -200,3 +233,4 @@ class NucleiTemplatesUpdater(BaseUpdater):
                 session.commit()
         except:
             pass
+

@@ -123,7 +123,7 @@ class MessageService:
                 )
                 session.add(message)
                 session.commit()
-                logger.info(f"Message {message.message_id} created and saved to database")
+                logger.debug(f"Message {message.message_id} created and saved to database")
 
             except Exception as agent_error:
                 logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)

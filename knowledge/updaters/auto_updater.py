@@ -15,7 +15,7 @@ class KnowledgeBaseUpdater:
             NucleiTemplatesUpdater()
         ]
         self.running = False
-        logger.info(f"KnowledgeBaseUpdater initialized with {len(self.updaters)} updaters")
+        logger.debug(f"KnowledgeBaseUpdater initialized with {len(self.updaters)} updaters")
 
     async def start(self):
         """Start all registered updaters"""
@@ -23,7 +23,7 @@ class KnowledgeBaseUpdater:
             logger.warning("KnowledgeBaseUpdater is already running")
             return
             
-        logger.info("Starting Knowledge Base Updaters (AsyncIO)...")
+        logger.debug("Starting Knowledge Base Updaters (AsyncIO)...")
         for updater in self.updaters:
             try:
                 # Call async start

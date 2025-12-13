@@ -68,7 +68,7 @@ class VectorRetriever:
         self.embed_dim = embed_dim
 
         # Get embedding model from manager
-        logger.info("Using embedding model from EmbeddingManager")
+        logger.debug("Using embedding model from EmbeddingManager")
         self.embedding = embeddings_manager.get_embedding()
 
         if not self.embedding:
@@ -87,7 +87,7 @@ class VectorRetriever:
 
         # Mark as initialized
         VectorRetriever._initialized = True
-        logger.info(f"VectorRetriever singleton initialized for table: {table_name}")
+        logger.debug(f"VectorRetriever singleton initialized for table: {table_name}")
 
     def _create_vector_store(self) -> None:
         """Create LangChain PGVector connection"""
@@ -98,7 +98,7 @@ class VectorRetriever:
                 connection=self.connection_string,
                 use_jsonb=True,
             )
-            logger.info(f"PGVector store created for collection: {self.table_name}")
+            logger.debug(f"PGVector store created for collection: {self.table_name}")
         except Exception as e:
             logger.error(f"Failed to create PGVector store: {e}")
             raise
