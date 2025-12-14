@@ -1,6 +1,6 @@
 """Security analysis agent with MCP integration and streaming support"""
 
-from typing import Dict, Any, Optional, AsyncGenerator
+from typing import Dict, Any, Optional, AsyncGenerator, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 import asyncio
@@ -53,9 +53,10 @@ class AnalysisAgent(BaseAgent):
         try:
             action = task.get("action", "analyze_vulnerabilities")
             question = task.get("question", "Provide security summary")
+            chat_history = task.get("chat_history")
 
             if action == "analyze_vulnerabilities":
-                return asyncio.run(self.analyze_vulnerabilities(question))
+                return asyncio.run(self.analyze_vulnerabilities(question, chat_history))
 
             return {"success": False, "error": f"Unknown action: {action}"}
         except Exception as e:
@@ -67,6 +68,7 @@ class AnalysisAgent(BaseAgent):
         try:
             action = task.get("action", "analyze_vulnerabilities")
             question = task.get("question", "Provide security summary")
+            chat_history = task.get("chat_history")
 
             yield {
                 "type": "thinking",
@@ -75,7 +77,7 @@ class AnalysisAgent(BaseAgent):
             }
 
             if action == "analyze_vulnerabilities":
-                async for event in self.analyze_vulnerabilities_streaming(question):
+                async for event in self.analyze_vulnerabilities_streaming(question, chat_history):
                     yield event
             else:
                 yield {"type": "error", "error": f"Unknown action: {action}", "agent": self.name}
@@ -98,13 +100,13 @@ class AnalysisAgent(BaseAgent):
                 "retry_suggested": True
             }
 
-    async def analyze_vulnerabilities(self, question: str) -> Dict[str, Any]:
+    async def analyze_vulnerabilities(self, question: str, chat_history: List[Dict] = None) -> Dict[str, Any]:
         """Analyze vulnerabilities with combined classification and tool selection"""
         logger.info(f"Analyzing: {question[:100]}...")
 
         scan_data = await self._fetch_mcp_data(question)
         question_type = self._ensure_question_type_enum(scan_data.get("question_type") if scan_data else None)
-        response = await self._generate_analysis(question, scan_data, question_type)
+        response = await self._generate_analysis(question, scan_data, question_type, chat_history)
 
         if not scan_data:
             return {"success": False, "error": "No data available", "response": response}
@@ -116,7 +118,7 @@ class AnalysisAgent(BaseAgent):
             "stats": scan_data.get("stats")
         }
 
-    async def analyze_vulnerabilities_streaming(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
+    async def analyze_vulnerabilities_streaming(self, question: str, chat_history: List[Dict] = None) -> AsyncGenerator[Dict[str, Any], None]:
         """Analyze with streaming - single LLM call for classification and tool selection"""
         logger.info(f"Streaming analysis: {question[:100]}...")
 
@@ -138,7 +140,7 @@ class AnalysisAgent(BaseAgent):
              yield {"type": "thinking", "thought": "No appropriate tool found or MCP disabled. Proceeding with general analysis.", "agent": self.name}
 
         # Stream LLM analysis
-        async for event in self._generate_analysis_streaming(question, scan_data, question_type):
+        async for event in self._generate_analysis_streaming(question, scan_data, question_type, chat_history):
             yield event
 
         # Yield final result
@@ -407,37 +409,38 @@ You MUST respond with valid JSON containing exactly these fields:
 
         return bool(result and result != {})
 
-    def _select_prompt(self, question: str, scan_data: Optional[Dict], question_type: QuestionType) -> str:
+    def _select_prompt(self, question: str, scan_data: Optional[Dict], question_type: QuestionType, chat_history: List[Dict] = None) -> str:
         """Select appropriate prompt based on question type and data"""
         if not scan_data:
-            return AnalysisAgentPrompts.get_no_data_response_prompt(question)
+            return AnalysisAgentPrompts.get_no_data_response_prompt(question, chat_history)
 
         stats = scan_data.get("stats", {})
         tool = scan_data.get("tool", "unknown")
 
         if question_type == QuestionType.GENERAL_KNOWLEDGE:
-            return AnalysisAgentPrompts.get_general_knowledge_prompt(question, stats)
+            return AnalysisAgentPrompts.get_general_knowledge_prompt(question, stats, chat_history)
 
         tool_lower = tool.lower()
         stats_str_lower = str(stats).lower()
 
         if "statistics" in tool_lower or "score" in stats_str_lower:
-            return AnalysisAgentPrompts.get_statistics_analysis_prompt(question, stats)
+            return AnalysisAgentPrompts.get_statistics_analysis_prompt(question, stats, chat_history)
         elif "vulnerab" in tool_lower or "severity" in stats_str_lower:
-            return AnalysisAgentPrompts.get_vulnerabilities_analysis_prompt(question, stats)
+            return AnalysisAgentPrompts.get_vulnerabilities_analysis_prompt(question, stats, chat_history)
         elif "asset" in tool_lower or "target" in tool_lower:
-            return AnalysisAgentPrompts.get_assets_analysis_prompt(question, stats)
+            return AnalysisAgentPrompts.get_assets_analysis_prompt(question, stats, chat_history)
         else:
-            return AnalysisAgentPrompts.get_generic_analysis_prompt(question, stats)
+            return AnalysisAgentPrompts.get_generic_analysis_prompt(question, stats, chat_history)
 
     async def _generate_analysis(
         self,
         question: str,
         scan_data: Optional[Dict],
-        question_type: QuestionType
+        question_type: QuestionType,
+        chat_history: List[Dict] = None
     ) -> str:
         """Generate analysis response (sync)"""
-        prompt = self._select_prompt(question, scan_data, question_type)
+        prompt = self._select_prompt(question, scan_data, question_type, chat_history)
 
         try:
             return self.llm.invoke(prompt).content.strip()
@@ -477,11 +480,12 @@ You MUST respond with valid JSON containing exactly these fields:
         self,
         question: str,
         scan_data: Optional[Dict],
-        question_type: QuestionType = None
+        question_type: QuestionType = None,
+        chat_history: List[Dict] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream LLM analysis with buffering"""
         min_chunk_size = configs.llm.min_chunk_size
-        prompt = self._select_prompt(question, scan_data, question_type)
+        prompt = self._select_prompt(question, scan_data, question_type, chat_history)
 
         try:
             async for buffered_text in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):

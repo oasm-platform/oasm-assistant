@@ -140,6 +140,25 @@ class DomainClassifierConfigs(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
+class MemoryConfigs(BaseSettings):
+    """Configuration for Agent Memory (STM & LTM)"""
+    # Short-Term Memory (STM) Settings
+    # Maximum number of messages to retrieve from conversation history (The "Memo" size)
+    stm_max_messages: int = Field(10, alias="MEMORY_STM_MAX_MESSAGES")
+    # Maximum number of messages to include in the LLM prompt context (The "Context Window" size)
+    stm_context_limit: int = Field(5, alias="MEMORY_STM_CONTEXT_LIMIT")
+
+    # Long-Term Memory (LTM) Settings - Prepared for future integration
+    ltm_enabled: bool = Field(False, alias="MEMORY_LTM_ENABLED")
+    ltm_min_relevance_score: float = Field(0.7, alias="MEMORY_LTM_MIN_RELEVANCE_SCORE")
+    ltm_max_results: int = Field(5, alias="MEMORY_LTM_MAX_RESULTS")
+    ltm_collection_name: str = Field("agent_long_term_memory", alias="MEMORY_LTM_COLLECTION_NAME")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
     redis: RedisConfigs = RedisConfigs()
@@ -149,6 +168,7 @@ class Configs(BaseSettings):
     scheduler: SchedulerConfigs = SchedulerConfigs()
     rag: RAGConfigs = RAGConfigs()
     domain_classifier: DomainClassifierConfigs = DomainClassifierConfigs()
+    memory: MemoryConfigs = MemoryConfigs()
 
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
@@ -172,4 +192,3 @@ class Configs(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"
-

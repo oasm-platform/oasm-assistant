@@ -6,75 +6,76 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # gRPC
-    "grpcio>=1.60.0",
-    "grpcio-tools>=1.60.0",
-    "grpcio-status>=1.60.0",
-    "grpcio-reflection>=1.60.0",
-    "googleapis-common-protos>=1.60.0",
-    "watchfiles>=0.21.0",
+    "grpcio==1.76.0",
+    "grpcio-tools==1.76.0",
+    "grpcio-status==1.76.0",
+    "grpcio-reflection==1.76.0",
+    "googleapis-common-protos==1.72.0",
+    "watchfiles==1.1.1",
     
     # Configuration & Settings
-    "pydantic>=2.5.0",
-    "pydantic-settings>=2.1.0",
+    "pydantic==2.12.5",
+    "pydantic-settings==2.12.0",
     
     # Database
-    "sqlalchemy>=2.0.0",
-    "pgvector>=0.2.4",
-    "psycopg2-binary>=2.9.9",
+    "sqlalchemy==2.0.44",
+    "pgvector==0.3.6",
+    "psycopg2-binary==2.9.11",
     
     # AI/ML Core
-    "numpy>=1.26.0",
+    "numpy==2.3.5",
     
     # LangChain - complete set for all providers
-    "langchain>=0.1.0",
-    "langchain-core>=0.1.0",
-    "langchain-anthropic>=0.1.0",
-    "langchain-openai>=0.0.5",
-    "langchain-google-genai>=0.0.5",
-    "langchain-ollama>=0.0.1",
-    "langchain-mcp-adapters>=0.1.0",
+    "langchain==1.1.2",
+    "langchain-core==1.1.1",
+    "langchain-anthropic==1.2.0",
+    "langchain-openai==1.1.0",
+    "langchain-google-genai==3.2.0",
+    "langchain-ollama==1.0.0",
+    "langchain-mcp-adapters==0.1.14",
     
     # Document Processing
-    "pypdf>=3.17.0",
+    "pypdf==6.4.0",
     
     # LangGraph for agent workflow
-    "langgraph>=0.0.20",
+    "langgraph==1.0.4",
+    "langgraph-checkpoint==3.0.1",
     
     # Logging
-    "loguru>=0.7.2",
+    "loguru==0.7.3",
     
     # Utilities
-    "aiohttp>=3.9.0",
-    "nest-asyncio>=1.5.8",
+    "aiohttp==3.13.2",
+    "nest-asyncio==1.6.0",
     
     # Web Search
-    "requests>=2.31.0",
-    "beautifulsoup4>=4.12.0",
+    "requests==2.32.5",
+    "beautifulsoup4==4.14.3",
     
     # LangChain Community & PostgreSQL Vector Store
-    "langchain-community>=0.0.10",
-    "langchain-postgres>=0.0.1",
-    "langchain-huggingface>=0.0.1",
-    "psycopg[binary]>=3.1.0",
+    "langchain-community==0.4.1",
+    "langchain-postgres==0.0.16",
+    "langchain-huggingface==1.1.0",
+    "psycopg[binary]==3.3.2",
     
-    # PyTorch CPU-only (much smaller and faster to install than CUDA version)
-    # Must be listed BEFORE sentence-transformers to ensure CPU version is used
-    "torch>=2.0.0",
+    # PyTorch (CUDA version from conda)
+    "torch==2.9.1",
+    "torchao==0.16.0.dev20251214+cu128",
     
     # Sentence Transformers for HuggingFace embeddings
-    "sentence-transformers>=2.2.0",
+    "sentence-transformers==5.1.2",
     
     # BM25 for keyword search
-    "rank-bm25>=0.2.2",
+    "rank-bm25==0.2.2",
     
     # Git operations
-    "GitPython>=3.1.40",
+    "GitPython==3.1.45",
     
     # YAML parsing
-    "PyYAML>=6.0.1",
+    "PyYAML==6.0.3",
 
     # Redis
-    "redis>=5.0.0",
+    "redis==7.1.0",
 ]
 
 [project.optional-dependencies]

@@ -28,7 +28,7 @@ class MessageService:
                     Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
-                )
+                ).order_by(Message.created_at.asc())  # Sort oldest first
                 messages = query.all()
                 session.expunge_all()
                 return messages
@@ -88,6 +88,10 @@ class MessageService:
                 "updated_at": conversation.updated_at
             }
 
+            # Fetch recent messages for context (Short Term Memory)
+            # Handled by LangGraph checkpointer in SecurityCoordinator using conversation_id
+
+
             coordinator = SecurityCoordinator(
                 db_session=session,
                 workspace_id=workspace_id,
@@ -95,7 +99,7 @@ class MessageService:
             )
 
             try:
-                streaming_events = coordinator.process_message_question_streaming(question)
+                streaming_events = coordinator.process_message_question_streaming(question, conversation_id=conversation_id)
 
                 async_stream = StreamingResponseBuilder.build_response_stream(
                     message_id=message_id,
@@ -124,6 +128,9 @@ class MessageService:
                 session.add(message)
                 session.commit()
                 logger.debug(f"Message {message.message_id} created and saved to database")
+                
+                # Update LangGraph memory
+                coordinator.update_memory(conversation_id, question, answer)
 
             except Exception as agent_error:
                 logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
@@ -176,8 +183,10 @@ class MessageService:
                     user_id=user_id
                 )
 
+                # Fetch recent messages for context (Short Term Memory)
+                # Handled by LangGraph checkpointer in SecurityCoordinator using conversation_id
                 try:
-                    streaming_events = coordinator.process_message_question_streaming(new_question)
+                    streaming_events = coordinator.process_message_question_streaming(new_question, conversation_id=conversation_id)
                     async_stream = StreamingResponseBuilder.build_response_stream(
                         message_id=message_id,
                         conversation_id=conversation_id,
@@ -196,6 +205,9 @@ class MessageService:
                     message.answer = new_answer
                     message.embedding = await self.embeddings_manager.generate_message_embedding_async(new_question, new_answer)
                     session.commit()
+                    
+                    # Update LangGraph memory
+                    coordinator.update_memory(conversation_id, new_question, new_answer)
 
                 except Exception as agent_error:
                     logger.error(f"Error during update: {agent_error}")

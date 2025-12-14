@@ -1,17 +1,21 @@
 """Multi-agent security workflow orchestration using LangGraph"""
 
-from typing import Dict, Any, List, Optional, TypedDict, AsyncGenerator
+from typing import Dict, Any, List, Optional, TypedDict, AsyncGenerator, Annotated
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
+from langgraph.graph.message import add_messages
+from langgraph.checkpoint.base import Checkpoint
 
 from common.logger import logger
+from common.config import configs
 from agents.specialized import AnalysisAgent, OrchestrationAgent
+from agents.core.memory import STMCheckpointer
 
 
 class SecurityWorkflowState(TypedDict):
     """State container for security workflow execution"""
-    messages: List[Any]
+    messages: Annotated[List[Any], add_messages]
     question: str
     task_type: str
     target: Optional[str]
@@ -71,10 +75,13 @@ class SecurityCoordinator:
             workflow.add_edge(node, "result_formatter")
 
         workflow.add_edge("result_formatter", END)
+        
+        # Initialize checkpointer
+        checkpointer = STMCheckpointer()
 
-        return workflow.compile()
+        return workflow.compile(checkpointer=checkpointer)
 
-    def execute_security_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_security_task(self, task: Dict[str, Any], conversation_id: Optional[str] = None) -> Dict[str, Any]:
         """Execute security task through workflow (sync)"""
         try:
             initial_state = SecurityWorkflowState(
@@ -90,7 +97,8 @@ class SecurityCoordinator:
                 error=None
             )
 
-            final_state = self.workflow_graph.invoke(initial_state)
+            config = {"configurable": {"thread_id": conversation_id}} if conversation_id else None
+            final_state = self.workflow_graph.invoke(initial_state, config=config)
 
             if final_state.get("error"):
                 return {
@@ -152,11 +160,31 @@ class SecurityCoordinator:
                 agent = agent_class()
 
             # Prepare task payload
+            # Prepare task payload
+            # Extract chat history from state messages if available
+            # STM (Short Term Memory): Use sliding window defined in configs
+            chat_history = []
+            ltm_context = "" # Placeholder for Long-Term Memory
+
+            if state.get("messages"):
+                # Get messages for context window optimization based on config
+                # Use stm_context_limit (Standard: 3-5 terms)
+                window_size = configs.memory.stm_context_limit
+                recent_messages = state["messages"][-window_size:]
+                for msg in recent_messages:
+                    role = "user" if msg.type == "human" else "assistant"
+                    chat_history.append({"role": role, "content": msg.content})
+
+            # Future LTM Logic:
+            # if configs.memory.ltm_enabled:
+            #     ltm_context = retrieve_long_term_memory(state["question"])
+
             task = {
                 "action": action,
                 "vulnerability_data": state["vulnerability_data"],
                 "target": state["target"],
-                "question": state["question"]
+                "question": state["question"],
+                "chat_history": chat_history # Pass accumulated history
             }
 
             if agent_key == "orchestration":
@@ -198,6 +226,103 @@ class SecurityCoordinator:
 
         return state
 
+    def _get_chat_history_from_memory(self, conversation_id: str) -> List[Dict]:
+        """Helper to retrieve and format chat history from STM checkpointer"""
+        chat_history = []
+        if not conversation_id:
+            return chat_history
+
+        try:
+            checkpointer = self.workflow_graph.checkpointer
+            if not checkpointer:
+                return chat_history
+
+            config = {"configurable": {"thread_id": conversation_id}}
+            checkpoint_tuple = checkpointer.get_tuple(config)
+            
+            if checkpoint_tuple and checkpoint_tuple.checkpoint:
+                messages = checkpoint_tuple.checkpoint['channel_values'].get('messages', [])
+                
+                # STM: Sliding window based on config
+                # Use stm_context_limit (Standard: 3-5 terms)
+                window_size = configs.memory.stm_context_limit
+                for msg in messages[-window_size:]:
+                    role = "user" if msg.type == "human" else "assistant"
+                    chat_history.append({"role": role, "content": msg.content})
+                    
+        except Exception as e:
+            logger.error(f"Failed to retrieve chat history from memory: {e}")
+            
+        return chat_history
+
+    def update_memory(self, conversation_id: str, question: str, answer: str):
+        """Manually update LangGraph memory by appending to checkpoint with sliding window cleanup"""
+        if not conversation_id:
+            return
+
+        try:
+            config = {"configurable": {"thread_id": conversation_id}}
+            checkpointer = self.workflow_graph.checkpointer
+            
+            if not checkpointer:
+                logger.warning("No checkpointer available, skipping memory update")
+                return
+            
+            # Get current checkpoint
+            checkpoint_tuple = checkpointer.get_tuple(config)
+            
+            if checkpoint_tuple and checkpoint_tuple.checkpoint:
+                # Append new messages to existing checkpoint
+                current_messages = checkpoint_tuple.checkpoint.get('channel_values', {}).get('messages', [])
+                new_messages = current_messages + [
+                    HumanMessage(content=question),
+                    AIMessage(content=answer)
+                ]
+                
+                # Apply sliding window: Keep only last N messages (stm_max_messages)
+                max_messages = configs.memory.stm_max_messages
+                if len(new_messages) > max_messages:
+                    new_messages = new_messages[-max_messages:]
+                    logger.debug(f"Trimmed conversation history to {max_messages} messages (sliding window)")
+                
+                # Update checkpoint with new messages
+                updated_checkpoint = checkpoint_tuple.checkpoint.copy()
+                if 'channel_values' not in updated_checkpoint:
+                    updated_checkpoint['channel_values'] = {}
+                updated_checkpoint['channel_values']['messages'] = new_messages
+                
+                # Save updated checkpoint
+                checkpointer.put(
+                    config,
+                    updated_checkpoint,
+                    checkpoint_tuple.metadata,
+                    {}  # new_versions
+                )
+            else:
+                # Create new checkpoint if none exists
+                new_checkpoint = {
+                    'v': 1,
+                    'id': conversation_id,
+                    'ts': None,
+                    'channel_values': {
+                        'messages': [
+                            HumanMessage(content=question),
+                            AIMessage(content=answer)
+                        ]
+                    },
+                    'channel_versions': {},
+                    'versions_seen': {}
+                }
+                checkpointer.put(
+                    config,
+                    new_checkpoint,
+                    {},  # metadata
+                    {}   # new_versions
+                )
+                
+        except Exception as e:
+            logger.error(f"Failed to update memory: {e}", exc_info=True)
+
     def process_message_question(self, question: str) -> str:
         """Process question and return formatted response (sync)"""
         try:
@@ -224,7 +349,8 @@ class SecurityCoordinator:
 
     async def process_message_question_streaming(
         self,
-        question: str
+        question: str,
+        conversation_id: Optional[str] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Process question with streaming events (async)"""
         try:
@@ -254,12 +380,18 @@ class SecurityCoordinator:
                 user_id=self.user_id
             )
 
+            # Chat history is now handled by LangGraph state + conversation_id checkpointer
+            # We use the helper method to retrieve formatted history from STM
+            chat_history = self._get_chat_history_from_memory(conversation_id) if conversation_id else []
+            
             task = {
                 "action": "analyze_vulnerabilities",
                 "question": question,
                 "target": None,
-                "vulnerability_data": {}
+                "vulnerability_data": {},
             }
+            
+            task["chat_history"] = chat_history
 
             async for event in agent.execute_task_streaming(task):
                 yield event

@@ -1,6 +1,8 @@
 from typing import List, Dict, Any
 import json
+from llms.prompts.memory_prompts import MemoryPrompts
 from common.types import QuestionType
+
 
 
 class AnalysisAgentPrompts:
@@ -72,7 +74,7 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 **Your Task:**
 1. Classify the question into one of the valid types: {valid_types}
 2. IF {QuestionType.SECURITY_RELATED.value}: Select the MOST appropriate security MCP tool
-3. IF {QuestionType.GENERAL_KNOWLEDGE.value}: Select a general-purpose tool (like web_search if available)
+3. IF {QuestionType.GENERAL_KNOWLEDGE.value}: Select a general-purpose tool (like searxng_web_search if available)
 
 **CRITICAL: Respond with ONLY valid JSON (no markdown, no explanation):**
 
@@ -89,9 +91,9 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 - ALWAYS include the tool's required parameters (e.g. "query" for search).
 
 **Examples:**
-- "Thời tiết Hà Nội?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
-- "Đưa cho tôi lộ trình học tiếng anh B1" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
-- "How to learn Python?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "...", "tool": "web_search", ...}}
+- "Thời tiết Hà Nội?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
+- "Đưa cho tôi lộ trình học tiếng anh B1" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
+- "How to learn Python?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
 - "Show vulnerabilities" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
 - "Có bao nhiêu lỗ hổng nghiêm trọng?" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
 
@@ -138,13 +140,16 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 
 **Your JSON response:**"""
 
+
+
     @staticmethod
-    def get_statistics_analysis_prompt(question: str, stats: Dict) -> str:
+    def get_statistics_analysis_prompt(question: str, stats: Dict, chat_history: List[Dict] = None) -> str:
         """Prompt for analyzing security statistics and generating natural response"""
         if isinstance(stats, list):
             stats = stats[0] if stats else {}
 
         stats_json = json.dumps(stats, indent=2)
+        history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
         return f"""You are an expert security analyst providing insights on workspace security metrics.
 
@@ -155,11 +160,12 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 ```json
 {stats_json}
 ```
+{history_section}
 
 **Your Task:**
 Analyze the security statistics and provide a comprehensive, natural response that:
 
-1. **Directly answers the user's question** based on the data
+1. **Directly answers the user's question** based on the data (and context if relevant)
 2. **Highlights key security metrics**:
    - Security score (0-10 scale)
    - Asset inventory (assets, targets, technologies, ports)
@@ -180,7 +186,7 @@ Analyze the security statistics and provide a comprehensive, natural response th
 **Your analysis:**"""
 
     @staticmethod
-    def get_vulnerabilities_analysis_prompt(question: str, data: Dict) -> str:
+    def get_vulnerabilities_analysis_prompt(question: str, data: Dict, chat_history: List[Dict] = None) -> str:
         """Prompt for analyzing vulnerabilities and generating natural response"""
         vulns = data.get("data", []) if isinstance(data, dict) else []
         total = data.get("total", len(vulns)) if isinstance(data, dict) else len(vulns)
@@ -195,6 +201,7 @@ Analyze the security statistics and provide a comprehensive, natural response th
             })
 
         vulns_json = json.dumps(vuln_list, indent=2)
+        history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
         return f"""You are an expert security analyst specializing in vulnerability assessment and remediation.
 
@@ -208,6 +215,7 @@ Analyze the security statistics and provide a comprehensive, natural response th
 ```json
 {vulns_json}
 ```
+{history_section}
 
 **Your Task:**
 Analyze the vulnerabilities and provide a helpful, natural response that:
@@ -235,7 +243,7 @@ Analyze the vulnerabilities and provide a helpful, natural response that:
 **Your analysis:**"""
 
     @staticmethod
-    def get_assets_analysis_prompt(question: str, data: Dict) -> str:
+    def get_assets_analysis_prompt(question: str, data: Dict, chat_history: List[Dict] = None) -> str:
         """Prompt for analyzing assets/targets and generating natural response"""
         items = data.get("data", []) if isinstance(data, dict) else []
         total = data.get("total", len(items)) if isinstance(data, dict) else len(items)
@@ -249,6 +257,7 @@ Analyze the vulnerabilities and provide a helpful, natural response that:
             })
 
         assets_json = json.dumps(asset_list, indent=2)
+        history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
         return f"""You are an expert security analyst specializing in asset discovery and attack surface management.
 
@@ -262,6 +271,7 @@ Analyze the vulnerabilities and provide a helpful, natural response that:
 ```json
 {assets_json}
 ```
+{history_section}
 
 **Your Task:**
 Analyze the assets/targets and provide an informative, natural response that:
@@ -290,7 +300,7 @@ Analyze the assets/targets and provide an informative, natural response that:
 **Your analysis:**"""
 
     @staticmethod
-    def get_generic_analysis_prompt(question: str, data: Any) -> str:
+    def get_generic_analysis_prompt(question: str, data: Any, chat_history: List[Dict] = None) -> str:
         """Prompt for analyzing generic/unknown data types"""
         # Safely serialize data with size limit
         try:
@@ -299,6 +309,8 @@ Analyze the assets/targets and provide an informative, natural response that:
                 data_json += "\n... (data truncated)"
         except Exception:
             data_json = str(data)[:1500]
+            
+        history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
         return f"""You are an expert security analyst helping users understand security scan data.
 
@@ -309,6 +321,7 @@ Analyze the assets/targets and provide an informative, natural response that:
 ```json
 {data_json}
 ```
+{history_section}
 
 **Your Task:**
 Analyze the provided data and generate a helpful, natural response that:
@@ -406,7 +419,7 @@ Required: {json.dumps(required)}
 **Your classification (must be one of {valid_types}):**"""
 
     @staticmethod
-    def get_general_knowledge_prompt(question: str, context: Any = None) -> str:
+    def get_general_knowledge_prompt(question: str, context: Any = None, chat_history: List[Dict] = None) -> str:
         """Prompt for answering general knowledge questions using MCP tools"""
         context_str = ""
         if context:
@@ -414,12 +427,15 @@ Required: {json.dumps(required)}
                 context_str = f"\n\n**Retrieved Information:**\n```json\n{json.dumps(context, indent=2)[:2000]}\n```"
             except Exception:
                 context_str = f"\n\n**Retrieved Information:**\n{str(context)[:2000]}"
+                
+        history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
         return f"""You are a helpful AI assistant with access to various information sources.
 
 **User's Question:**
 "{question}"
 {context_str}
+{history_section}
 
 **Your Task:**
 Provide a comprehensive, detailed answer to the user's question based on the information available.
@@ -450,12 +466,15 @@ Provide a comprehensive, detailed answer to the user's question based on the inf
 **Your detailed response:"""
 
     @staticmethod
-    def get_no_data_response_prompt(question: str) -> str:
+    def get_no_data_response_prompt(question: str, chat_history: List[Dict] = None) -> str:
         """Prompt for generating response when no scan data is available"""
+        history_section = MemoryPrompts.format_short_term_memory(chat_history)
+        
         return f"""You are an expert security analysis assistant specializing in vulnerability assessment and threat intelligence.
 
 **User's Question:**
 "{question}"
+{history_section}
 
 **Current Situation:**
 This workspace currently has no security scan data available. No assets, vulnerabilities, or security metrics have been collected yet.
