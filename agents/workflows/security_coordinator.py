@@ -11,6 +11,7 @@ from common.logger import logger
 from common.config import configs
 from agents.specialized import AnalysisAgent, OrchestrationAgent
 from agents.core.memory import STMCheckpointer
+import uuid
 
 
 
@@ -238,7 +239,7 @@ class SecurityCoordinator:
                     # Add summary as context at the beginning
                     chat_history.append({
                         "role": "system", 
-                        "content": f"Previous conversation summary: {summary}"
+                        "content": f"{summary}"
                     })
                 
                 # Get recent messages
@@ -280,7 +281,7 @@ class SecurityCoordinator:
                  # Create new checkpoint structure if needed
                 current_checkpoint = {
                     'v': 1,
-                    'id': conversation_id,
+                    'id': str(uuid.uuid4()),
                     'ts': None, # Timestamp handled by checkpointer usually
                     'channel_values': {},
                     'channel_versions': {},

@@ -117,8 +117,10 @@ class STMCheckpointer(BaseCheckpointSaver):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        """Async version of put (Not strictly enforced by BaseCheckpointSaver but useful for async usage)"""
-        return self.put(config, checkpoint, metadata, new_versions)
+        """Async version of put that runs the synchronous `put` method in a separate thread to avoid blocking."""
+        return await asyncio.to_thread(
+            self.put, config, checkpoint, metadata, new_versions
+        )
 
     def _summarize_sync(self, current_summary: str, messages_to_summarize: list) -> str:
         """Generate summary synchronously"""
@@ -190,17 +192,8 @@ class STMCheckpointer(BaseCheckpointSaver):
             
             # Increment atomic
             try:
-                # Only increment if this is a new state (length changed) - optional safeguard
-                # For simplicity as requested: Just Get and Check logic based on user's flow
-                
-                # Fetch current counter
-                curr_val = redis_client.get(redis_key)
-                if curr_val is None:
-                    curr_val = 0
-                else:
-                    curr_val = int(curr_val)
-                    
-                # Increment atomic
+                # Increment atomic and get new count directly
+                # Removed redundant get() call as incr() returns the new value
                 new_count = redis_client.incr(redis_key)
                 redis_client.expire(redis_key, 86400)
                 
