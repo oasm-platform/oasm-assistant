@@ -4,6 +4,7 @@ from .base import BaseEntity
 from .knowledge_base import KnowledgeBase
 from .nuclei_templates import NucleiTemplates
 from .mcp_config import MCPConfig
+from .stm import STM
 
 __all__ = [
     "BaseEntity",
@@ -12,4 +13,5 @@ __all__ = [
     "KnowledgeBase",
     "NucleiTemplates",
     "MCPConfig",
+    "STM",
 ]

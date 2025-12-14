@@ -140,6 +140,16 @@ class DomainClassifierConfigs(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
+class MemoryConfigs(BaseSettings):
+    # Short-Term Memory (STM) Settings (1 Message Unit = 1 Question + 1 Answer)
+    stm_summary_stack_messages: int = Field(4, alias="MEMORY_STM_SUMMARY_STACK_MESSAGES")
+    stm_context_messages: int = Field(3, alias="MEMORY_STM_CONTEXT_MESSAGES")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
     redis: RedisConfigs = RedisConfigs()
@@ -149,6 +159,7 @@ class Configs(BaseSettings):
     scheduler: SchedulerConfigs = SchedulerConfigs()
     rag: RAGConfigs = RAGConfigs()
     domain_classifier: DomainClassifierConfigs = DomainClassifierConfigs()
+    memory: MemoryConfigs = MemoryConfigs()
 
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
@@ -172,4 +183,3 @@ class Configs(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"
-
