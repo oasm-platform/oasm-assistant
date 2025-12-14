@@ -141,18 +141,9 @@ class DomainClassifierConfigs(BaseSettings):
         extra = "ignore"
 
 class MemoryConfigs(BaseSettings):
-    """Configuration for Agent Memory (STM & LTM)"""
-    # Short-Term Memory (STM) Settings
-    # Maximum number of messages to retrieve from conversation history (The "Memo" size)
-    stm_max_messages: int = Field(10, alias="MEMORY_STM_MAX_MESSAGES")
-    # Maximum number of messages to include in the LLM prompt context (The "Context Window" size)
-    stm_context_limit: int = Field(5, alias="MEMORY_STM_CONTEXT_LIMIT")
-
-    # Long-Term Memory (LTM) Settings - Prepared for future integration
-    ltm_enabled: bool = Field(False, alias="MEMORY_LTM_ENABLED")
-    ltm_min_relevance_score: float = Field(0.7, alias="MEMORY_LTM_MIN_RELEVANCE_SCORE")
-    ltm_max_results: int = Field(5, alias="MEMORY_LTM_MAX_RESULTS")
-    ltm_collection_name: str = Field("agent_long_term_memory", alias="MEMORY_LTM_COLLECTION_NAME")
+    # Short-Term Memory (STM) Settings (1 Message Unit = 1 Question + 1 Answer)
+    stm_summary_stack_messages: int = Field(4, alias="MEMORY_STM_SUMMARY_STACK_MESSAGES")
+    stm_context_messages: int = Field(3, alias="MEMORY_STM_CONTEXT_MESSAGES")
 
     class Config:
         env_file = ".env"

@@ -19,6 +19,8 @@ from llms import llm_manager
 from llms.prompts.memory_prompts import MemoryPrompts
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 import asyncio
+import uuid
+from data.redis import redis_client
 
 
 class STMCheckpointer(BaseCheckpointSaver):
@@ -29,17 +31,34 @@ class STMCheckpointer(BaseCheckpointSaver):
         super().__init__(serde=serde)
         self.db = postgres_db
 
+    @staticmethod
+    def get_chat_history_window(messages: list) -> list[dict]:
+        """Get formatted chat history based on STM context window configuration"""
+        chat_history = []
+        if not messages:
+            return chat_history
+            
+        # Use stm_context_messages (1 Unit = 2 raw messages)
+        window_size = configs.memory.stm_context_messages * 2
+        recent_messages = messages[-window_size:]
+        
+        for msg in recent_messages:
+            role = "user" if msg.type == "human" else "assistant"
+            chat_history.append({"role": role, "content": msg.content})
+            
+        return chat_history
+
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
         """Get a checkpoint tuple from the database."""
-        thread_id = config["configurable"].get("thread_id")
-        if not thread_id:
+        conversation_id = config["configurable"].get("thread_id")
+        if not conversation_id:
             return None
 
         try:
             with self.db.get_session() as session:
-                # Retrieve the latest checkpoint for this thread
+                # Retrieve the latest checkpoint for this conversation
                 row = session.query(STM).filter(
-                    STM.thread_id == thread_id
+                    STM.conversation_id == uuid.UUID(conversation_id)
                 ).first()
 
                 if not row:
@@ -64,7 +83,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                 if parent_id:
                     parent_config = {
                         "configurable": {
-                            "thread_id": thread_id,
+                            "thread_id": conversation_id,
                             "checkpoint_id": parent_id,
                         }
                     }
@@ -106,7 +125,17 @@ class STMCheckpointer(BaseCheckpointSaver):
         try:
             conversation_text = ""
             for msg in messages_to_summarize:
-                role = "Human" if isinstance(msg, HumanMessage) else "AI"
+                if isinstance(msg, HumanMessage):
+                    role = "Human"
+                elif isinstance(msg, AIMessage):
+                    role = "AI"
+                elif msg.type == "tool":
+                    role = "Tool Output" 
+                elif msg.type == "system":
+                    role = "System"
+                else:
+                    role = msg.type.capitalize()
+                
                 conversation_text += f"{role}: {msg.content}\n"
             
             prompt = MemoryPrompts.get_conversation_summary_prompt(current_summary, conversation_text)
@@ -126,39 +155,79 @@ class STMCheckpointer(BaseCheckpointSaver):
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
         """Save a checkpoint to the database with STM optimization (Sliding Window + Summary)."""
-        thread_id = config["configurable"].get("thread_id")
-        if not thread_id:
+        conversation_id = config["configurable"].get("thread_id")
+        if not conversation_id:
             return config
 
         try:
-            # STM Optimization: Summarize and truncate if exceeding limit
+            # STM Optimization: Batch Cycle Pattern (Count 1 -> Limit -> Reset)
             channel_values = checkpoint.get("channel_values", {})
             messages = channel_values.get("messages", [])
-            max_messages = configs.memory.stm_max_messages
+            messages_len = len(messages)
             
-            if len(messages) > max_messages:
-                # Clone to avoid mutating original reference
-                messages_to_process = list(messages)
-                current_summary = metadata.get("summary", "")
+            # Configs (Unit: Pairs)
+            context_pairs = configs.memory.stm_context_messages
+            stack_pairs = configs.memory.stm_summary_stack_messages
+            
+            context_limit_msg = context_pairs * 2
+            
+            # Redis Logic: Increment and Check
+            redis_key = f"stm:stack_count:{conversation_id}"
+            
+            # Because 'put' is called after AI generation (1 pair added), we increment.
+            # However, put might be called multiple times. 
+            # Ideally, we read current val, checking if we should trigger.
+            # But the user wants "Question 1 -> Redis 1".
+            # The most robust way is: Calculate Term Count relative to the last check? 
+            # No, user wants simple counter.
+            
+            # Let's trust the logic: Current Total Pairs
+            current_total_pairs = messages_len // 2
+            
+            # We need a volatile counter that resets. Total Pairs doesn't reset.
+            # So we use INCR.
+            # Warning: Repeated calls to put for same state? LangGraph usually checkpoints once per step.
+            
+            # Increment atomic
+            try:
+                # Only increment if this is a new state (length changed) - optional safeguard
+                # For simplicity as requested: Just Get and Check logic based on user's flow
                 
-                # Calculate trim range
-                trim_count = len(messages_to_process) - max_messages
-                messages_to_summarize = messages_to_process[:trim_count]
-                messages_to_keep = messages_to_process[trim_count:]
+                # Fetch current counter
+                curr_val = redis_client.get(redis_key)
+                if curr_val is None:
+                    curr_val = 0
+                else:
+                    curr_val = int(curr_val)
+                    
+                # Increment atomic
+                new_count = redis_client.incr(redis_key)
+                redis_client.expire(redis_key, 86400)
                 
-                logger.info(f"STM: Summarizing {len(messages_to_summarize)} old messages for thread {thread_id}...")
-                
-                # Generate summary
-                new_summary = self._summarize_sync(current_summary, messages_to_summarize)
-                metadata["summary"] = new_summary
-                
-                # Update checkpoint with optimized data
-                checkpoint = checkpoint.copy()
-                checkpoint["channel_values"] = checkpoint["channel_values"].copy()
-                checkpoint["channel_values"]["messages"] = messages_to_keep
-                
-                logger.debug(f"STM: Optimized memory. Messages: {len(messages)} -> {len(messages_to_keep)}. Summary updated.")
+                if new_count >= stack_pairs:
+                    # Force Summary based on Stack Config
+                    target_cut_msg = stack_pairs * 2
+                    trim_count = min(messages_len, target_cut_msg)
+                    
+                    messages_to_process = list(messages)
+                    current_summary = metadata.get("summary", "")
+                    
+                    messages_to_summarize = messages_to_process[:trim_count]
+                    messages_to_keep = messages_to_process[trim_count:]
+                    
+                    new_summary = self._summarize_sync(current_summary, messages_to_summarize)
+                    metadata["summary"] = new_summary
+                    
+                    checkpoint = checkpoint.copy()
+                    checkpoint["channel_values"] = checkpoint["channel_values"].copy()
+                    checkpoint["channel_values"]["messages"] = messages_to_keep
 
+                    # Reset Redis
+                    redis_client.set(redis_key, 0, ex=86400)
+                    
+            except Exception as e:
+                logger.error(f"STM Logic Error: {e}")
+                
             # Serialize for JSONB storage (hex-encoded binary)
             type_, data_bytes = self.serde.dumps_typed(checkpoint)
             
@@ -172,18 +241,18 @@ class STMCheckpointer(BaseCheckpointSaver):
             # Persist to database
             with self.db.get_session() as session:
                 existing = session.query(STM).filter(
-                    STM.thread_id == thread_id
+                    STM.conversation_id == uuid.UUID(conversation_id)
                 ).first()
                 
                 if existing:
                     existing.checkpoint = checkpoint_json
-                    existing.checkpoint_id = checkpoint_id
+                    existing.stm_id = checkpoint_id
                     existing.metadata_ = metadata
                 else:
                     new_record = STM(
-                        thread_id=thread_id,
+                        conversation_id=uuid.UUID(conversation_id),
                         checkpoint=checkpoint_json,
-                        checkpoint_id=checkpoint_id,
+                        stm_id=checkpoint_id,
                         metadata_=metadata
                     )
                     session.add(new_record)
@@ -195,7 +264,7 @@ class STMCheckpointer(BaseCheckpointSaver):
 
         return {
             "configurable": {
-                "thread_id": thread_id,
+                "thread_id": conversation_id,
                 "checkpoint_id": checkpoint["id"],
             }
         }

@@ -37,7 +37,7 @@ class RedisClient:
             
             # Test connection
             self.client.ping()
-            logger.info(f"✓ Redis connected")
+            logger.info(f"Redis connected")
             
         except Exception as e:
             logger.error(f"Failed to connect to Redis: {e}")

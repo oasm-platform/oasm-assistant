@@ -11,7 +11,7 @@ from common.logger import logger
 from common.config import configs
 from agents.specialized import AnalysisAgent, OrchestrationAgent
 from agents.core.memory import STMCheckpointer
-from agents.core.memory import STMCheckpointer
+
 
 
 class SecurityWorkflowState(TypedDict):
@@ -163,20 +163,10 @@ class SecurityCoordinator:
             # Prepare task payload
             # STM (Short Term Memory): Use sliding window defined in configs
             chat_history = []
-            ltm_context = "" # Placeholder for Long-Term Memory
 
             if state.get("messages"):
-                # Get messages for context window optimization based on config
-                # Use stm_context_limit (Standard: 3-5 terms)
-                window_size = configs.memory.stm_context_limit
-                recent_messages = state["messages"][-window_size:]
-                for msg in recent_messages:
-                    role = "user" if msg.type == "human" else "assistant"
-                    chat_history.append({"role": role, "content": msg.content})
-
-            # Future LTM Logic:
-            # if configs.memory.ltm_enabled:
-            #     ltm_context = retrieve_long_term_memory(state["question"])
+                # Delegated to STM Logic
+                chat_history.extend(STMCheckpointer.get_chat_history_window(state["messages"]))
 
             task = {
                 "action": action,
@@ -254,12 +244,9 @@ class SecurityCoordinator:
                 # Get recent messages
                 messages = checkpoint_tuple.checkpoint['channel_values'].get('messages', [])
                 
-                # STM: Sliding window based on config
-                # Use stm_context_limit (Standard: 3-5 terms)
-                window_size = configs.memory.stm_context_limit
-                for msg in messages[-window_size:]:
-                    role = "user" if msg.type == "human" else "assistant"
-                    chat_history.append({"role": role, "content": msg.content})
+                # STM: Sliding window via centralized logic
+                window_history = STMCheckpointer.get_chat_history_window(messages)
+                chat_history.extend(window_history)
                     
         except Exception as e:
             logger.error(f"Failed to retrieve chat history from memory: {e}")

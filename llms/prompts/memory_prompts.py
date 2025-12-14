@@ -18,46 +18,23 @@ class MemoryPrompts:
         
         return history_str
 
-    @staticmethod
-    def get_long_term_memory_prompt(context: str = "") -> str:
-        """Format for Long Term Memory inclusion"""
-        if not context:
-            return ""
-        
-        return f"\n\n**Relevant Past Knowledge (Long Term Memory):**\n{context}\n"
 
     @staticmethod
     def get_conversation_summary_prompt(current_summary: str, new_lines: str) -> str:
-        """Prompt to update conversation summary with new interactions"""
-        if not current_summary:
-            return f"""Progressively summarize the lines of conversation provided, adding to the previous summary returning a new summary.
+        """Prompt to update conversation summary with new interactions."""
+        return f"""You are an expert conversation summarizer.
+Goal: Update (or create) a concise summary of the conversation between the User and the AI.
 
-EXAMPLE
-Current summary:
-The human asks what the AI thinks of artificial intelligence. The AI thinks artificial intelligence is a force for good.
-
-New lines of conversation:
-Human: Why do you think artificial intelligence is a force for good?
-AI: Because artificial intelligence will help humans reach their full potential.
-
-New summary:
-The human asks what the AI thinks of artificial intelligence. The AI thinks artificial intelligence is a force for good because it will help humans reach their full potential.
-END OF EXAMPLE
+Rules: 
+1. Language: MUST match the language used in the 'New conversation lines'.
+2. Length: Keep the summary between 50-120 tokens (approx. 3-6 sentences). NEVER exceed 150 tokens.
+3. Content: Focus on the main intent, key questions, and concrete solutions/actions. Identify the user's goal.
+4. Coherence: Merge specific details into a smooth narrative. Avoid generic phrases like "The user asked...".
 
 Current summary:
-(No previous summary)
+{current_summary if current_summary else "N/A"}
 
-New lines of conversation:
+New conversation lines:
 {new_lines}
 
-New summary:"""
-        
-        return f"""Progressively summarize the lines of conversation provided, adding to the previous summary returning a new summary.
-
-Current summary:
-{current_summary}
-
-New lines of conversation:
-{new_lines}
-
-New summary:"""
+Updated summary (in the same language as conversation):"""

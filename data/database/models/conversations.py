@@ -17,3 +17,4 @@ class Conversation(BaseEntity):
     user_id = Column(UUID(as_uuid=True))
 
     messages = relationship("Message", back_populates="conversation", cascade="all, delete")
+    stm = relationship("STM", back_populates="conversation", uselist=False, cascade="all, delete-orphan")
