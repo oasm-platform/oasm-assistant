@@ -130,7 +130,7 @@ class MessageService:
                 logger.debug(f"Message {message.message_id} created and saved to database")
                 
                 # Update LangGraph memory
-                coordinator.update_memory(conversation_id, question, answer)
+                await coordinator.update_memory(conversation_id, question, answer)
 
             except Exception as agent_error:
                 logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
@@ -207,7 +207,7 @@ class MessageService:
                     session.commit()
                     
                     # Update LangGraph memory
-                    coordinator.update_memory(conversation_id, new_question, new_answer)
+                    await coordinator.update_memory(conversation_id, new_question, new_answer)
 
                 except Exception as agent_error:
                     logger.error(f"Error during update: {agent_error}")

@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, List, Optional, TypedDict, AsyncGenerator, Annotated
 
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langgraph.checkpoint.base import Checkpoint
@@ -10,6 +10,7 @@ from langgraph.checkpoint.base import Checkpoint
 from common.logger import logger
 from common.config import configs
 from agents.specialized import AnalysisAgent, OrchestrationAgent
+from agents.core.memory import STMCheckpointer
 from agents.core.memory import STMCheckpointer
 
 
@@ -160,8 +161,6 @@ class SecurityCoordinator:
                 agent = agent_class()
 
             # Prepare task payload
-            # Prepare task payload
-            # Extract chat history from state messages if available
             # STM (Short Term Memory): Use sliding window defined in configs
             chat_history = []
             ltm_context = "" # Placeholder for Long-Term Memory
@@ -241,6 +240,18 @@ class SecurityCoordinator:
             checkpoint_tuple = checkpointer.get_tuple(config)
             
             if checkpoint_tuple and checkpoint_tuple.checkpoint:
+                # Get summary from metadata
+                metadata = checkpoint_tuple.metadata or {}
+                summary = metadata.get('summary', "")
+                
+                if summary:
+                    # Add summary as context at the beginning
+                    chat_history.append({
+                        "role": "system", 
+                        "content": f"Previous conversation summary: {summary}"
+                    })
+                
+                # Get recent messages
                 messages = checkpoint_tuple.checkpoint['channel_values'].get('messages', [])
                 
                 # STM: Sliding window based on config
@@ -255,8 +266,8 @@ class SecurityCoordinator:
             
         return chat_history
 
-    def update_memory(self, conversation_id: str, question: str, answer: str):
-        """Manually update LangGraph memory by appending to checkpoint with sliding window cleanup"""
+    async def update_memory(self, conversation_id: str, question: str, answer: str):
+        """Update memory (Delegate logic to STMCheckpointer)"""
         if not conversation_id:
             return
 
@@ -265,59 +276,57 @@ class SecurityCoordinator:
             checkpointer = self.workflow_graph.checkpointer
             
             if not checkpointer:
-                logger.warning("No checkpointer available, skipping memory update")
+                logger.warning("No checkpointer available")
                 return
             
             # Get current checkpoint
             checkpoint_tuple = checkpointer.get_tuple(config)
             
+            current_messages = []
+            metadata = {}
+            
             if checkpoint_tuple and checkpoint_tuple.checkpoint:
-                # Append new messages to existing checkpoint
-                current_messages = checkpoint_tuple.checkpoint.get('channel_values', {}).get('messages', [])
-                new_messages = current_messages + [
-                    HumanMessage(content=question),
-                    AIMessage(content=answer)
-                ]
-                
-                # Apply sliding window: Keep only last N messages (stm_max_messages)
-                max_messages = configs.memory.stm_max_messages
-                if len(new_messages) > max_messages:
-                    new_messages = new_messages[-max_messages:]
-                    logger.debug(f"Trimmed conversation history to {max_messages} messages (sliding window)")
-                
-                # Update checkpoint with new messages
-                updated_checkpoint = checkpoint_tuple.checkpoint.copy()
-                if 'channel_values' not in updated_checkpoint:
-                    updated_checkpoint['channel_values'] = {}
-                updated_checkpoint['channel_values']['messages'] = new_messages
-                
-                # Save updated checkpoint
-                checkpointer.put(
-                    config,
-                    updated_checkpoint,
-                    checkpoint_tuple.metadata,
-                    {}  # new_versions
-                )
+                current_checkpoint = checkpoint_tuple.checkpoint
+                metadata = checkpoint_tuple.metadata or {}
+                current_messages = current_checkpoint.get('channel_values', {}).get('messages', [])
             else:
-                # Create new checkpoint if none exists
-                new_checkpoint = {
+                 # Create new checkpoint structure if needed
+                current_checkpoint = {
                     'v': 1,
                     'id': conversation_id,
-                    'ts': None,
-                    'channel_values': {
-                        'messages': [
-                            HumanMessage(content=question),
-                            AIMessage(content=answer)
-                        ]
-                    },
+                    'ts': None, # Timestamp handled by checkpointer usually
+                    'channel_values': {},
                     'channel_versions': {},
                     'versions_seen': {}
                 }
-                checkpointer.put(
+
+            # Append new messages (Let Checkpointer handle truncation/summary)
+            new_messages = current_messages + [
+                HumanMessage(content=question),
+                AIMessage(content=answer)
+            ]
+            
+            # Prepare updated checkpoint
+            updated_checkpoint = current_checkpoint.copy()
+            if 'channel_values' not in updated_checkpoint:
+                updated_checkpoint['channel_values'] = {}
+            updated_checkpoint['channel_values']['messages'] = new_messages
+            
+            # Save using checkpointer (It will handle optimization internally)
+            # Use aput if available for async, otherwise put
+            if hasattr(checkpointer, 'aput'):
+                await checkpointer.aput(
                     config,
-                    new_checkpoint,
-                    {},  # metadata
-                    {}   # new_versions
+                    updated_checkpoint,
+                    metadata,
+                    {} 
+                )
+            else:
+                 checkpointer.put(
+                    config,
+                    updated_checkpoint,
+                    metadata,
+                    {} 
                 )
                 
         except Exception as e:

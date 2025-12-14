@@ -14,6 +14,11 @@ from langgraph.checkpoint.base import (
 from common.logger import logger
 from data.database.models import STM
 from data.database import postgres_db
+from common.config import configs
+from llms import llm_manager
+from llms.prompts.memory_prompts import MemoryPrompts
+from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
+import asyncio
 
 
 class STMCheckpointer(BaseCheckpointSaver):
@@ -86,6 +91,33 @@ class STMCheckpointer(BaseCheckpointSaver):
         # Simplification: we only store latest state in this table design for now.
         yield from []
 
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
+        """Async version of put (Not strictly enforced by BaseCheckpointSaver but useful for async usage)"""
+        return self.put(config, checkpoint, metadata, new_versions)
+
+    def _summarize_sync(self, current_summary: str, messages_to_summarize: list) -> str:
+        """Generate summary synchronously"""
+        try:
+            conversation_text = ""
+            for msg in messages_to_summarize:
+                role = "Human" if isinstance(msg, HumanMessage) else "AI"
+                conversation_text += f"{role}: {msg.content}\n"
+            
+            prompt = MemoryPrompts.get_conversation_summary_prompt(current_summary, conversation_text)
+            llm = llm_manager.get_llm()
+            # Use invoke for sync call
+            summary = llm.invoke(prompt)
+            return summary.content.strip()
+        except Exception as e:
+            logger.error(f"STM Summarization failed: {e}")
+            return current_summary
+
     def put(
         self,
         config: RunnableConfig,
@@ -93,17 +125,43 @@ class STMCheckpointer(BaseCheckpointSaver):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        """Save a checkpoint to the database."""
+        """Save a checkpoint to the database with STM optimization (Sliding Window + Summary)."""
         thread_id = config["configurable"].get("thread_id")
         if not thread_id:
             return config
 
         try:
-            # Serialize the checkpoint using dumps_typed (returns tuple of type and bytes)
-            # JsonPlusSerializer defaults to msgpack, so we need to encode bytes for JSONB storage
+            # STM Optimization: Summarize and truncate if exceeding limit
+            channel_values = checkpoint.get("channel_values", {})
+            messages = channel_values.get("messages", [])
+            max_messages = configs.memory.stm_max_messages
+            
+            if len(messages) > max_messages:
+                # Clone to avoid mutating original reference
+                messages_to_process = list(messages)
+                current_summary = metadata.get("summary", "")
+                
+                # Calculate trim range
+                trim_count = len(messages_to_process) - max_messages
+                messages_to_summarize = messages_to_process[:trim_count]
+                messages_to_keep = messages_to_process[trim_count:]
+                
+                logger.info(f"STM: Summarizing {len(messages_to_summarize)} old messages for thread {thread_id}...")
+                
+                # Generate summary
+                new_summary = self._summarize_sync(current_summary, messages_to_summarize)
+                metadata["summary"] = new_summary
+                
+                # Update checkpoint with optimized data
+                checkpoint = checkpoint.copy()
+                checkpoint["channel_values"] = checkpoint["channel_values"].copy()
+                checkpoint["channel_values"]["messages"] = messages_to_keep
+                
+                logger.debug(f"STM: Optimized memory. Messages: {len(messages)} -> {len(messages_to_keep)}. Summary updated.")
+
+            # Serialize for JSONB storage (hex-encoded binary)
             type_, data_bytes = self.serde.dumps_typed(checkpoint)
             
-            # Prepare for JSONB storage by wrapping in a dict and hex-encoding bytes
             checkpoint_json = {
                 "__serializer_type": type_,
                 "__serializer_data": data_bytes.hex()
@@ -111,7 +169,7 @@ class STMCheckpointer(BaseCheckpointSaver):
 
             checkpoint_id = checkpoint["id"]
             
-            # Upsert logic
+            # Persist to database
             with self.db.get_session() as session:
                 existing = session.query(STM).filter(
                     STM.thread_id == thread_id
@@ -121,7 +179,6 @@ class STMCheckpointer(BaseCheckpointSaver):
                     existing.checkpoint = checkpoint_json
                     existing.checkpoint_id = checkpoint_id
                     existing.metadata_ = metadata
-                    # We could store parent logic if available in metadata or logic
                 else:
                     new_record = STM(
                         thread_id=thread_id,
@@ -132,10 +189,9 @@ class STMCheckpointer(BaseCheckpointSaver):
                     session.add(new_record)
                 
                 session.commit()
-                # logger.debug(f"Saved checkpoint for thread {thread_id}")
                 
         except Exception as e:
-            logger.error(f"Error saving checkpoint: {e}")
+            logger.error(f"Error saving checkpoint: {e}", exc_info=True)
 
         return {
             "configurable": {
