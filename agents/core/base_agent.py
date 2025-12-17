@@ -22,6 +22,7 @@ class AgentRole(Enum):
     ANALYSIS_AGENT = "analysis_agent"
     INCIDENT_RESPONSE_AGENT = "incident_response_agent"
     ORCHESTRATION_AGENT = "orchestration_agent"
+    NUCLEI_GENERATOR_AGENT = "nuclei_generator_agent"
 
 
 @dataclass

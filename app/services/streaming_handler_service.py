@@ -346,6 +346,37 @@ class StreamingResponseBuilder:
                         stack_trace=event.get("stack_trace")
                     )
 
+                elif event_type == "result":
+                    data = event.get("data", {})
+                    response_text = ""
+                    
+                    # Check for explicit content keys
+                    if isinstance(data, dict):
+                        if "response" in data:
+                            response_text = str(data["response"])
+                        elif "answer" in data:
+                             response_text = str(data["answer"])
+                        elif "message" in data:
+                             response_text = str(data["message"])
+                        # Check for metadata keys that should NOT be displayed as text
+                        elif any(k in data for k in ["success", "has_data", "data_source", "stats", "orchestration"]):
+                            # This is likely internal metadata/control plane data
+                            # Do NOT stream this as text delta to the user
+                            response_text = ""
+                        else:
+                             # For unknown dicts, maybe dump? Or better to hide to be safe.
+                             # Let's hide it to avoid confusing users with raw JSON unless we are sure.
+                             # response_text = json.dumps(data, indent=2)
+                             pass
+                    else:
+                        response_text = str(data)
+                        
+                    if response_text:
+                        yield handler.delta(
+                            text=response_text,
+                            agent=event.get("agent", "")
+                        )
+
                 elif event_type == "event":
                     yield handler.event(
                         event_name=event.get("event_name", ""),
