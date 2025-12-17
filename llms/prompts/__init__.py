@@ -1,10 +1,12 @@
 from .domain_classification_prompts import DomainClassificationPrompts
 from .analysis_agent_prompts import AnalysisAgentPrompts
 from .conversation_prompts import ConversationPrompts
-from .nuclei_generation_prompts import NucleiGenerationPrompts
+from .nuclei_generator_agent_prompts import NucleiGenerationPrompts
 from .threat_intelligence_agent_prompts import ThreatIntelligenceAgentPrompts
 from .incident_response_agent_prompts import IncidentResponseAgentPrompts
 from .orchestration_agent_prompts import OrchestrationAgentPrompts
+
+from .security_coordinator_prompts import SecurityCoordinatorPrompts
 
 __all__ = [
     "AnalysisAgentPrompts",
@@ -13,5 +15,6 @@ __all__ = [
     "NucleiGenerationPrompts",
     "ThreatIntelligenceAgentPrompts",
     "IncidentResponseAgentPrompts",
-    "OrchestrationAgentPrompts"
+    "OrchestrationAgentPrompts",
+    "SecurityCoordinatorPrompts"
 ]

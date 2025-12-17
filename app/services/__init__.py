@@ -3,7 +3,6 @@ from .domain_classifier_service import DomainClassifierService
 from .conversation_service import ConversationService
 from .message_service import MessageService
 from .mcp_server_service import MCPServerService
-from .nuclei_template_service import NucleiTemplateService
 from .issue_service import IssueService
 
 
@@ -13,6 +12,5 @@ __all__ = [
     "ConversationService",
     "MessageService",
     "MCPServerService",
-    "NucleiTemplateService",
     "IssueService",
 ]

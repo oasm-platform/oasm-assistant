@@ -46,7 +46,7 @@ class AnalysisAgent(BaseAgent):
             logger.debug(f"✓ MCP enabled for workspace {workspace_id}")
         else:
             self.mcp_manager = None
-            logger.warning("⚠ MCP disabled - no workspace/user provided")
+            logger.warning("MCP disabled - no workspace/user provided")
 
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute task synchronously"""
@@ -84,9 +84,9 @@ class AnalysisAgent(BaseAgent):
 
         except Exception as e:
             error_details = traceback.format_exc()
-            # Use %s formatting to avoid KeyError with curly braces in error messages
-            logger.error("Streaming task execution failed: %s", str(e), exc_info=True)
-            logger.error("Error details: %s", error_details)
+            # Use f-string formatting to avoid various logger issues
+            logger.error(f"Streaming task execution failed: {str(e)}", exc_info=True)
+            logger.error(f"Error details: {error_details}")
             
             error_message = str(e) if str(e) else "Unknown error occurred during task execution"
             
@@ -159,7 +159,6 @@ class AnalysisAgent(BaseAgent):
         if not self.mcp_manager:
             logger.warning("MCP not available")
             return
-
         try:
             yield {"type": "thinking", "thought": "Initializing MCP tools...", "agent": self.name}
             await self.mcp_manager.initialize()
@@ -186,16 +185,34 @@ class AnalysisAgent(BaseAgent):
             server_name = selected["server"]
             tool_name = selected["tool"]
             tool_args = selected["args"]
+            
+            # Ensure workspaceId is always present if available
+            if self.workspace_id and "workspaceId" not in tool_args:
+                tool_args["workspaceId"] = str(self.workspace_id)
+                
             question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
 
-            # Get tool description before execution
+            # Validate tool exists
             tool_description = "Fetching data from MCP"
+            tool_exists = False
             for server, tools in all_tools.items():
                 if server == server_name:
                     for tool_info in tools:
                         if tool_info.get("name") == tool_name:
+                            tool_exists = True
                             tool_description = tool_info.get("description", tool_description)
                             break
+                if tool_exists:
+                    break
+            
+            if not tool_exists:
+                yield {
+                    "type": "error",
+                    "error": f"Selected tool {tool_name} not found",
+                    "agent": self.name
+                }
+                logger.warning(f"Selected tool {server_name}/{tool_name} not found")
+                return
 
             logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
             
@@ -255,9 +272,8 @@ class AnalysisAgent(BaseAgent):
 
         except Exception as e:
             error_details = traceback.format_exc()
-            # Use %s formatting to avoid KeyError with curly braces in error messages
-            logger.error("MCP fetch streaming error: %s", str(e), exc_info=True)
-            logger.error("Error details: %s", error_details)
+            logger.error(f"MCP fetch streaming error: {str(e)}", exc_info=True)
+            logger.error(f"Error details: {error_details}")
             
             # Provide user-friendly error message
             error_message = str(e) if str(e) else "Unknown error occurred while fetching MCP data"
@@ -296,16 +312,31 @@ class AnalysisAgent(BaseAgent):
             server_name = selected["server"]
             tool_name = selected["tool"]
             tool_args = selected["args"]
+            
+            # Ensure workspaceId is always present if available
+            if self.workspace_id and "workspaceId" not in tool_args:
+                tool_args["workspaceId"] = str(self.workspace_id)
+
             question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
 
-            # Get tool description
+            # Validate that the selected tool actually exists
             tool_description = "Fetching data from MCP"
+            tool_exists = False
             for server, tools in all_tools.items():
                 if server == server_name:
                     for tool_info in tools:
                         if tool_info.get("name") == tool_name:
+                            tool_exists = True
                             tool_description = tool_info.get("description", tool_description)
                             break
+                if tool_exists:
+                    break
+
+            if not tool_exists:
+                logger.warning(f"Selected tool {server_name}/{tool_name} not found in available tools")
+                # Try to fuzzy match or find tool in other servers? 
+                # For now, just log and return None to trigger fallback
+                return None
 
             logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
             logger.debug(f"Arguments: {tool_args}")
@@ -347,8 +378,6 @@ class AnalysisAgent(BaseAgent):
         format_instructions = parser.get_format_instructions()
         enhanced_prompt = f"""{base_prompt}
 
-{format_instructions}
-
 You MUST respond with valid JSON containing exactly these fields:
 - "question_type": one of {valid_types} (string)
 - "server": the server name (string)
@@ -376,8 +405,8 @@ You MUST respond with valid JSON containing exactly these fields:
             return result
 
         except Exception as e:
-            # Use %s formatting to avoid KeyError with curly braces in error messages
-            logger.error("LLM combined classification and tool selection failed: %s", str(e), exc_info=True)
+            # Use f-string for correct log formatting with loguru
+            logger.error(f"LLM combined classification and tool selection failed: {e}", exc_info=True)
             return None
 
     def _ensure_question_type_enum(self, question_type: Any) -> QuestionType:
@@ -491,8 +520,8 @@ You MUST respond with valid JSON containing exactly these fields:
             async for buffered_text in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
                 yield {"type": "delta", "text": buffered_text, "agent": self.name}
         except Exception as e:
-            # Use %s formatting to avoid KeyError with curly braces in error messages
-            logger.error("Failed to stream analysis: %s", str(e), exc_info=True)
+            # Use f-string formatting
+            logger.error(f"Failed to stream analysis: {str(e)}", exc_info=True)
             if scan_data:
                 stats = scan_data.get("stats", {})
                 yield {"type": "delta", "text": f"\n\nAnalysis data:\n{json.dumps(stats, indent=2)[:500]}", "agent": self.name}

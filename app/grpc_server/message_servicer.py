@@ -60,7 +60,8 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 user_id, 
                 question, 
                 request.conversation_id, 
-                request.is_create_conversation
+                request.is_create_conversation,
+                agent_type=request.agent_type
             )
 
             async for stream_message, conversation_data in stream:
@@ -99,7 +100,8 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 user_id,
                 request.conversation_id,
                 request.message_id,
-                request.question.strip()
+                request.question.strip(),
+                agent_type=request.agent_type
             )
 
             async for stream_message in stream:

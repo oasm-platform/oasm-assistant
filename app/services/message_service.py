@@ -42,7 +42,8 @@ class MessageService:
         user_id: UUID, 
         question: str, 
         conversation_id: Optional[str] = None, 
-        is_create_conversation: bool = False
+        is_create_conversation: bool = False,
+        agent_type: int = 0
     ):
         """Yields tuple (stream_message, conversation_obj)"""
         # Generate message_id
@@ -88,10 +89,6 @@ class MessageService:
                 "updated_at": conversation.updated_at
             }
 
-            # Fetch recent messages for context (Short Term Memory)
-            # Handled by LangGraph checkpointer in SecurityCoordinator using conversation_id
-
-
             coordinator = SecurityCoordinator(
                 db_session=session,
                 workspace_id=workspace_id,
@@ -99,7 +96,17 @@ class MessageService:
             )
 
             try:
-                streaming_events = coordinator.process_message_question_streaming(question, conversation_id=conversation_id)
+                agent_key = "orchestration"
+                if agent_type == 1:
+                    agent_key = "nuclei"
+                elif agent_type == 2:
+                    agent_key = "analysis"
+
+                streaming_events = coordinator.process_message_question_streaming(
+                    question, 
+                    conversation_id=conversation_id,
+                    agent_type=agent_key
+                )
 
                 async_stream = StreamingResponseBuilder.build_response_stream(
                     message_id=message_id,
@@ -157,7 +164,8 @@ class MessageService:
         user_id: UUID,
         conversation_id: str,
         message_id: str,
-        new_question: str
+        new_question: str,
+        agent_type: int = 0
     ):
         """Yields stream_message"""
         accumulated_answer = []
@@ -183,10 +191,19 @@ class MessageService:
                     user_id=user_id
                 )
 
-                # Fetch recent messages for context (Short Term Memory)
                 # Handled by LangGraph checkpointer in SecurityCoordinator using conversation_id
                 try:
-                    streaming_events = coordinator.process_message_question_streaming(new_question, conversation_id=conversation_id)
+                    agent_key = "orchestration"
+                    if agent_type == 1:
+                        agent_key = "nuclei"
+                    elif agent_type == 2:
+                        agent_key = "analysis"
+
+                    streaming_events = coordinator.process_message_question_streaming(
+                        new_question, 
+                        conversation_id=conversation_id,
+                        agent_type=agent_key
+                    )
                     async_stream = StreamingResponseBuilder.build_response_stream(
                         message_id=message_id,
                         conversation_id=conversation_id,

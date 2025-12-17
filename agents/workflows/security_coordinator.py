@@ -9,8 +9,11 @@ from langgraph.checkpoint.base import Checkpoint
 
 from common.logger import logger
 from common.config import configs
-from agents.specialized import AnalysisAgent, OrchestrationAgent
+from agents.specialized import AnalysisAgent, OrchestrationAgent, NucleiGeneratorAgent
 from agents.core.memory import STMCheckpointer
+from llms import llm_manager
+from langchain_core.output_parsers import JsonOutputParser
+from llms.prompts import SecurityCoordinatorPrompts
 import uuid
 
 
@@ -43,7 +46,8 @@ class SecurityCoordinator:
         self.user_id = user_id
         self.available_agents = {
             "analysis": AnalysisAgent,
-            "orchestration": OrchestrationAgent
+            "orchestration": OrchestrationAgent,
+            "nuclei": NucleiGeneratorAgent
         }
         self.workflow_graph = self._build_workflow_graph()
         logger.debug(
@@ -344,10 +348,35 @@ class SecurityCoordinator:
             logger.error(f"Coordination error: {e}")
             return f"I'm experiencing technical difficulties: {str(e)}"
 
+    async def _identify_intent_and_route(self, question: str) -> str:
+        """Identify user intent and route to the appropriate agent logic"""
+        try:
+            llm = llm_manager.get_llm()
+            parser = JsonOutputParser()
+            prompt = SecurityCoordinatorPrompts.get_routing_prompt(question)
+            
+            chain = llm | parser
+            result = await chain.ainvoke(prompt)
+            
+            selected_agent = result.get("agent", "analysis")
+            logger.debug(f"Router selected: {selected_agent} (Reason: {result.get('reasoning')})")
+            
+            # Map 'general' to 'analysis' for now (AnalysisAgent handles general chat too via its prompts)
+            # or we could have a dedicated GeneralAgent
+            if selected_agent == "general":
+                 return "analysis"
+                 
+            return selected_agent
+            
+        except Exception as e:
+            logger.error(f"Routing failed, defaulting to analysis: {e}")
+            return "analysis"
+
     async def process_message_question_streaming(
         self,
         question: str,
-        conversation_id: Optional[str] = None
+        conversation_id: Optional[str] = None,
+        agent_type: str = "orchestration"
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Process question with streaming events (async)"""
         try:
@@ -362,11 +391,30 @@ class SecurityCoordinator:
                 ]
             }
 
-            agent_class = self.available_agents.get("analysis")
+            # ROUTING LOGIC via LLM
+            # If default orchestration is requested, we now use the Router to decide
+            # whether to go to Analysis, Nuclei, etc.
+            if agent_type == "orchestration":
+                 agent_key = await self._identify_intent_and_route(question)
+            else:
+                 agent_key = agent_type
+
+            # Validation
+            if agent_key not in self.available_agents:
+                 logger.warning(f"Agent type {agent_key} not found, defaulting to analysis")
+                 agent_key = "analysis"
+            
+            yield {
+                "type": "thinking",
+                "agent": "SecurityCoordinator",
+                "thought": f"Delegating task to **{agent_key.title()}Agent** based on your request.",
+            }
+
+            agent_class = self.available_agents.get(agent_key)
             if not agent_class:
                 yield {
                     "type": "error",
-                    "error": "Analysis agent not available",
+                    "error": "Selected agent not available",
                     "agent": "SecurityCoordinator"
                 }
                 return
@@ -378,11 +426,19 @@ class SecurityCoordinator:
             )
 
             # Chat history is now handled by LangGraph state + conversation_id checkpointer
-            # We use the helper method to retrieve formatted history from STM
             chat_history = self._get_chat_history_from_memory(conversation_id) if conversation_id else []
             
+            # Determine Action based on Agent
+            if agent_key == "nuclei":
+                 action = "generate_template"
+            elif agent_key == "analysis":
+                 action = "analyze_vulnerabilities"
+            else:
+                 # Default fallback
+                 action = "coordinate_workflow"
+
             task = {
-                "action": "analyze_vulnerabilities",
+                "action": action,
                 "question": question,
                 "target": None,
                 "vulnerability_data": {},
