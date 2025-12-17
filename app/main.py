@@ -14,7 +14,6 @@ from .grpc_server import (
     ConversationServicer,
     MessageServiceServicer,
     MCPServerServiceServicer,
-    NucleiTemplateServiceServicer,
     IssueServicer
 )
 
@@ -52,7 +51,6 @@ async def serve():
         assistant_pb2_grpc.add_ConversationServiceServicer_to_server(ConversationServicer(), server)
         assistant_pb2_grpc.add_MessageServiceServicer_to_server(MessageServiceServicer(), server)
         assistant_pb2_grpc.add_MCPServerServiceServicer_to_server(MCPServerServiceServicer(), server)
-        assistant_pb2_grpc.add_NucleiTemplateServiceServicer_to_server(NucleiTemplateServiceServicer(), server)
         assistant_pb2_grpc.add_IssueServiceServicer_to_server(IssueServicer(), server)
 
         # Register reflection service   
@@ -62,7 +60,6 @@ async def serve():
             assistant_pb2.DESCRIPTOR.services_by_name['ConversationService'].full_name,
             assistant_pb2.DESCRIPTOR.services_by_name['MessageService'].full_name,
             assistant_pb2.DESCRIPTOR.services_by_name['MCPServerService'].full_name,
-            assistant_pb2.DESCRIPTOR.services_by_name['NucleiTemplateService'].full_name,
             assistant_pb2.DESCRIPTOR.services_by_name['IssueService'].full_name,
             reflection.SERVICE_NAME,  # reflection service itself
         )
