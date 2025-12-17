@@ -13,6 +13,9 @@ from common.config import configs
 from llms import llm_manager
 from llms.prompts.nuclei_generator_agent_prompts import NucleiGenerationPrompts
 from langchain_core.messages import BaseMessage
+from data.database import postgres_db
+from data.database.models import NucleiTemplates
+from data.embeddings import embeddings_manager
 
 class NucleiGeneratorAgent(BaseAgent):
     """Generates Nuclei templates using LLM"""
@@ -73,10 +76,60 @@ class NucleiGeneratorAgent(BaseAgent):
                 "error_type": "TemplateGenerationError",
                 "agent": self.name
             }
+    
+    async def _retrieve_similar_templates(self, question: str, limit: int = 3) -> str:
+        """Retrieve similar templates from database using vector search"""
+        try:
+            # Check if embeddings manager is initialized
+            if not embeddings_manager.embedding_model:
+                logger.warning("Embeddings manager not initialized, skipping RAG")
+                return ""
+
+            loop = asyncio.get_running_loop()
+            
+            # 1. Generate embedding
+            query_embedding = await loop.run_in_executor(
+                None, 
+                embeddings_manager.embed_query, 
+                question
+            )
+            
+            # 2. Query database
+            def _query_db():
+                with postgres_db.get_session() as session:
+                    # using cosine_distance (operator <=>)
+                    results = session.query(NucleiTemplates).order_by(
+                        NucleiTemplates.embedding.cosine_distance(query_embedding)
+                    ).limit(limit).all()
+                    print("Results:", results)
+                    if not results:
+                        return ""
+                    
+                    context_parts = []
+                    for idx, template in enumerate(results):
+                        context_parts.append(
+                            f"Example {idx+1}:\n"
+                            f"Template Name: {template.name}\n"
+                            f"Description: {template.description}\n"
+                            f"```yaml\n{template.template}\n```"
+                        )
+                    
+                    return "\n\n".join(context_parts)
+
+            return await loop.run_in_executor(None, _query_db)
+                
+        except Exception as e:
+            logger.error(f"Failed to retrieve similar templates: {e}")
+            return ""
 
     async def generate_template(self, question: str) -> Dict[str, Any]:
         """Generate template synchronously"""
-        prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question)
+        # 1. Retrieve similar templates (RAG)
+        rag_context = await self._retrieve_similar_templates(question, limit=configs.nuclei.rag_limit)
+        
+        # 2. Generate prompt with context
+        prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question, rag_context)
+        
         response = await self.llm.ainvoke(prompt)
         content = response.content.strip()
         
@@ -87,7 +140,18 @@ class NucleiGeneratorAgent(BaseAgent):
 
     async def generate_template_streaming(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream template generation"""
-        prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question)
+        # 1. Retrieve similar templates (RAG) - we yield a status update first if it takes time?
+        # Actually RAG is fast enough usually.
+        rag_context = await self._retrieve_similar_templates(question, limit=configs.nuclei.rag_limit)
+        
+        if rag_context:
+             yield {
+                "type": "log",
+                "message": "Retrieved similar templates for context.",
+                "agent": self.name
+            }
+
+        prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question, rag_context)
         
         # Buffer similar to AnalysisAgent to avoid too many small chunks
         buffer = ""

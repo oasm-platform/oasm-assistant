@@ -150,6 +150,15 @@ class MemoryConfigs(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
+class NucleiGenerateConfigs(BaseSettings):
+    """Nuclei Generator Agent configurations"""
+    rag_limit: int = Field(3, alias="NUCLEI_RAG_LIMIT")
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+        extra = "ignore"
+
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
     redis: RedisConfigs = RedisConfigs()
@@ -160,6 +169,7 @@ class Configs(BaseSettings):
     rag: RAGConfigs = RAGConfigs()
     domain_classifier: DomainClassifierConfigs = DomainClassifierConfigs()
     memory: MemoryConfigs = MemoryConfigs()
+    nuclei: NucleiGenerateConfigs = NucleiGenerateConfigs()
 
     # Add missing fields used in main.py
     host: str = Field("0.0.0.0", alias="HOST")
