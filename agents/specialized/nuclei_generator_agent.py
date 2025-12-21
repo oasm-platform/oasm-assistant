@@ -101,7 +101,6 @@ class NucleiGeneratorAgent(BaseAgent):
                     results = session.query(NucleiTemplates).order_by(
                         NucleiTemplates.embedding.cosine_distance(query_embedding)
                     ).limit(limit).all()
-                    print("Results:", results)
                     if not results:
                         return ""
                     

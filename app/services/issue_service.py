@@ -39,8 +39,8 @@ class IssueService:
             elif issue_type == 2:
                 prompt = IssuePrompts.get_vulnerability_issue_prompt(question, metadata)
             else:
-                # Fallback or default handling for ISSUE_TYPE_UNSPECIFIED (0)
-                prompt = f"Please resolve the following security issue: {question}\nMetadata: {metadata}"
+                # Use the default prompt for unspecified types (handles both specific and general cases)
+                prompt = IssuePrompts.get_default_issue_prompt(question, metadata)
 
             # Invoke LLM
             response = await llm.ainvoke([HumanMessage(content=prompt)])

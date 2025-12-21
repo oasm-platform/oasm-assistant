@@ -33,10 +33,14 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
         return {k: self._unwrap_struct_value(v) for k, v in data.items()}
 
     def _extract_mcp_servers(self, request_config):
-        """Extract and validate mcpServers from protobuf Struct"""
+        """Extract mcpServers from protobuf Struct. Returns None if field is missing."""
         config_json = MessageToDict(request_config, preserving_proto_field_name=True)
         config_unwrapped = self._unwrap_struct_value(config_json)
-        return config_unwrapped.get("mcpServers") or config_unwrapped.get("mcp_servers") or {}
+        if "mcpServers" in config_unwrapped:
+            return config_unwrapped["mcpServers"]
+        if "mcp_servers" in config_unwrapped:
+            return config_unwrapped["mcp_servers"]
+        return None
 
     @get_metadata_interceptor
     async def GetMCPServers(self, request, context):
@@ -71,7 +75,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             user_id = UUID(context.user_id)
 
             mcp_servers = self._extract_mcp_servers(request.mcp_config)
-            if not mcp_servers:
+            if mcp_servers is None:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Request must contain 'mcpServers' field")
                 return assistant_pb2.AddMCPServersResponse(success=False)
@@ -100,7 +104,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             user_id = UUID(context.user_id)
 
             mcp_servers = self._extract_mcp_servers(request.mcp_config)
-            if not mcp_servers:
+            if mcp_servers is None:
                 context.set_code(StatusCode.INVALID_ARGUMENT)
                 context.set_details("Request must contain 'mcpServers' field")
                 return assistant_pb2.UpdateMCPServersResponse(success=False)

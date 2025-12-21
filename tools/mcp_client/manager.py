@@ -22,7 +22,6 @@ warnings.filterwarnings("ignore", message="Failed to validate notification")
 logging.getLogger("root").addFilter(lambda record: "Failed to validate notification" not in record.getMessage())
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_mcp_adapters.tools import load_mcp_tools
 
 from common.logger import logger
 from data.database import PostgresDatabase
