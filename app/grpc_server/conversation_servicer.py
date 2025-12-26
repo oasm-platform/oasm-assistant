@@ -1,9 +1,9 @@
+from uuid import UUID
 from app.protos import assistant_pb2, assistant_pb2_grpc
 from app.services.conversation_service import ConversationService
 from app.interceptors import get_metadata_interceptor
 from common.logger import logger
 from grpc import StatusCode
-from uuid import UUID
 
 class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
     def __init__(self, service: ConversationService = None):
@@ -33,10 +33,18 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
     @get_metadata_interceptor
     async def GetConversations(self, request, context):
         try:
-            workspace_id = context.workspace_id
-            user_id = context.user_id
+            workspace_id = UUID(context.workspace_id)
+            user_id = UUID(context.user_id)
 
-            conversations = await self.service.get_conversations(workspace_id, user_id)
+            conversations, total_count = await self.service.get_conversations(
+                workspace_id=workspace_id, 
+                user_id=user_id,
+                search=request.search if request.search else None,
+                page=request.page if request.page > 0 else 1,
+                limit=request.limit if request.limit > 0 else 20,
+                sort_by=request.sort_by if request.sort_by else "updated_at",
+                sort_order=request.sort_order if request.sort_order else "desc"
+            )
             
             conversation_messages = []
             for conv in conversations:
@@ -44,7 +52,10 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
                 if proto_conv and proto_conv.conversation_id:
                     conversation_messages.append(proto_conv)
 
-            return assistant_pb2.GetConversationsResponse(conversations=conversation_messages)
+            return assistant_pb2.GetConversationsResponse(
+                conversations=conversation_messages,
+                total_count=total_count
+            )
 
         except Exception as e:
             logger.error(f"Error getting conversations: {e}")
@@ -58,8 +69,8 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
             conversation_id = request.conversation_id
             title = request.title
             description = request.description
-            workspace_id = context.workspace_id
-            user_id = context.user_id
+            workspace_id = UUID(context.workspace_id)
+            user_id = UUID(context.user_id)
 
             conversation = await self.service.update_conversation(
                 conversation_id, title, description, workspace_id, user_id
@@ -82,8 +93,8 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
     async def DeleteConversation(self, request, context):
         try:
             conversation_id = request.conversation_id
-            workspace_id = context.workspace_id
-            user_id = context.user_id
+            workspace_id = UUID(context.workspace_id)
+            user_id = UUID(context.user_id)
 
             success = await self.service.delete_conversation(conversation_id, workspace_id, user_id)
 
@@ -103,8 +114,8 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
     @get_metadata_interceptor
     async def DeleteConversations(self, request, context):
         try:
-            workspace_id = context.workspace_id
-            user_id = context.user_id
+            workspace_id = UUID(context.workspace_id)
+            user_id = UUID(context.user_id)
 
             count = await self.service.delete_conversations(workspace_id, user_id)
             return assistant_pb2.DeleteConversationsResponse(message=f"Deleted {count} conversations", success=True)

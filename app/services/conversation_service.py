@@ -30,14 +30,54 @@ class ConversationService:
         except Exception as e:
             logger.error(f"Failed to update conversation title: {e}", exc_info=True)
 
-    async def get_conversations(self, workspace_id: UUID, user_id: UUID) -> List[Conversation]:
+    async def get_conversations(
+        self, 
+        workspace_id: UUID, 
+        user_id: UUID,
+        search: Optional[str] = None,
+        page: int = 1,
+        limit: int = 20,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc"
+    ) -> tuple[List[Conversation], int]:
         try:
             with self.db.get_session() as session:
-                conversations = session.query(Conversation).filter(Conversation.user_id == user_id,
-                    Conversation.workspace_id == workspace_id).all()
+                # Ensure IDs are UUID objects
+                if isinstance(workspace_id, str):
+                    workspace_id = UUID(workspace_id)
+                if isinstance(user_id, str):
+                    user_id = UUID(user_id)
+
+                query = session.query(Conversation).filter(
+                    Conversation.user_id == user_id,
+                    Conversation.workspace_id == workspace_id
+                )
+
+                if search:
+                    search_filter = f"%{search}%"
+                    query = query.filter(
+                        (Conversation.title.ilike(search_filter)) | 
+                        (Conversation.description.ilike(search_filter))
+                    )
+
+                total_count = query.count()
+
+                # Sorting
+                sort_col = getattr(Conversation, sort_by, Conversation.updated_at)
+                if sort_order.lower() == "desc":
+                    query = query.order_by(sort_col.desc())
+                else:
+                    query = query.order_by(sort_col.asc())
+
+                # Pagination
+                if limit > 0:
+                    offset = (page - 1) * limit
+                    query = query.offset(offset).limit(limit)
+
+                conversations = query.all()
                 # Detach objects from session to return them
                 session.expunge_all()
-                return conversations
+                return conversations, total_count
         except Exception as e:
             logger.error(f"Error getting conversations: {e}")
             raise
@@ -45,16 +85,29 @@ class ConversationService:
     async def update_conversation(self, conversation_id: str, title: str, description: str, workspace_id: UUID, user_id: UUID) -> Optional[Conversation]:
         try:
             with self.db.get_session() as session:
-                query = session.query(Conversation).filter(Conversation.conversation_id == conversation_id,
-                Conversation.workspace_id == workspace_id,
-                Conversation.user_id == user_id)
+                # Ensure IDs are UUID objects
+                if isinstance(workspace_id, str):
+                    workspace_id = UUID(workspace_id)
+                if isinstance(user_id, str):
+                    user_id = UUID(user_id)
+                if isinstance(conversation_id, str):
+                    conversation_id = UUID(conversation_id)
+
+                query = session.query(Conversation).filter(
+                    Conversation.conversation_id == conversation_id,
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                )
 
                 conversation = query.first()
                 if not conversation:
                     return None
 
-                conversation.title = title
-                conversation.description = description
+                if title:
+                    conversation.title = title
+                if description:
+                    conversation.description = description
+                    
                 session.commit()
                 session.refresh(conversation)
                 session.expunge(conversation)
@@ -66,9 +119,19 @@ class ConversationService:
     async def delete_conversation(self, conversation_id: str, workspace_id: UUID, user_id: UUID) -> bool:
         try:
             with self.db.get_session() as session:
-                query = session.query(Conversation).filter(Conversation.conversation_id == conversation_id,
-                Conversation.workspace_id == workspace_id,
-                Conversation.user_id == user_id)
+                # Ensure IDs are UUID objects
+                if isinstance(workspace_id, str):
+                    workspace_id = UUID(workspace_id)
+                if isinstance(user_id, str):
+                    user_id = UUID(user_id)
+                if isinstance(conversation_id, str):
+                    conversation_id = UUID(conversation_id)
+
+                query = session.query(Conversation).filter(
+                    Conversation.conversation_id == conversation_id,
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                )
 
                 conversation = query.first()
                 if not conversation:
@@ -84,8 +147,16 @@ class ConversationService:
     async def delete_conversations(self, workspace_id: UUID, user_id: UUID) -> int:
         try:
             with self.db.get_session() as session:
-                query = session.query(Conversation).filter(Conversation.workspace_id == workspace_id,
-                Conversation.user_id == user_id)
+                # Ensure IDs are UUID objects
+                if isinstance(workspace_id, str):
+                    workspace_id = UUID(workspace_id)
+                if isinstance(user_id, str):
+                    user_id = UUID(user_id)
+
+                query = session.query(Conversation).filter(
+                    Conversation.workspace_id == workspace_id,
+                    Conversation.user_id == user_id
+                )
 
                 conversations = query.all()
                 count = len(conversations)

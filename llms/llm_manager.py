@@ -11,6 +11,19 @@ from common.config import LlmConfigs
 class LLMManager:
     """LLM Manager with LangChain integration and external configuration (Singleton)"""
 
+    # Provider registry - maps provider names to their factory methods
+    SUPPORTED_PROVIDERS = {
+        "openai": "_create_openai_provider",
+        "anthropic": "_create_anthropic_provider",
+        "google": "_create_google_provider",
+        "ollama": "_create_ollama_provider",
+        "vllm": "_create_vllm_provider",
+        "sglang": "_create_sglang_provider",
+    }
+    
+    # Local providers that don't require API keys
+    LOCAL_PROVIDERS = {"ollama", "vllm", "sglang"}
+
     _instance = None
     _initialized = False
 
@@ -57,30 +70,26 @@ class LLMManager:
                 logger.warning("No LLM provider configured")
                 return
 
-            # Check API key requirement (Ollama, vLLM, SGLang don't strictly need API key)
-            if provider not in ["ollama", "vllm", "sglang"] and not self.config.api_key:
+            # Check if provider is supported
+            if provider not in self.SUPPORTED_PROVIDERS:
+                available = list(self.SUPPORTED_PROVIDERS.keys())
+                logger.warning(f"Unknown provider: {provider}. Available providers: {available}")
+                return
+
+            # Check API key requirement for cloud providers
+            if provider not in self.LOCAL_PROVIDERS and not self.config.api_key:
                 logger.warning(f"Provider '{provider}' requires API key but none provided")
                 return
 
-            # Initialize provider
-            if provider == "openai":
-                self.providers["openai"] = self._create_openai_provider
-            elif provider == "anthropic":
-                self.providers["anthropic"] = self._create_anthropic_provider
-            elif provider == "google":
-                self.providers["google"] = self._create_google_provider
-            elif provider == "ollama":
-                self.providers["ollama"] = self._create_ollama_provider
-            elif provider == "vllm":
-                self.providers["vllm"] = self._create_vllm_provider
-            elif provider == "sglang":
-                self.providers["sglang"] = self._create_sglang_provider
-            else:
-                logger.warning(f"Unknown provider: {provider}")
-                return
+            # Initialize provider using registry
+            factory_method_name = self.SUPPORTED_PROVIDERS[provider]
+            factory_method = getattr(self, factory_method_name)
+            self.providers[provider] = factory_method
 
             if not self.providers:
                 logger.warning("No LLM providers available. Check configurations.")
+            else:
+                logger.info(f"LLM Provider initialized: {provider}")
 
         except Exception as e:
             logger.error(f"Error initializing LLM providers: {e}")
