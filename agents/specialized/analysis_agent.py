@@ -13,7 +13,7 @@ from agents.core import BaseAgent, AgentRole, AgentType
 from common.logger import logger
 from common.config import configs
 from common.types import QuestionType
-from llms import llm_manager
+from llms import LLMManager
 from llms.prompts import AnalysisAgentPrompts
 from tools.mcp_client import MCPManager
 from data.database import postgres_db
@@ -39,7 +39,9 @@ class AnalysisAgent(BaseAgent):
         self.session = db_session
         self.workspace_id = workspace_id
         self.user_id = user_id
-        self.llm = llm_manager.get_llm()
+        
+        llm_config = kwargs.get('llm_config', {})
+        self.llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id, **llm_config)
 
         if workspace_id and user_id:
             self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
@@ -60,7 +62,7 @@ class AnalysisAgent(BaseAgent):
 
             return {"success": False, "error": f"Unknown action: {action}"}
         except Exception as e:
-            logger.error(f"Task execution failed: {e}", exc_info=True)
+            logger.error("Task execution failed: {}", e)
             return {"success": False, "error": str(e)}
 
     async def execute_task_streaming(self, task: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
@@ -83,17 +85,14 @@ class AnalysisAgent(BaseAgent):
                 yield {"type": "error", "error": f"Unknown action: {action}", "agent": self.name}
 
         except Exception as e:
-            error_details = traceback.format_exc()
-            # Use f-string formatting to avoid various logger issues
-            logger.error(f"Streaming task execution failed: {str(e)}", exc_info=True)
-            logger.error(f"Error details: {error_details}")
+            logger.error("Streaming task execution failed: {}", e)
             
-            error_message = str(e) if str(e) else "Unknown error occurred during task execution"
+            error_message = self._get_friendly_error_message(e)
             
             yield {
                 "type": "error", 
                 "error": error_message,
-                "error_type": "TaskExecutionError",
+                "error_type": type(e).__name__,
                 "error_message": f"Failed to execute task: {error_message}",
                 "agent": self.name,
                 "recoverable": True,
@@ -271,12 +270,10 @@ class AnalysisAgent(BaseAgent):
             yield {"type": "result_data", "data": final_data}
 
         except Exception as e:
-            error_details = traceback.format_exc()
-            logger.error(f"MCP fetch streaming error: {str(e)}", exc_info=True)
-            logger.error(f"Error details: {error_details}")
+            logger.error("MCP fetch streaming error: {}", e)
             
             # Provide user-friendly error message
-            error_message = str(e) if str(e) else "Unknown error occurred while fetching MCP data"
+            error_message = self._get_friendly_error_message(e)
             
             yield {
                 "type": "error", 
@@ -361,7 +358,7 @@ class AnalysisAgent(BaseAgent):
             }
 
         except Exception as e:
-            logger.error(f"MCP fetch error: {e}", exc_info=True)
+            logger.exception("MCP fetch error")
             return None
 
     async def _classify_and_select_tool_combined(self, question: str, all_tools: Dict) -> Optional[Dict]:
@@ -391,23 +388,23 @@ You MUST respond with valid JSON containing exactly these fields:
 
             required_fields = ["server", "tool", "args", "question_type", "reasoning"]
             if not all(key in result for key in required_fields):
-                logger.error(f"Missing required fields in JSON: {result}")
+                logger.error("Missing required fields in JSON: {}", result)
                 return None
 
             try:
                 question_type_str = result["question_type"]
                 result["question_type"] = QuestionType.from_string(question_type_str)
             except ValueError as e:
-                logger.error(f"Invalid question_type '{result.get('question_type')}': {e}")
+                logger.error("Invalid question_type '{}': {}", result.get('question_type'), e)
                 result["question_type"] = QuestionType.SECURITY_RELATED
                 logger.warning(f"Defaulting to {QuestionType.SECURITY_RELATED.value}")
 
             return result
 
         except Exception as e:
-            # Use f-string for correct log formatting with loguru
-            logger.error(f"LLM combined classification and tool selection failed: {e}", exc_info=True)
-            return None
+            logger.error("LLM combined classification and tool selection failed: {}", e)
+            # Re-raise to be caught by the caller who can handle friendly error messages
+            raise e
 
     def _ensure_question_type_enum(self, question_type: Any) -> QuestionType:
         """Convert question_type to QuestionType enum"""
@@ -474,11 +471,11 @@ You MUST respond with valid JSON containing exactly these fields:
         try:
             return self.llm.invoke(prompt).content.strip()
         except Exception as e:
-            logger.error(f"Failed to generate analysis: {e}", exc_info=True)
+            logger.exception("Failed to generate analysis")
             if scan_data:
                 stats = scan_data.get("stats", {})
                 return f"Analysis data retrieved:\n\n{json.dumps(stats, indent=2)[:500]}"
-            return "This workspace currently has no security scan data. Please run a security scan first."
+            return f"Error during analysis: {self._get_friendly_error_message(e)}"
 
     async def _buffer_llm_chunks(
         self,
@@ -520,10 +517,23 @@ You MUST respond with valid JSON containing exactly these fields:
             async for buffered_text in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
                 yield {"type": "delta", "text": buffered_text, "agent": self.name}
         except Exception as e:
-            # Use f-string formatting
-            logger.error(f"Failed to stream analysis: {str(e)}", exc_info=True)
+            logger.error("Failed to stream analysis: {}", e)
+            error_message = self._get_friendly_error_message(e)
+            
             if scan_data:
                 stats = scan_data.get("stats", {})
-                yield {"type": "delta", "text": f"\n\nAnalysis data:\n{json.dumps(stats, indent=2)[:500]}", "agent": self.name}
+                yield {"type": "delta", "text": f"\n\n**Error during analysis:** {error_message}\n\nAnalysis data:\n{json.dumps(stats, indent=2)[:500]}", "agent": self.name}
             else:
-                yield {"type": "delta", "text": "This workspace currently has no security scan data. Please run a security scan first.", "agent": self.name}
+                yield {"type": "delta", "text": f"\n\n**Error:** {error_message}", "agent": self.name}
+            
+            # Also yield an error event
+            yield {
+                "type": "error",
+                "error": error_message,
+                "agent": self.name
+            }
+
+    def _get_friendly_error_message(self, e: Exception) -> str:
+        """Categorize error and return a user-friendly message"""
+        return LLMManager.get_friendly_error_message(e)
+

@@ -4,6 +4,7 @@ from .conversation_servicer import ConversationServicer
 from .message_servicer import MessageServiceServicer
 from .mcp_server_servicer import MCPServerServiceServicer
 from .issue_servicer import IssueServicer
+from .llm_config_servicer import LLMConfigServiceServicer
 
 __all__ = [
     "HealthCheckServicer",
@@ -12,4 +13,5 @@ __all__ = [
     "MessageServiceServicer",
     "MCPServerServiceServicer",
     "IssueServicer",
+    "LLMConfigServiceServicer",
 ]

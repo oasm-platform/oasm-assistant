@@ -11,7 +11,7 @@ from common.logger import logger
 from common.config import configs
 from agents.specialized import AnalysisAgent, OrchestrationAgent, NucleiGeneratorAgent
 from agents.core.memory import STMCheckpointer
-from llms import llm_manager
+from llms import LLMManager
 from langchain_core.output_parsers import JsonOutputParser
 from llms.prompts import SecurityCoordinatorPrompts
 import uuid
@@ -39,11 +39,13 @@ class SecurityCoordinator:
         self,
         db_session: Optional[Any] = None,
         workspace_id: Optional[Any] = None,
-        user_id: Optional[Any] = None
+        user_id: Optional[Any] = None,
+        llm_config: Optional[Dict[str, Any]] = None
     ):
         self.db_session = db_session
         self.workspace_id = workspace_id
         self.user_id = user_id
+        self.llm_config = llm_config or {}
         self.available_agents = {
             "analysis": AnalysisAgent,
             "orchestration": OrchestrationAgent,
@@ -51,9 +53,10 @@ class SecurityCoordinator:
         }
         self.workflow_graph = self._build_workflow_graph()
         logger.debug(
-            f"SecurityCoordinator initialized "
-            f"(DB: {'enabled' if db_session else 'disabled'}, "
-            f"MCP: workspace={workspace_id}, user={user_id})"
+            "SecurityCoordinator initialized (DB: {}, MCP: workspace={}, user={})",
+            "enabled" if db_session else "disabled",
+            workspace_id,
+            user_id
         )
 
     def _build_workflow_graph(self) -> StateGraph:
@@ -83,7 +86,7 @@ class SecurityCoordinator:
         workflow.add_edge("result_formatter", END)
         
         # Initialize checkpointer
-        checkpointer = STMCheckpointer()
+        checkpointer = STMCheckpointer(workspace_id=self.workspace_id, user_id=self.user_id)
 
         return workflow.compile(checkpointer=checkpointer)
 
@@ -122,7 +125,7 @@ class SecurityCoordinator:
             }
 
         except Exception as e:
-            logger.error(f"Workflow execution failed: {e}")
+            logger.error("Workflow execution failed: {}", e)
             return {
                 "success": False,
                 "error": str(e),
@@ -160,10 +163,11 @@ class SecurityCoordinator:
                 agent = agent_class(
                     db_session=self.db_session,
                     workspace_id=self.workspace_id,
-                    user_id=self.user_id
+                    user_id=self.user_id,
+                    llm_config=self.llm_config
                 )
             else:
-                agent = agent_class()
+                agent = agent_class(llm_config=self.llm_config)
 
             # Prepare task payload
             # STM (Short Term Memory): Use sliding window defined in configs
@@ -197,7 +201,7 @@ class SecurityCoordinator:
             logger.info(f"{agent_key} agent completed")
 
         except Exception as e:
-            logger.error(f"{agent_key} agent failed: {e}")
+            logger.error("{} agent failed: {}", agent_key, e)
             state["error"] = f"{agent_key} agent failed: {e}"
 
         return state
@@ -215,7 +219,7 @@ class SecurityCoordinator:
             }
             logger.info(f"Results formatted for {len(state['agent_results'])} agents")
         except Exception as e:
-            logger.error(f"Result formatting failed: {e}")
+            logger.error("Result formatting failed: {}", e)
             state["error"] = f"Result formatting failed: {e}"
 
         return state
@@ -254,7 +258,7 @@ class SecurityCoordinator:
                 chat_history.extend(window_history)
                     
         except Exception as e:
-            logger.error(f"Failed to retrieve chat history from memory: {e}")
+            logger.error("Failed to retrieve chat history from memory: {}", e)
             
         return chat_history
 
@@ -322,7 +326,7 @@ class SecurityCoordinator:
                 )
                 
         except Exception as e:
-            logger.error(f"Failed to update memory: {e}", exc_info=True)
+            logger.error("Failed to update memory: {}", e)
 
     def process_message_question(self, question: str) -> str:
         """Process question and return formatted response (sync)"""
@@ -345,13 +349,13 @@ class SecurityCoordinator:
             return f"I encountered difficulties processing your request: {result.get('error', 'Unknown error')}"
         
         except Exception as e:
-            logger.error(f"Coordination error: {e}")
+            logger.error("Coordination error: {}", e)
             return f"I'm experiencing technical difficulties: {str(e)}"
 
     async def _identify_intent_and_route(self, question: str) -> str:
         """Identify user intent and route to the appropriate agent logic"""
         try:
-            llm = llm_manager.get_llm()
+            llm = LLMManager.get_llm(workspace_id=self.workspace_id, user_id=self.user_id)
             parser = JsonOutputParser()
             prompt = SecurityCoordinatorPrompts.get_routing_prompt(question)
             
@@ -369,7 +373,7 @@ class SecurityCoordinator:
             return selected_agent
             
         except Exception as e:
-            logger.error(f"Routing failed, defaulting to analysis: {e}")
+            logger.error("Routing failed, defaulting to analysis: {}", e)
             return "analysis"
 
     async def process_message_question_streaming(
@@ -422,7 +426,8 @@ class SecurityCoordinator:
             agent = agent_class(
                 db_session=self.db_session,
                 workspace_id=self.workspace_id,
-                user_id=self.user_id
+                user_id=self.user_id,
+                llm_config=self.llm_config
             )
 
             # Chat history is now handled by LangGraph state + conversation_id checkpointer
@@ -450,7 +455,7 @@ class SecurityCoordinator:
                 yield event
 
         except Exception as e:
-            logger.error(f"Streaming coordination error: {e}", exc_info=True)
+            logger.error("Streaming coordination error: {}", e)
             yield {
                 "type": "error",
                 "error_type": "StreamingCoordinationError",

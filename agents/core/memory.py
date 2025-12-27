@@ -15,7 +15,7 @@ from common.logger import logger
 from data.database.models import STM
 from data.database import postgres_db
 from common.config import configs
-from llms import llm_manager
+from llms import LLMManager
 from llms.prompts.memory_prompts import MemoryPrompts
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 import asyncio
@@ -27,9 +27,11 @@ class STMCheckpointer(BaseCheckpointSaver):
     """
     Persist LangGraph state to PostgreSQL database.
     """
-    def __init__(self, serde=None):
+    def __init__(self, serde=None, workspace_id=None, user_id=None):
         super().__init__(serde=serde)
         self.db = postgres_db
+        self.workspace_id = workspace_id
+        self.user_id = user_id
 
     @staticmethod
     def get_chat_history_window(messages: list) -> list[dict]:
@@ -95,7 +97,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                     parent_config=parent_config,
                 )
         except Exception as e:
-            logger.error(f"Error reading checkpoint: {e}")
+            logger.error("Error reading checkpoint: {}", e)
             return None
 
     def list(
@@ -141,12 +143,12 @@ class STMCheckpointer(BaseCheckpointSaver):
                 conversation_text += f"{role}: {msg.content}\n"
             
             prompt = MemoryPrompts.get_conversation_summary_prompt(current_summary, conversation_text)
-            llm = llm_manager.get_llm()
+            llm = LLMManager.get_llm(workspace_id=self.workspace_id, user_id=self.user_id)
             # Use invoke for sync call
             summary = llm.invoke(prompt)
             return summary.content.strip()
         except Exception as e:
-            logger.error(f"STM Summarization failed: {e}")
+            logger.error("STM Summarization failed: {}", e)
             return current_summary
 
     def put(
@@ -219,7 +221,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                     redis_client.set(redis_key, 0, ex=86400)
                     
             except Exception as e:
-                logger.error(f"STM Logic Error: {e}")
+                logger.error("STM Logic Error: {}", e)
                 
             # Serialize for JSONB storage (hex-encoded binary)
             type_, data_bytes = self.serde.dumps_typed(checkpoint)
@@ -253,7 +255,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                 session.commit()
                 
         except Exception as e:
-            logger.error(f"Error saving checkpoint: {e}", exc_info=True)
+            logger.error("Error saving checkpoint: {}", e)
 
         return {
             "configurable": {

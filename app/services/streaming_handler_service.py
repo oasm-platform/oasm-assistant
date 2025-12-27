@@ -37,7 +37,7 @@ class StreamingMessageHandler:
                 updated_at=datetime.utcnow().isoformat()
             )
         except Exception as e:
-            logger.error(f"Error creating message: {e}")
+            logger.error("Error creating message: {}", e)
             raise
 
     def message_start(self) -> assistant_pb2.Message:
@@ -393,7 +393,7 @@ class StreamingResponseBuilder:
             yield handler.done(final_status="success")
 
         except Exception as e:
-            logger.error(f"Error in streaming response: {e}", exc_info=True)
+            logger.error("Error in streaming response: {}", e)
             # Send error message
             yield handler.error(
                 error_type="StreamingError",

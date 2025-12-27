@@ -7,11 +7,14 @@ from datetime import datetime
 
 from data.database import postgres_db as database_instance
 from common.logger import logger
-from data.database.models import Message, Conversation
+from data.database.models import Message, Conversation, LLMConfig
 from agents.workflows.security_coordinator import SecurityCoordinator
 from app.services.conversation_service import ConversationService
+from llms import LLMManager
 from data.embeddings import embeddings_manager
 from app.services.streaming_handler_service import StreamingResponseBuilder, StreamingMessageHandler
+from common.config.constants import OASM_MODELS
+from common.config import configs
 
 class MessageService:
     """Message service with OASM security agent integration"""
@@ -33,7 +36,7 @@ class MessageService:
                 session.expunge_all()
                 return messages
         except Exception as e:
-            logger.error(f"Error getting messages: {e}")
+            logger.error("Error getting messages: {}", e)
             raise
 
     async def create_message_stream(
@@ -43,7 +46,10 @@ class MessageService:
         question: str, 
         conversation_id: Optional[str] = None, 
         is_create_conversation: bool = False,
-        agent_type: int = 0
+        agent_type: int = 0,
+        model: str = "",
+        provider: str = "",
+        api_key: str = ""
     ):
         """Yields tuple (stream_message, conversation_obj)"""
         # Generate message_id
@@ -67,7 +73,9 @@ class MessageService:
                 conversation_id = str(conversation.conversation_id)
 
                 asyncio.create_task(
-                    self.conversation_service.update_conversation_title_async(conversation_id, question)
+                    self.conversation_service.update_conversation_title_async(
+                        conversation_id, question, workspace_id=workspace_id, user_id=user_id
+                    )
                 )
             else:
                 conversation = session.query(Conversation).filter(
@@ -88,11 +96,21 @@ class MessageService:
                 "created_at": conversation.created_at,
                 "updated_at": conversation.updated_at
             }
+            
+            # Determine LLM configuration
+            llm_config = LLMManager.resolve_llm_config(
+                provider=provider,
+                model=model,
+                api_key=api_key,
+                workspace_id=workspace_id,
+                user_id=user_id
+            )
 
             coordinator = SecurityCoordinator(
                 db_session=session,
                 workspace_id=workspace_id,
-                user_id=user_id
+                user_id=user_id,
+                llm_config=llm_config
             )
 
             try:
@@ -134,13 +152,13 @@ class MessageService:
                 )
                 session.add(message)
                 session.commit()
-                logger.debug(f"Message {message.message_id} created and saved to database")
+                logger.debug("Message {} created and saved to database", message.message_id)
                 
                 # Update LangGraph memory
                 await coordinator.update_memory(conversation_id, question, answer)
 
             except Exception as agent_error:
-                logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
+                logger.error("Security agent processing failed: {}", agent_error)
                 # Stream error response
                 handler = StreamingMessageHandler(message_id, conversation_id, question)
                 
@@ -149,7 +167,7 @@ class MessageService:
                 yield handler.message_start(), conversation_data
                 yield handler.error(
                     error_type="AgentProcessingError",
-                    error_message=f"I encountered an issue processing your security question: {str(agent_error)[:200]}",
+                    error_message=LLMManager.get_friendly_error_message(agent_error),
                     agent="MessageService",
                     recoverable=True,
                     retry_suggested=True
@@ -185,10 +203,16 @@ class MessageService:
 
             if old_question.strip() != new_question.strip():
                 # Regenerate
+                llm_config = LLMManager.resolve_llm_config(
+                    workspace_id=workspace_id,
+                    user_id=user_id
+                )
+
                 coordinator = SecurityCoordinator(
                     db_session=session,
                     workspace_id=workspace_id,
-                    user_id=user_id
+                    user_id=user_id,
+                    llm_config=llm_config
                 )
 
                 # Handled by LangGraph checkpointer in SecurityCoordinator using conversation_id
@@ -227,12 +251,12 @@ class MessageService:
                     await coordinator.update_memory(conversation_id, new_question, new_answer)
 
                 except Exception as agent_error:
-                    logger.error(f"Error during update: {agent_error}")
+                    logger.error("Error during update: {}", agent_error)
                     handler = StreamingMessageHandler(message_id, conversation_id, new_question)
                     yield handler.message_start()
                     yield handler.error(
                          error_type="AgentProcessingError",
-                         error_message=f"Issue: {str(agent_error)[:200]}",
+                         error_message=LLMManager.get_friendly_error_message(agent_error),
                          agent="MessageService",
                          recoverable=True,
                          retry_suggested=True
@@ -268,5 +292,5 @@ class MessageService:
                 session.commit()
                 return True
         except Exception as e:
-            logger.error(f"Error deleting message: {e}")
+            logger.error("Error deleting message: {}", e)
             raise

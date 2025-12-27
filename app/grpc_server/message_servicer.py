@@ -38,7 +38,7 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
             return assistant_pb2.GetMessagesResponse(messages=pb_messages)
 
         except Exception as e:
-            logger.error(f"Error getting messages: {e}")
+            logger.error("Error getting messages: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.GetMessagesResponse(messages=[])
@@ -61,7 +61,10 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 question, 
                 request.conversation_id, 
                 request.is_create_conversation,
-                agent_type=request.agent_type
+                agent_type=request.agent_type,
+                model=request.model,
+                provider=request.provider,
+                api_key=request.api_key
             )
 
             async for stream_message, conversation_data in stream:
@@ -80,7 +83,7 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 )
 
         except Exception as e:
-            logger.error(f"Error in CreateMessage: {e}")
+            logger.error("Error in CreateMessage: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
 
@@ -108,7 +111,7 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 yield assistant_pb2.UpdateMessageResponse(message=stream_message)
 
         except Exception as e:
-            logger.error(f"Error in UpdateMessage: {e}")
+            logger.error("Error in UpdateMessage: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
 
@@ -132,7 +135,7 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
             return assistant_pb2.DeleteMessageResponse(message="Message deleted", success=True)
             
         except Exception as e:
-            logger.error(f"Error deleting message: {e}")
+            logger.error("Error deleting message: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteMessageResponse(message="Error", success=False)
