@@ -16,7 +16,6 @@ from data.database.models import LLMConfig
 class DomainClassifierService:
     def __init__(self):
         # LLM Manager is now a static utility
-        pass
         self.db = postgres_db
         self.crawler = CrawlWeb(
             timeout=configs.crawl_timeout,
@@ -31,13 +30,14 @@ class DomainClassifierService:
         self.json_parser = JsonOutputParser()
 
     def _extract_domain_info(self, domain: str) -> str:
+        """Extract domain from URL or string"""
+        from urllib.parse import urlparse
         domain = domain.lower().strip()
-        if domain.startswith('http'):
-            domain = domain.split('://')[1]
-        if '/' in domain:
-            domain = domain.split('/')[0]
+        if '://' not in domain:
+            domain = 'http://' + domain
         
-        return domain
+        parsed = urlparse(domain)
+        return parsed.netloc or parsed.path.split('/')[0]
 
     async def _classify_with_llm(self, domain: str, content: Optional[str] = None, retry_count: int = 0, workspace_id: Optional[str] = None, user_id: Optional[str] = None) -> List[str]:
         """

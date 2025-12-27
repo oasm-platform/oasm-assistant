@@ -55,7 +55,7 @@ class PostgresDatabase:
             self.retry_delay = retry_delay
             
         except Exception as e:
-            logger.error(f"Failed to initialize database connection: {e}")
+            logger.error("Failed to initialize database connection: {}", e)
             raise
 
     @contextmanager
@@ -83,7 +83,7 @@ class PostgresDatabase:
             is_healthy = result == 1
             return is_healthy
         except Exception as e:
-            logger.error(f"Failed to execute health_check: {e}")
+            logger.error("Failed to execute health_check: {}", e)
             return False
     
     def _create_tables(self):
@@ -99,7 +99,7 @@ class PostgresDatabase:
                 session.commit()
             logger.debug("Successfully ran database migrations (CREATE EXTENSION vector).")
         except Exception as e:
-            logger.warning(f"Could not run database migrations: {e}. This might be fine if the user does not have superuser privileges.")
+            logger.warning("Could not run database migrations: {}. This might be fine if the user does not have superuser privileges.", e)
 
     def close(self):
         """Close all connections and dispose engine"""

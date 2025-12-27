@@ -12,7 +12,6 @@ class IssueService:
 
     def __init__(self):
         # LLM Manager is now a static utility
-        pass
         self.db = postgres_db
 
     async def resolve_issue(

@@ -273,7 +273,7 @@ class AnalysisAgent(BaseAgent):
             logger.error("MCP fetch streaming error: {}", e)
             
             # Provide user-friendly error message
-            error_message = self._get_friendly_error_message(e)
+            error_message = LLMManager.get_friendly_error_message(e)
             
             yield {
                 "type": "error", 
@@ -358,7 +358,7 @@ class AnalysisAgent(BaseAgent):
             }
 
         except Exception as e:
-            logger.exception("MCP fetch error")
+            logger.error("MCP fetch error: {}", e)
             return None
 
     async def _classify_and_select_tool_combined(self, question: str, all_tools: Dict) -> Optional[Dict]:
@@ -471,7 +471,7 @@ You MUST respond with valid JSON containing exactly these fields:
         try:
             return self.llm.invoke(prompt).content.strip()
         except Exception as e:
-            logger.exception("Failed to generate analysis")
+            logger.error("Failed to generate analysis: {}", e)
             if scan_data:
                 stats = scan_data.get("stats", {})
                 return f"Analysis data retrieved:\n\n{json.dumps(stats, indent=2)[:500]}"
@@ -518,7 +518,7 @@ You MUST respond with valid JSON containing exactly these fields:
                 yield {"type": "delta", "text": buffered_text, "agent": self.name}
         except Exception as e:
             logger.error("Failed to stream analysis: {}", e)
-            error_message = self._get_friendly_error_message(e)
+            error_message = LLMManager.get_friendly_error_message(e)
             
             if scan_data:
                 stats = scan_data.get("stats", {})
@@ -533,7 +533,4 @@ You MUST respond with valid JSON containing exactly these fields:
                 "agent": self.name
             }
 
-    def _get_friendly_error_message(self, e: Exception) -> str:
-        """Categorize error and return a user-friendly message"""
-        return LLMManager.get_friendly_error_message(e)
 

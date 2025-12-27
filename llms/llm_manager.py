@@ -69,38 +69,26 @@ class LLMManager:
         if workspace_id and user_id:
             try:
                 from data.database.models import LLMConfig
+                from data.database import postgres_db
+                from contextlib import nullcontext
                 
-                def _get_query(s):
-                    return s.query(LLMConfig).filter(
+                # Use provided session or create a new one
+                session_cm = nullcontext(db_session) if db_session and hasattr(db_session, 'query') else postgres_db.get_session()
+                
+                with session_cm as s:
+                    config_obj = s.query(LLMConfig).filter(
                         LLMConfig.workspace_id == workspace_id,
                         LLMConfig.user_id == user_id,
                         LLMConfig.is_preferred == True
-                    )
-
-                config_data = None
-                # Check if we have a valid session object with .query() method
-                if db_session and hasattr(db_session, 'query'):
-                    config_obj = _get_query(db_session).first()
+                    ).first()
+                    
                     if config_obj:
-                        config_data = {
+                        logger.debug("✓ Using preferred LLM config: {}/{} for user {}", config_obj.provider, config_obj.model, user_id)
+                        return {
                             "provider": config_obj.provider,
                             "model": config_obj.model,
                             "api_key": config_obj.api_key
                         }
-                else:
-                    # Otherwise open a new session and extract data immediately
-                    with postgres_db.get_session() as s:
-                        config_obj = _get_query(s).first()
-                        if config_obj:
-                            config_data = {
-                                "provider": config_obj.provider,
-                                "model": config_obj.model,
-                                "api_key": config_obj.api_key
-                            }
-
-                if config_data:
-                    logger.debug(f"✓ Using preferred LLM config: {config_data['provider']}/{config_data['model']} for user {user_id}")
-                    return config_data
             except Exception as e:
                 logger.error("Error fetching preferred LLM config from DB: {}", e)
 

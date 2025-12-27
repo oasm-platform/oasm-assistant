@@ -284,90 +284,75 @@ class StreamingResponseBuilder:
             # Send message_start
             yield handler.message_start()
 
+            # Mapping for event handlers
+            event_mapping = {
+                "thinking": lambda e: handler.thinking(
+                    agent=e.get("agent", ""),
+                    thought=e.get("thought", ""),
+                    roadmap=e.get("roadmap"),
+                    context=e.get("context")
+                ),
+                "tool_start": lambda e: handler.tool_start(
+                    tool_name=e.get("tool_name", ""),
+                    tool_description=e.get("tool_description", ""),
+                    parameters=e.get("parameters", {}),
+                    agent=e.get("agent", "")
+                ),
+                "tool_output": lambda e: handler.tool_output(
+                    tool_name=e.get("tool_name", ""),
+                    status=e.get("status", "success"),
+                    agent=e.get("agent", ""),
+                    output=e.get("output"),
+                    error=e.get("error"),
+                    execution_time_ms=e.get("execution_time_ms")
+                ),
+                "tool_end": lambda e: handler.tool_end(
+                    tool_name=e.get("tool_name", ""),
+                    agent=e.get("agent", ""),
+                    summary=e.get("summary", ""),
+                    next_action=e.get("next_action")
+                ),
+                "delta": lambda e: handler.delta(
+                    text=e.get("text", ""),
+                    agent=e.get("agent", "")
+                ),
+                "state": lambda e: handler.state(
+                    state_type=e.get("state_type", ""),
+                    agent=e.get("agent", ""),
+                    status=e.get("status", ""),
+                    details=e.get("details", {})
+                ),
+                "error": lambda e: handler.error(
+                    error_type=e.get("error_type", ""),
+                    error_message=e.get("error_message", ""),
+                    agent=e.get("agent", ""),
+                    recoverable=e.get("recoverable", False),
+                    retry_suggested=e.get("retry_suggested", False),
+                    stack_trace=e.get("stack_trace")
+                ),
+                "event": lambda e: handler.event(
+                    event_name=e.get("event_name", ""),
+                    event_data=e.get("event_data", {})
+                )
+            }
+
             # Process events from async generator
             async for event in response_generator:
                 event_type = event.get("type")
-
-                if event_type == "thinking":
-                    yield handler.thinking(
-                        agent=event.get("agent", ""),
-                        thought=event.get("thought", ""),
-                        roadmap=event.get("roadmap"),
-                        context=event.get("context")
-                    )
-
-                elif event_type == "tool_start":
-                    yield handler.tool_start(
-                        tool_name=event.get("tool_name", ""),
-                        tool_description=event.get("tool_description", ""),
-                        parameters=event.get("parameters", {}),
-                        agent=event.get("agent", "")
-                    )
-
-                elif event_type == "tool_output":
-                    yield handler.tool_output(
-                        tool_name=event.get("tool_name", ""),
-                        status=event.get("status", "success"),
-                        agent=event.get("agent", ""),
-                        output=event.get("output"),
-                        error=event.get("error"),
-                        execution_time_ms=event.get("execution_time_ms")
-                    )
-
-                elif event_type == "tool_end":
-                    yield handler.tool_end(
-                        tool_name=event.get("tool_name", ""),
-                        agent=event.get("agent", ""),
-                        summary=event.get("summary", ""),
-                        next_action=event.get("next_action")
-                    )
-
-                elif event_type == "delta":
-                    yield handler.delta(
-                        text=event.get("text", ""),
-                        agent=event.get("agent", "")
-                    )
-
-                elif event_type == "state":
-                    yield handler.state(
-                        state_type=event.get("state_type", ""),
-                        agent=event.get("agent", ""),
-                        status=event.get("status", ""),
-                        details=event.get("details", {})
-                    )
-
-                elif event_type == "error":
-                    yield handler.error(
-                        error_type=event.get("error_type", ""),
-                        error_message=event.get("error_message", ""),
-                        agent=event.get("agent", ""),
-                        recoverable=event.get("recoverable", False),
-                        retry_suggested=event.get("retry_suggested", False),
-                        stack_trace=event.get("stack_trace")
-                    )
-
+                
+                if event_type in event_mapping:
+                    yield event_mapping[event_type](event)
+                
                 elif event_type == "result":
                     data = event.get("data", {})
                     response_text = ""
                     
-                    # Check for explicit content keys
                     if isinstance(data, dict):
-                        if "response" in data:
-                            response_text = str(data["response"])
-                        elif "answer" in data:
-                             response_text = str(data["answer"])
-                        elif "message" in data:
-                             response_text = str(data["message"])
-                        # Check for metadata keys that should NOT be displayed as text
-                        elif any(k in data for k in ["success", "has_data", "data_source", "stats", "orchestration"]):
-                            # This is likely internal metadata/control plane data
-                            # Do NOT stream this as text delta to the user
-                            response_text = ""
-                        else:
-                             # For unknown dicts, maybe dump? Or better to hide to be safe.
-                             # Let's hide it to avoid confusing users with raw JSON unless we are sure.
-                             # response_text = json.dumps(data, indent=2)
-                             pass
+                        # Extract prioritized content fields
+                        for key in ["response", "answer", "message"]:
+                            if key in data:
+                                response_text = str(data[key])
+                                break
                     else:
                         response_text = str(data)
                         
@@ -376,12 +361,6 @@ class StreamingResponseBuilder:
                             text=response_text,
                             agent=event.get("agent", "")
                         )
-
-                elif event_type == "event":
-                    yield handler.event(
-                        event_name=event.get("event_name", ""),
-                        event_data=event.get("event_data", {})
-                    )
 
             # Send message_end
             yield handler.message_end(
