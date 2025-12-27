@@ -6,6 +6,7 @@ import re
 from typing import Optional, List, Dict
 import time
 import unicodedata
+import json
 
 
 class CrawlWeb:
@@ -296,7 +297,6 @@ class CrawlWeb:
             metadata['schema_types'] = []
             for script in json_ld_scripts[:3]:  # Limit to first 3
                 try:
-                    import json
                     data = json.loads(script.string)
                     if isinstance(data, dict) and '@type' in data:
                         metadata['schema_types'].append(data['@type'])

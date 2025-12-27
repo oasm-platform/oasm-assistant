@@ -25,7 +25,7 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
                 updated_at=str(conv_dict.get('updated_at', '')) if conv_dict.get('updated_at') else ''
             )
         except Exception as e:
-            logger.error(f"Error converting conversation to proto: {e}", exc_info=True)
+            logger.error("Error converting conversation to proto: {}", e)
             return assistant_pb2.Conversation(
                 conversation_id='', title='', description='', created_at='', updated_at=''
             )
@@ -58,7 +58,7 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
             )
 
         except Exception as e:
-            logger.error(f"Error getting conversations: {e}")
+            logger.error("Error getting conversations: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.GetConversationsResponse()
@@ -84,7 +84,7 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
             return assistant_pb2.UpdateConversationResponse(conversation=self._conversation_to_proto(conversation))
 
         except Exception as e:
-            logger.error(f"Error updating conversation: {e}")
+            logger.error("Error updating conversation: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.UpdateConversationResponse()
@@ -106,7 +106,7 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
             return assistant_pb2.DeleteConversationResponse(message="Conversation deleted", success=True)
 
         except Exception as e:
-            logger.error(f"Error deleting conversation: {e}")
+            logger.error("Error deleting conversation: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteConversationResponse(message=str(e), success=False)
@@ -121,7 +121,7 @@ class ConversationServicer(assistant_pb2_grpc.ConversationServiceServicer):
             return assistant_pb2.DeleteConversationsResponse(message=f"Deleted {count} conversations", success=True)
 
         except Exception as e:
-            logger.error(f"Error deleting conversations: {e}")
+            logger.error("Error deleting conversations: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteConversationsResponse(message=str(e), success=False)

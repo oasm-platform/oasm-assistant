@@ -32,7 +32,7 @@ class AgentEnvironment:
             "status": "active"
         }
         self.environmental_state["active_threats"].append(threat_entry)
-        logger.warning(f"Threat added to environment: {threat_data.get('type', 'unknown')}")
+        logger.warning("Threat added to environment: {}", threat_data.get('type', 'unknown'))
 
     def add_security_event(self, event_data: Dict[str, Any]):
         """Add security event to environment"""

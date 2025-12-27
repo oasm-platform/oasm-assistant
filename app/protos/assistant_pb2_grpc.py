@@ -106,6 +106,259 @@ class HealthCheck(object):
             _registered_method=True)
 
 
+class LLMConfigServiceStub(object):
+    """----------------
+    LLM Configuration (BYOK)
+    ----------------
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetLLMConfigs = channel.unary_unary(
+                '/app.LLMConfigService/GetLLMConfigs',
+                request_serializer=app_dot_protos_dot_assistant__pb2.GetLLMConfigsRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.GetLLMConfigsResponse.FromString,
+                _registered_method=True)
+        self.UpdateLLMConfig = channel.unary_unary(
+                '/app.LLMConfigService/UpdateLLMConfig',
+                request_serializer=app_dot_protos_dot_assistant__pb2.UpdateLLMConfigRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.UpdateLLMConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteLLMConfig = channel.unary_unary(
+                '/app.LLMConfigService/DeleteLLMConfig',
+                request_serializer=app_dot_protos_dot_assistant__pb2.DeleteLLMConfigRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.DeleteLLMConfigResponse.FromString,
+                _registered_method=True)
+        self.SetPreferredLLMConfig = channel.unary_unary(
+                '/app.LLMConfigService/SetPreferredLLMConfig',
+                request_serializer=app_dot_protos_dot_assistant__pb2.SetPreferredLLMConfigRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.SetPreferredLLMConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAvailableModels = channel.unary_unary(
+                '/app.LLMConfigService/GetAvailableModels',
+                request_serializer=app_dot_protos_dot_assistant__pb2.GetAvailableModelsRequest.SerializeToString,
+                response_deserializer=app_dot_protos_dot_assistant__pb2.GetAvailableModelsResponse.FromString,
+                _registered_method=True)
+
+
+class LLMConfigServiceServicer(object):
+    """----------------
+    LLM Configuration (BYOK)
+    ----------------
+    """
+
+    def GetLLMConfigs(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateLLMConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteLLMConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetPreferredLLMConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAvailableModels(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_LLMConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetLLMConfigs': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLLMConfigs,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetLLMConfigsRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.GetLLMConfigsResponse.SerializeToString,
+            ),
+            'UpdateLLMConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateLLMConfig,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.UpdateLLMConfigRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.UpdateLLMConfigResponse.SerializeToString,
+            ),
+            'DeleteLLMConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteLLMConfig,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.DeleteLLMConfigRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.DeleteLLMConfigResponse.SerializeToString,
+            ),
+            'SetPreferredLLMConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetPreferredLLMConfig,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.SetPreferredLLMConfigRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.SetPreferredLLMConfigResponse.SerializeToString,
+            ),
+            'GetAvailableModels': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAvailableModels,
+                    request_deserializer=app_dot_protos_dot_assistant__pb2.GetAvailableModelsRequest.FromString,
+                    response_serializer=app_dot_protos_dot_assistant__pb2.GetAvailableModelsResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'app.LLMConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('app.LLMConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class LLMConfigService(object):
+    """----------------
+    LLM Configuration (BYOK)
+    ----------------
+    """
+
+    @staticmethod
+    def GetLLMConfigs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.LLMConfigService/GetLLMConfigs',
+            app_dot_protos_dot_assistant__pb2.GetLLMConfigsRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.GetLLMConfigsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateLLMConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.LLMConfigService/UpdateLLMConfig',
+            app_dot_protos_dot_assistant__pb2.UpdateLLMConfigRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.UpdateLLMConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteLLMConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.LLMConfigService/DeleteLLMConfig',
+            app_dot_protos_dot_assistant__pb2.DeleteLLMConfigRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.DeleteLLMConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetPreferredLLMConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.LLMConfigService/SetPreferredLLMConfig',
+            app_dot_protos_dot_assistant__pb2.SetPreferredLLMConfigRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.SetPreferredLLMConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAvailableModels(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/app.LLMConfigService/GetAvailableModels',
+            app_dot_protos_dot_assistant__pb2.GetAvailableModelsRequest.SerializeToString,
+            app_dot_protos_dot_assistant__pb2.GetAvailableModelsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
 class DomainClassifyStub(object):
     """----------------
     Domain Classify

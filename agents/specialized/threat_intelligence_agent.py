@@ -64,5 +64,5 @@ class ThreatIntelligenceAgent(BaseAgent):
             return {"success": False, "error": f"Unknown action: {action}"}
 
         except Exception as e:
-            logger.error(f"Threat intelligence task failed: {e}")
+            logger.error("Threat intelligence task failed: {}", e)
             return {"success": False, "error": str(e)}

@@ -39,11 +39,14 @@ class OrchestrationAgent(BaseAgent):
         self.user_id = user_id
         self.analysis_agent = None
         
+        llm_config = kwargs.get('llm_config', {})
+        
         if db_session:
             self.analysis_agent = AnalysisAgent(
                 db_session=db_session,
                 workspace_id=workspace_id,
-                user_id=user_id
+                user_id=user_id,
+                llm_config=llm_config
             )
             logger.debug(f"OrchestrationAgent initialized with {'full' if workspace_id and user_id else 'partial'} MCP context")
 
@@ -90,5 +93,5 @@ class OrchestrationAgent(BaseAgent):
             return {"success": False, "error": f"Unknown action: {action}"}
 
         except Exception as e:
-            logger.error(f"Orchestration task failed: {e}", exc_info=True)
+            logger.error("Orchestration task failed: {}", e)
             return {"success": False, "error": str(e)}

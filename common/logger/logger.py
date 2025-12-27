@@ -13,8 +13,8 @@ def setup_logging():
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
         level="DEBUG",
         colorize=True,
-        backtrace=True,
-        diagnose=True,
+        backtrace=False,
+        diagnose=False,
     )
 
     # Disable noisy third-party loggers by setting their level to WARNING

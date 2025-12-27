@@ -10,7 +10,7 @@ import traceback
 from agents.core import BaseAgent, AgentRole, AgentType, AgentCapability
 from common.logger import logger
 from common.config import configs
-from llms import llm_manager
+from llms import LLMManager
 from llms.prompts.nuclei_generator_agent_prompts import NucleiGenerationPrompts
 from langchain_core.messages import BaseMessage
 from data.database import postgres_db
@@ -42,7 +42,8 @@ class NucleiGeneratorAgent(BaseAgent):
         self.session = db_session
         self.workspace_id = workspace_id
         self.user_id = user_id
-        self.llm = llm_manager.get_llm()
+        llm_config = kwargs.get('llm_config', {})
+        self.llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id, **llm_config)
 
     def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute task synchronously"""
@@ -50,7 +51,7 @@ class NucleiGeneratorAgent(BaseAgent):
             question = task.get("question", "")
             return asyncio.run(self.generate_template(question))
         except Exception as e:
-            logger.error(f"Nuclei generation failed: {e}", exc_info=True)
+            logger.error("Nuclei generation failed: {}", e)
             return {"success": False, "error": str(e)}
 
     async def execute_task_streaming(self, task: Dict[str, Any]) -> AsyncGenerator[Dict[str, Any], None]:
@@ -68,8 +69,7 @@ class NucleiGeneratorAgent(BaseAgent):
                 yield event
 
         except Exception as e:
-            error_details = traceback.format_exc()
-            logger.error("Streaming template generation failed: %s", str(e), exc_info=True)
+            logger.error("Streaming template generation failed: {}", e)
             yield {
                 "type": "error",
                 "error": str(e),
@@ -118,7 +118,7 @@ class NucleiGeneratorAgent(BaseAgent):
             return await loop.run_in_executor(None, _query_db)
                 
         except Exception as e:
-            logger.error(f"Failed to retrieve similar templates: {e}")
+            logger.error("Failed to retrieve similar templates: {}", e)
             return ""
 
     async def generate_template(self, question: str) -> Dict[str, Any]:
@@ -174,6 +174,6 @@ class NucleiGeneratorAgent(BaseAgent):
                 yield {"type": "delta", "text": buffer, "agent": self.name}
                 
         except Exception as e:
-             logger.error(f"Failed to stream template generation: {e}", exc_info=True)
+             logger.error("Failed to stream template generation: {}", e)
              yield {"type": "error", "error": str(e), "agent": self.name}
 

@@ -46,14 +46,14 @@ class AgentState:
         old_status = self.status
         self.status = new_status
         self.last_update = datetime.now()
-        logger.info(f"Agent status updated from {old_status.value} to {new_status.value}")
+        logger.info("Agent status updated from {} to {}", old_status.value, new_status.value)
 
     def update_security_alert_level(self, new_level: SecurityAlertLevel):
         """Update security alert level"""
         old_level = self.security_alert_level
         self.security_alert_level = new_level
         self.last_update = datetime.now()
-        logger.info(f"Security alert level updated from {old_level.value} to {new_level.value}")
+        logger.info("Security alert level updated from {} to {}", old_level.value, new_level.value)
 
     def add_active_threat(self, threat_id: str):
         """Add active threat"""
@@ -61,14 +61,14 @@ class AgentState:
             self.active_threats.append(threat_id)
             self.threats_detected += 1
             self.last_update = datetime.now()
-            logger.warning(f"Active threat added: {threat_id}")
+            logger.warning("Active threat added: {}", threat_id)
 
     def remove_active_threat(self, threat_id: str):
         """Remove active threat"""
         if threat_id in self.active_threats:
             self.active_threats.remove(threat_id)
             self.last_update = datetime.now()
-            logger.info(f"Active threat removed: {threat_id}")
+            logger.info("Active threat removed: {}", threat_id)
 
     def adjust_confidence(self, delta: float):
         """Adjust confidence level"""

@@ -81,7 +81,7 @@ class IncidentResponseAgent(BaseAgent):
             return {"success": False, "error": f"Unknown action: {action}"}
 
         except Exception as e:
-            logger.error(f"Incident response task failed: {e}")
+            logger.error("Incident response task failed: {}", e)
             return {"success": False, "error": str(e)}
 
     def _calculate_severity(self, alert: Dict[str, Any]) -> str:

@@ -57,7 +57,7 @@ class MCPServerService:
             try:
                 self._run_async(manager.initialize())
             except Exception as e:
-                logger.warning(f"Manager initialization failed: {e}")
+                logger.warning("Manager initialization failed: {}", e)
 
     def _get_or_create_config(self, session, workspace_id: UUID, user_id: UUID) -> MCPConfig:
         """Get or create MCPConfig for workspace/user"""
@@ -119,7 +119,7 @@ class MCPServerService:
                         enriched_server["tools"] = tools
                         enriched_server["resources"] = resources
                     except Exception as e:
-                        logger.warning(f"Failed to enrich details for {name}: {e}")
+                        logger.warning("Failed to enrich details for {}: {}", name, e)
                         enriched_server["tools"] = []
                         enriched_server["resources"] = []
                 else:
@@ -230,7 +230,7 @@ class MCPServerService:
                 try:
                     config.add_server(server_name, server_config)
                 except Exception as e:
-                    logger.error(f"Failed to add server {server_name}: {e}")
+                    logger.error("Failed to add server {}: {}", server_name, e)
                     errors.append(f"{server_name}: {str(e)}")
             
             if errors:
@@ -305,7 +305,7 @@ class MCPServerService:
                 try:
                     self._run_async(manager.shutdown())
                 except Exception as e:
-                    logger.error(f"Error shutting down manager: {e}")
+                    logger.error("Error shutting down manager: {}", e)
 
             if self._async_loop and self._async_loop.is_running():
                 self._async_loop.call_soon_threadsafe(self._async_loop.stop)
@@ -315,4 +315,4 @@ class MCPServerService:
 
             logger.info("MCPServerService cleanup completed")
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            logger.error("Error during cleanup: {}", e)
