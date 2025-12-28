@@ -36,7 +36,7 @@ class MessageService:
                 session.expunge_all()
                 return messages
         except Exception as e:
-            logger.error("Error getting messages: {}", e)
+            logger.error(f"Error getting messages: {e}")
             raise
 
     async def create_message_stream(
@@ -152,13 +152,13 @@ class MessageService:
                 )
                 session.add(message)
                 session.commit()
-                logger.debug("Message {} created and saved to database", message.message_id)
+                logger.debug(f"Message {message.message_id} created and saved to database")
                 
                 # Update LangGraph memory
                 await coordinator.update_memory(conversation_id, question, answer)
 
             except Exception as agent_error:
-                logger.error("Security agent processing failed: {}", agent_error)
+                logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
                 # Stream error response
                 handler = StreamingMessageHandler(message_id, conversation_id, question)
                 
@@ -251,7 +251,7 @@ class MessageService:
                     await coordinator.update_memory(conversation_id, new_question, new_answer)
 
                 except Exception as agent_error:
-                    logger.error("Error during update: {}", agent_error)
+                    logger.error(f"Error during update: {agent_error}")
                     handler = StreamingMessageHandler(message_id, conversation_id, new_question)
                     yield handler.message_start()
                     yield handler.error(
@@ -292,5 +292,5 @@ class MessageService:
                 session.commit()
                 return True
         except Exception as e:
-            logger.error("Error deleting message: {}", e)
+            logger.error(f"Error deleting message: {e}")
             raise

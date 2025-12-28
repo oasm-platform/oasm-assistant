@@ -167,7 +167,7 @@ class BaseAgent(ABC):
             }
 
         except Exception as e:
-            logger.error("Streaming task execution failed: {}", e)
+            logger.exception("Streaming task execution failed: {}", e)
             yield {
                 "type": "error",
                 "error": str(e),

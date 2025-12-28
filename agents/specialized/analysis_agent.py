@@ -85,9 +85,9 @@ class AnalysisAgent(BaseAgent):
                 yield {"type": "error", "error": f"Unknown action: {action}", "agent": self.name}
 
         except Exception as e:
-            logger.error("Streaming task execution failed: {}", e)
+            logger.exception("Streaming task execution failed: {}", e)
             
-            error_message = self._get_friendly_error_message(e)
+            error_message = LLMManager.get_friendly_error_message(e)
             
             yield {
                 "type": "error", 
@@ -270,7 +270,7 @@ class AnalysisAgent(BaseAgent):
             yield {"type": "result_data", "data": final_data}
 
         except Exception as e:
-            logger.error("MCP fetch streaming error: {}", e)
+            logger.exception("MCP fetch streaming error: {}", e)
             
             # Provide user-friendly error message
             error_message = LLMManager.get_friendly_error_message(e)
@@ -402,7 +402,7 @@ You MUST respond with valid JSON containing exactly these fields:
             return result
 
         except Exception as e:
-            logger.error("LLM combined classification and tool selection failed: {}", e)
+            logger.exception("LLM combined classification and tool selection failed: {}", e)
             # Re-raise to be caught by the caller who can handle friendly error messages
             raise e
 
@@ -471,11 +471,11 @@ You MUST respond with valid JSON containing exactly these fields:
         try:
             return self.llm.invoke(prompt).content.strip()
         except Exception as e:
-            logger.error("Failed to generate analysis: {}", e)
+            logger.exception("Failed to generate analysis: {}", e)
             if scan_data:
                 stats = scan_data.get("stats", {})
                 return f"Analysis data retrieved:\n\n{json.dumps(stats, indent=2)[:500]}"
-            return f"Error during analysis: {self._get_friendly_error_message(e)}"
+            return f"Error during analysis: {LLMManager.get_friendly_error_message(e)}"
 
     async def _buffer_llm_chunks(
         self,
@@ -517,7 +517,7 @@ You MUST respond with valid JSON containing exactly these fields:
             async for buffered_text in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
                 yield {"type": "delta", "text": buffered_text, "agent": self.name}
         except Exception as e:
-            logger.error("Failed to stream analysis: {}", e)
+            logger.exception("Failed to stream analysis: {}", e)
             error_message = LLMManager.get_friendly_error_message(e)
             
             if scan_data:

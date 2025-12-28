@@ -97,7 +97,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                     parent_config=parent_config,
                 )
         except Exception as e:
-            logger.error("Error reading checkpoint: {}", e)
+            logger.exception("Error reading checkpoint: {}", e)
             return None
 
     def list(
@@ -148,7 +148,7 @@ class STMCheckpointer(BaseCheckpointSaver):
             summary = llm.invoke(prompt)
             return summary.content.strip()
         except Exception as e:
-            logger.error("STM Summarization failed: {}", e)
+            logger.exception("STM Summarization failed: {}", e)
             return current_summary
 
     def put(
@@ -221,7 +221,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                     redis_client.set(redis_key, 0, ex=86400)
                     
             except Exception as e:
-                logger.error("STM Logic Error: {}", e)
+                logger.exception("STM Logic Error: {}", e)
                 
             # Serialize for JSONB storage (hex-encoded binary)
             type_, data_bytes = self.serde.dumps_typed(checkpoint)
@@ -255,7 +255,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                 session.commit()
                 
         except Exception as e:
-            logger.error("Error saving checkpoint: {}", e)
+            logger.exception("Error saving checkpoint: {}", e)
 
         return {
             "configurable": {

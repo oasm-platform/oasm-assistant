@@ -44,6 +44,7 @@ class LLMConfigServiceServicer(assistant_pb2_grpc.LLMConfigServiceServicer):
                     api_key=masked_key or "",
                     model=cfg.model or "",
                     is_preferred=cfg.is_preferred,
+                    is_editable=str(cfg.id) != "00000000-0000-0000-0000-000000000000",
                 )
                 pb_configs.append(pb_cfg)
             
@@ -84,6 +85,7 @@ class LLMConfigServiceServicer(assistant_pb2_grpc.LLMConfigServiceServicer):
                     api_key=masked_key or "",
                     model=config.model or "",
                     is_preferred=config.is_preferred,
+                    is_editable=str(config.id) != "00000000-0000-0000-0000-000000000000",
                 ),
                 success=True
             )
@@ -135,6 +137,7 @@ class LLMConfigServiceServicer(assistant_pb2_grpc.LLMConfigServiceServicer):
                     api_key=masked_key or "",
                     model=config.model or "",
                     is_preferred=config.is_preferred,
+                    is_editable=str(config.id) != "00000000-0000-0000-0000-000000000000",
                 ),
                 success=True
             )

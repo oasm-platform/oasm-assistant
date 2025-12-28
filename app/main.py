@@ -89,7 +89,7 @@ async def serve():
             logger.info("Server stopped")
 
     except Exception as e:
-        logger.error("Failed to start server: {}", e)
+        logger.exception("Failed to start server: {}", e)
         if kb_updater:
             await kb_updater.stop()
         sys.exit(1)
