@@ -1,18 +1,20 @@
 from typing import List, Dict, Optional, Any
 import re
 import json
+from urllib.parse import urlparse
 
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import JsonOutputParser
 from common.logger import logger
-from llms import llm_manager
+from llms import LLMManager
 from tools.crawl_web import CrawlWeb
 from common.config import configs
 from llms.prompts import DomainClassificationPrompts
 
+
 class DomainClassifierService:
     def __init__(self):
-        self.llm_manager = llm_manager
+        # LLM Manager is now a static utility
         self.crawler = CrawlWeb(
             timeout=configs.crawl_timeout,
             max_retries=configs.crawl_max_retries
@@ -26,20 +28,20 @@ class DomainClassifierService:
         self.json_parser = JsonOutputParser()
 
     def _extract_domain_info(self, domain: str) -> str:
+        """Extract domain from URL or string"""
         domain = domain.lower().strip()
-        if domain.startswith('http'):
-            domain = domain.split('://')[1]
-        if '/' in domain:
-            domain = domain.split('/')[0]
+        if '://' not in domain:
+            domain = 'http://' + domain
         
-        return domain
+        parsed = urlparse(domain)
+        return parsed.netloc or parsed.path.split('/')[0]
 
-    async def _classify_with_llm(self, domain: str, content: Optional[str] = None, retry_count: int = 0) -> List[str]:
+    async def _classify_with_llm(self, domain: str, content: Optional[str] = None, retry_count: int = 0, workspace_id: Optional[str] = None, user_id: Optional[str] = None) -> List[str]:
         """
         Classify using LLM - returns list of category strings
         """
         try:
-            llm = self.llm_manager.get_llm()
+            llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id)
 
             prompt = DomainClassificationPrompts.get_domain_classification_prompt(
                 categories=self.categories,
@@ -94,14 +96,14 @@ class DomainClassifierService:
                 return valid_categories
 
             except Exception as e:
-                logger.error(f"JSON parse error for {domain}: {e}")
+                logger.exception("JSON parse error for {}: {}", domain, e)
                 return []
 
         except Exception as e:
-            logger.error(f"LLM classification error for {domain}: {e}")
-            return []
+            logger.exception("LLM classification error for {}: {}", domain, e)
+            raise e
 
-    async def classify_domain(self, domain: str) -> Dict[str, Any]:
+    async def classify_domain(self, domain: str, workspace_id: Optional[Any] = None, user_id: Optional[Any] = None) -> Dict[str, Any]:
         """
         Main classification method with retry logic
         """
@@ -115,29 +117,31 @@ class DomainClassifierService:
                 content = crawl_result[:10000] if isinstance(crawl_result, str) else str(crawl_result)[:10000]
 
             labels = []
-            retry_count = 0
+            for attempt in range(self.max_retries + 1):
+                try:
+                    labels = await self._classify_with_llm(cleaned_domain, content, attempt, workspace_id=workspace_id, user_id=user_id)
+                    if labels:
+                        break
+                    
+                    if attempt < self.max_retries:
+                        logger.warning(
+                            f"LLM returned 0 labels for {domain}. Retrying ({attempt + 1}/{self.max_retries})..."
+                        )
+                except Exception as e:
+                    logger.warning(f"Classification attempt {attempt + 1} failed for {domain}: {e}")
+                    if attempt == self.max_retries:
+                         logger.error(f"All classification attempts failed for {domain}")
 
-            while len(labels) < self.min_labels and retry_count < self.max_retries:
-                labels = await self._classify_with_llm(cleaned_domain, content, retry_count)
-
-                if len(labels) >= self.min_labels:
-                    break
-
-                retry_count += 1
-                if retry_count < self.max_retries:
-                    logger.warning(
-                        f"Only got {len(labels)} labels (need {self.min_labels}), "
-                        f"retrying... (attempt {retry_count + 1}/{self.max_retries})"
-                    )
-
-            if len(labels) < self.min_labels:
-                logger.warning(
-                    f"After {self.max_retries} retries, only got {len(labels)} labels for {domain}. "
-                    f"Using fallback categories."
+            if not labels:
+                logger.error(
+                    f"LLM returned 0 labels for {domain} after {self.max_retries} attempts."
                 )
-                fallback_categories = ["business", "technology", "web"]
-                labels.extend([cat for cat in fallback_categories if cat not in labels])
-                labels = labels[:self.min_labels]
+                return {
+                    "domain": cleaned_domain,
+                    "labels": [],
+                    "success": False,
+                    "error": "Could not classify domain"
+                }
 
             if len(labels) > self.max_labels:
                 labels = labels[:self.max_labels]
@@ -152,7 +156,7 @@ class DomainClassifierService:
             }
 
         except Exception as e:
-            logger.error(f"Domain classification error for {domain}: {e}")
+            logger.exception("Domain classification error for {}: {}", domain, e)
             return {
                 "domain": domain,
                 "labels": [],

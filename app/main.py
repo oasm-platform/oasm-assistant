@@ -1,7 +1,6 @@
 import grpc
 import asyncio
 import sys
-import traceback
 import atexit
 from grpc_reflection.v1alpha import reflection
 
@@ -14,7 +13,8 @@ from .grpc_server import (
     ConversationServicer,
     MessageServiceServicer,
     MCPServerServiceServicer,
-    IssueServicer
+    IssueServicer,
+    LLMConfigServiceServicer
 )
 
 # Use centralized Knowledge Base Updater
@@ -52,6 +52,7 @@ async def serve():
         assistant_pb2_grpc.add_MessageServiceServicer_to_server(MessageServiceServicer(), server)
         assistant_pb2_grpc.add_MCPServerServiceServicer_to_server(MCPServerServiceServicer(), server)
         assistant_pb2_grpc.add_IssueServiceServicer_to_server(IssueServicer(), server)
+        assistant_pb2_grpc.add_LLMConfigServiceServicer_to_server(LLMConfigServiceServicer(), server)
 
         # Register reflection service   
         SERVICE_NAMES = (
@@ -61,6 +62,7 @@ async def serve():
             assistant_pb2.DESCRIPTOR.services_by_name['MessageService'].full_name,
             assistant_pb2.DESCRIPTOR.services_by_name['MCPServerService'].full_name,
             assistant_pb2.DESCRIPTOR.services_by_name['IssueService'].full_name,
+            assistant_pb2.DESCRIPTOR.services_by_name['LLMConfigService'].full_name,
             reflection.SERVICE_NAME,  # reflection service itself
         )
         
@@ -71,9 +73,9 @@ async def serve():
 
         # Start server
         await server.start()
-        logger.info(f"✓ Async gRPC server started on {listen_addr}")
-        logger.info(f"Service: {settings.service_name} v{settings.version}")
-        logger.info(f"Nuclei templates will sync daily at {settings.scheduler.nuclei_templates_sync_time}")
+        logger.info("✓ Async gRPC server started on {}", listen_addr)
+        logger.info("Service: {} v{}", settings.service_name, settings.version)
+        logger.info("Nuclei templates will sync daily at {}", settings.scheduler.nuclei_templates_sync_time)
 
         try:
             await server.wait_for_termination()
@@ -87,8 +89,7 @@ async def serve():
             logger.info("Server stopped")
 
     except Exception as e:
-        logger.error(f"Failed to start server: {e}")
-        logger.error(traceback.format_exc())
+        logger.exception("Failed to start server: {}", e)
         if kb_updater:
             await kb_updater.stop()
         sys.exit(1)

@@ -156,7 +156,7 @@ class TestRAGIntegration:
     """Test RAG integration in Nuclei Template Service"""
 
     @patch('app.services.nuclei_template.HybridSearchEngine')
-    @patch('app.services.nuclei_template.llm_manager')
+    @patch('app.services.nuclei_template.LLMManager')
     @patch('app.services.nuclei_template.configs')
     @patch('data.database.postgres_db.get_session')
     def test_rag_initialization(self, mock_session, mock_configs, mock_llm, mock_search):
@@ -178,7 +178,7 @@ class TestRAGIntegration:
         assert service.hybrid_search is not None
 
     @patch('app.services.nuclei_template.HybridSearchEngine')
-    @patch('app.services.nuclei_template.llm_manager')
+    @patch('app.services.nuclei_template.LLMManager')
     @patch('app.services.nuclei_template.configs')
     @patch('data.database.postgres_db.get_session')
     def test_rag_retrieval(self, mock_session, mock_configs, mock_llm, mock_search):
@@ -218,7 +218,7 @@ class TestRAGIntegration:
         assert 'Reference Template' in context
 
     @patch('app.services.nuclei_template.HybridSearchEngine')
-    @patch('app.services.nuclei_template.llm_manager')
+    @patch('app.services.nuclei_template.LLMManager')
     @patch('app.services.nuclei_template.configs')
     @patch('data.database.postgres_db.get_session')
     def test_rag_filters_low_scores(self, mock_session, mock_configs, mock_llm, mock_search):
@@ -246,7 +246,7 @@ class TestRAGIntegration:
         assert context == ""  # Filtered out
 
     @patch('app.services.nuclei_template.HybridSearchEngine')
-    @patch('app.services.nuclei_template.llm_manager')
+    @patch('app.services.nuclei_template.LLMManager')
     @patch('app.services.nuclei_template.configs')
     @patch('app.services.nuclei_template.NucleiGenerationPrompts')
     @patch('data.database.postgres_db.get_session')

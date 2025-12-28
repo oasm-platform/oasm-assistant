@@ -73,7 +73,7 @@ class BaseAgent(ABC):
         self.timeout = kwargs.get('timeout', 300)
         self.debug_mode = kwargs.get('debug_mode', False)
 
-        logger.debug(f"Initialized agent: {self.name} ({self.role.value})")
+        logger.debug("Initialized agent: {} ({})", self.name, self.role.value)
 
     def to_langgraph_node(self, input_key: str = "task", output_key: str = "result"):
         """
@@ -100,7 +100,7 @@ class BaseAgent(ABC):
                 return state
 
             except Exception as e:
-                logger.error(f"LangGraph node execution failed for {self.name}: {e}")
+                logger.error("LangGraph node execution failed for {}: {}", self.name, e)
                 error_result = {
                     "success": False,
                     "error": str(e),
@@ -152,7 +152,7 @@ class BaseAgent(ABC):
             # Yield thinking event
             yield {
                 "type": "thinking",
-                "thought": f"{self.name} is processing the task",
+                "thought": "{} is processing the task".format(self.name),
                 "agent": self.name
             }
 
@@ -167,7 +167,7 @@ class BaseAgent(ABC):
             }
 
         except Exception as e:
-            logger.error(f"Streaming task execution failed: {e}", exc_info=True)
+            logger.exception("Streaming task execution failed: {}", e)
             yield {
                 "type": "error",
                 "error": str(e),
@@ -200,5 +200,5 @@ class BaseAgent(ABC):
                 elif isinstance(chunk, str):
                     yield chunk
         except Exception as e:
-            logger.error(f"LLM streaming failed: {e}", exc_info=True)
+            logger.error("LLM streaming failed: {}", e)
             raise

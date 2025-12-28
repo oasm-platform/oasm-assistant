@@ -63,7 +63,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             )
 
         except Exception as e:
-            logger.error(f"Error getting servers: {e}")
+            logger.error("Error getting servers: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.GetMCPServersResponse()
@@ -92,7 +92,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
                 )
 
         except Exception as e:
-            logger.error(f"Error adding servers: {e}")
+            logger.error("Error adding servers: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.AddMCPServersResponse(success=False)
@@ -120,7 +120,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
                     servers=[], success=False
                 )
         except Exception as e:
-            logger.error(f"Error updating servers: {e}")
+            logger.error("Error updating servers: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.UpdateMCPServersResponse(success=False)
@@ -145,7 +145,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             return assistant_pb2.DeleteMCPServersResponse(success=success, message=message)
 
         except Exception as e:
-            logger.error(f"Error deleting config: {e}")
+            logger.error("Error deleting config: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.DeleteMCPServersResponse(success=False, message=str(e))
@@ -175,7 +175,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
             )
 
         except Exception as e:
-            logger.error(f"Error checking server health: {e}")
+            logger.error("Error checking server health: {}", e)
             context.set_code(StatusCode.INTERNAL)
             context.set_details(str(e))
             return assistant_pb2.GetMCPServerHealthResponse(

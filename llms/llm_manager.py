@@ -1,278 +1,142 @@
-from typing import List, Dict, Any, Optional
+from typing import Optional, Any, List, Dict
+from uuid import UUID
 from langchain_core.language_models import BaseLanguageModel
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_ollama import ChatOllama
 from common.logger import logger
-from common.config import LlmConfigs
+from common.config import configs
+from .llm_factory import LLMFactory
+from data.database import postgres_db
 
 
 class LLMManager:
-    """LLM Manager with LangChain integration and external configuration (Singleton)"""
+    """LLM Manager that provides LLM instances with support for BYOK and default configuration."""
 
-    # Provider registry - maps provider names to their factory methods
-    SUPPORTED_PROVIDERS = {
-        "openai": "_create_openai_provider",
-        "anthropic": "_create_anthropic_provider",
-        "google": "_create_google_provider",
-        "ollama": "_create_ollama_provider",
-        "vllm": "_create_vllm_provider",
-        "sglang": "_create_sglang_provider",
-    }
-    
-    # Local providers that don't require API keys
-    LOCAL_PROVIDERS = {"ollama", "vllm", "sglang"}
-
-    _instance = None
-    _initialized = False
-
-    def __new__(cls, config: LlmConfigs = None):
-        """
-        Singleton implementation - ensures only one instance exists
-
-        Args:
-            config: LlmConfigs instance with provider configuration (only used on first instantiation)
-        """
-        if cls._instance is None:
-            cls._instance = super(LLMManager, cls).__new__(cls)
-        return cls._instance
-
-    def __init__(self, config: LlmConfigs = None):
-        """
-        Initialize LLM Manager with configurations
-        Only initializes once due to Singleton pattern
-
-        Args:
-            config: LlmConfigs instance with provider configuration
-        """
-        # Only initialize once
-        if self._initialized:
-            return
-
-        if config is None:
-            raise ValueError("Config must be provided on first initialization")
-
-        self.config = config
-        self.providers = {}
-        self._initialize_providers()
-
-        # Mark as initialized
-        LLMManager._initialized = True
-
-    def _initialize_providers(self):
-        """Initialize available LLM providers based on configurations"""
-        try:
-            provider = self.config.provider
-
-            # Check if provider is configured
-            if not provider:
-                logger.warning("No LLM provider configured")
-                return
-
-            # Check if provider is supported
-            if provider not in self.SUPPORTED_PROVIDERS:
-                available = list(self.SUPPORTED_PROVIDERS.keys())
-                logger.warning(f"Unknown provider: {provider}. Available providers: {available}")
-                return
-
-            # Check API key requirement for cloud providers
-            if provider not in self.LOCAL_PROVIDERS and not self.config.api_key:
-                logger.warning(f"Provider '{provider}' requires API key but none provided")
-                return
-
-            # Initialize provider using registry
-            factory_method_name = self.SUPPORTED_PROVIDERS[provider]
-            factory_method = getattr(self, factory_method_name)
-            self.providers[provider] = factory_method
-
-            if not self.providers:
-                logger.warning("No LLM providers available. Check configurations.")
-            else:
-                logger.info(f"LLM Provider initialized: {provider}")
-
-        except Exception as e:
-            logger.error(f"Error initializing LLM providers: {e}")
-            raise
-
-    def _create_openai_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create OpenAI LangChain provider"""
-        if self.config.provider != "openai" or not self.config.api_key:
-            raise ValueError("OpenAI configuration not found or invalid")
-
-        return ChatOpenAI(
-            api_key=self.config.api_key,
-            model=model or self.config.model_name or "gpt-3.5-turbo",
-            temperature=kwargs.get("temperature", self.config.temperature),
-            max_tokens=kwargs.get("max_tokens", self.config.max_tokens),
-            timeout=kwargs.get("timeout", self.config.timeout),
-            max_retries=kwargs.get("max_retries", self.config.max_retries),
-            **self.config.extra_params
+    @staticmethod
+    def get_llm(
+        provider: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        db_session: Optional[Any] = None,
+        workspace_id: Optional[Any] = None,
+        user_id: Optional[Any] = None,
+        **kwargs
+    ) -> BaseLanguageModel:
+        """Get an LLM instance."""
+        
+        # 1. Resolve configuration
+        config = LLMManager.resolve_llm_config(
+            provider=provider,
+            model=model,
+            api_key=api_key,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            db_session=db_session
         )
 
-    def _create_anthropic_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create Anthropic LangChain provider with compatibility handling"""
-        if self.config.provider != "anthropic" or not self.config.api_key:
-            raise ValueError("Anthropic configuration not found or invalid")
+        # 2. Use LLMFactory to create the instance
+        return LLMFactory.create_llm(
+            provider=config.get("provider"),
+            api_key=config.get("api_key"),
+            model=config.get("model"),
+            default_config=configs.llm,
+            **kwargs
+        )
 
-        params = {
-            "api_key": self.config.api_key,
-            "model": model or self.config.model_name or "claude-3-sonnet-20240229",
-            "temperature": kwargs.get("temperature", self.config.temperature),
-            **self.config.extra_params
-        }
+    @staticmethod
+    def resolve_llm_config(
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        workspace_id: Optional[Any] = None,
+        user_id: Optional[Any] = None,
+        db_session: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Resolves the LLM configuration to use.
+        Priority: 
+        1. Explicitly provided provider/api_key/model
+        2. Preferred config from database for workspace/user
+        3. System default from configs.llm
+        """
+        # 1. Use explicit if provided
+        if provider and api_key:
+            return {
+                "provider": provider,
+                "model": model,
+                "api_key": api_key
+            }
 
-        max_tokens = kwargs.get("max_tokens", self.config.max_tokens)
-
-        # Handle version differences in Anthropic API
-        try:
-            return ChatAnthropic(
-                **params,
-                max_tokens=max_tokens,
-                timeout=kwargs.get("timeout", self.config.timeout),
-                max_retries=kwargs.get("max_retries", self.config.max_retries)
-            )
-        except TypeError:
-            return ChatAnthropic(
-                **params,
-                max_tokens_to_sample=max_tokens,
-                timeout=kwargs.get("timeout", self.config.timeout),
-                max_retries=kwargs.get("max_retries", self.config.max_retries)
-            )
-
-    def _create_google_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create Google LangChain provider with compatibility handling"""
-        if self.config.provider != "google" or not self.config.api_key:
-            raise ValueError("Google configuration not found or invalid")
-
-        params = {
-            "google_api_key": self.config.api_key,
-            "model": model or self.config.model_name or "gemini-2.0-flash",
-            "temperature": kwargs.get("temperature", self.config.temperature),
-            **self.config.extra_params
-        }
-
-        max_tokens = kwargs.get("max_tokens", self.config.max_tokens)
-
-        # Add aggressive rate limit handling
-        max_retries = kwargs.get("max_retries", 2)  # Reduce retries from default 6
-        timeout = kwargs.get("timeout", 60)
-
-        try:
-            return ChatGoogleGenerativeAI(
-                **params,
-                max_output_tokens=max_tokens,
-                max_retries=max_retries,
-                timeout=timeout
-            )
-        except TypeError:
-            # Fallback for different versions
-            return ChatGoogleGenerativeAI(
-                **params,
-                max_tokens=max_tokens,
-                max_retries=max_retries,
-                timeout=timeout
-            )
-
-    def _create_ollama_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create Ollama LangChain provider with compatibility handling"""
-        # Use config if provider is ollama, otherwise use defaults
-        if self.config.provider == "ollama":
-            base_model = self.config.model_name or "llama2"
-            base_temp = self.config.temperature
-            base_url = self.config.base_url or "http://localhost:8005"
-            extra_params = self.config.extra_params
-        else:
-            base_model = "llama2"
-            base_temp = 0.1
-            base_url = "http://localhost:8005"
-            extra_params = {}
-
-        params = {
-            "model": model or base_model,
-            "temperature": kwargs.get("temperature", base_temp),
-            "base_url": kwargs.get("base_url", base_url),
-            **extra_params
-        }
-
-        # Handle version differences in Ollama API
-        if "timeout" in kwargs:
+        # 2. Try DB-based config
+        if workspace_id and user_id:
             try:
-                return ChatOllama(**params, timeout=kwargs["timeout"])
-            except TypeError:
-                return ChatOllama(**params)
-        else:
-            return ChatOllama(**params)
+                from data.database.models import LLMConfig
+                from data.database import postgres_db
+                from contextlib import nullcontext
+                
+                # Use provided session or create a new one
+                session_cm = nullcontext(db_session) if db_session and hasattr(db_session, 'query') else postgres_db.get_session()
+                
+                with session_cm as s:
+                    config_obj = s.query(LLMConfig).filter(
+                        LLMConfig.workspace_id == workspace_id,
+                        LLMConfig.user_id == user_id,
+                        LLMConfig.is_preferred == True
+                    ).first()
+                    
+                    if config_obj:
+                        logger.debug("✓ Using preferred LLM config: {}/{} for user {}", config_obj.provider, config_obj.model, user_id)
+                        return {
+                            "provider": config_obj.provider,
+                            "model": config_obj.model,
+                            "api_key": config_obj.api_key
+                        }
+            except Exception as e:
+                logger.error("Error fetching preferred LLM config from DB: {}", e)
 
-    def _create_openai_compatible_provider(self, provider_name: str, default_base_url: str, default_model: str, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create a LangChain provider for an OpenAI-compatible API (vLLM, SGLang)"""
-        if self.config.provider == provider_name:
-            base_model = self.config.model_name or default_model
-            base_temp = self.config.temperature
-            base_url = self.config.base_url or default_base_url
-            extra_params = self.config.extra_params
-        else:
-            base_model = default_model
-            base_temp = 0.1
-            base_url = default_base_url
-            extra_params = {}
-
-        params = {
-            "model": model or base_model,
-            "temperature": kwargs.get("temperature", base_temp),
-            "base_url": kwargs.get("base_url", base_url),
-            "api_key": "EMPTY",  # API key not required but ChatOpenAI needs a value
-            "max_tokens": kwargs.get("max_tokens", self.config.max_tokens),
-            "timeout": kwargs.get("timeout", self.config.timeout),
-            "max_retries": kwargs.get("max_retries", self.config.max_retries),
-            **extra_params
+        # 3. Fallback to System Default
+        default = configs.llm
+        return {
+            "provider": provider or default.provider,
+            "model": model or default.model_name,
+            "api_key": api_key or default.api_key
         }
 
-        return ChatOpenAI(**params)
+    @staticmethod
+    def get_friendly_error_message(e: Exception) -> str:
+        """Categorize error and return a user-friendly message"""
+        error_str = str(e).lower()
+        
+        # Anthropic Errors
+        if "authentication_error" in error_str or "invalid x-api-key" in error_str:
+            return "Invalid API key. Please check your LLM configuration settings."
+        elif "rate_limit_error" in error_str:
+            return "Rate limit exceeded for the selected LLM provider. Please try again later."
+        elif "overloaded_error" in error_str:
+            return "The LLM provider is currently overloaded. Please try again in a few moments."
+        
+        # OpenAI Errors
+        elif "invalid_api_key" in error_str:
+            return "Invalid OpenAI API key. Please check your configuration."
+        elif "insufficient_quota" in error_str:
+            return "Your LLM provider quota has been exceeded. Please check your billing/limits."
+        
+        # Google Errors
+        elif "api_key_invalid" in error_str or "403" in error_str:
+             return "Invalid Google AI API key or service restricted."
 
-    def _create_vllm_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create vLLM LangChain provider using OpenAI-compatible API"""
-        return self._create_openai_compatible_provider(
-            provider_name="vllm",
-            default_base_url="http://localhost:8006/v1",
-            default_model="Qwen/Qwen2.5-7B-Instruct",
-            model=model,
-            **kwargs
-        )
+        # General gRPC/Network Errors
+        if "deadline_exceeded" in error_str:
+            return "The request timed out. The LLM provider might be slow or unresponsive."
+        elif "unavailable" in error_str:
+            return "The LLM service is temporarily unavailable. Please try again later."
 
-    def _create_sglang_provider(self, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Create SGLang LangChain provider using OpenAI-compatible API"""
-        return self._create_openai_compatible_provider(
-            provider_name="sglang",
-            default_base_url="http://localhost:8007/v1",
-            default_model="Qwen/Qwen2.5-7B-Instruct",
-            model=model,
-            **kwargs
-        )
+        return f"An error occurred while communicated with the AI Service: {str(e)}"
 
-    def get_llm(self, provider: str = None, model: str = None, **kwargs) -> BaseLanguageModel:
-        """Get an LLM instance"""
-        # Use the configured default provider if no provider is specified
-        if not provider:
-            provider = self.config.provider
+    @staticmethod
+    def get_available_providers() -> list[str]:
+        """Get list of supported providers"""
+        return list(LLMFactory.SUPPORTED_PROVIDERS.keys())
 
-        if not provider:
-            raise ValueError("No provider specified")
-
-        if provider not in self.providers:
-            available = list(self.providers.keys())
-            error_msg = f"Provider '{provider}' not available. Available: {available}"
-            raise ValueError(error_msg)
-
-        return self.providers[provider](model, **kwargs)
-
-    def get_available_providers(self) -> List[str]:
-        """Get list of available providers"""
-        return list(self.providers.keys())
-
-
-    def get_provider_config(self, provider: str) -> Optional[LlmConfigs]:
-        """Get configuration for a provider"""
-        if provider == self.config.provider:
-            return self.config
-        return None
+    @staticmethod
+    def is_local_provider(provider: str) -> bool:
+        """Check if provider is local (doesn't require API key)"""
+        return provider in LLMFactory.LOCAL_PROVIDERS

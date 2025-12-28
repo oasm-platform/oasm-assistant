@@ -27,12 +27,21 @@ class IssueServicer(assistant_pb2_grpc.IssueServiceServicer):
 
             # Call business logic
             # Enum IssueType: ISSUE_TYPE_UNSPECIFIED = 0, ISSUE_TYPE_SSL = 1, ISSUE_TYPE_VULNERABILITY = 2
-            result_message = await self.service.resolve_issue(question, issue_type, metadata)
+            workspace_id = context.workspace_id
+            user_id = context.user_id
+            
+            result_message = await self.service.resolve_issue(
+                question, 
+                issue_type, 
+                metadata,
+                workspace_id=workspace_id,
+                user_id=user_id
+            )
 
             return assistant_pb2.ResolveIssueResponse(message=result_message)
 
         except Exception as e:
-            logger.error(f"Error in ResolveIssueServers: {e}")
+            logger.error("Error in ResolveIssueServers: {}", e)
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(f"Internal error: {str(e)}")
             return assistant_pb2.ResolveIssueResponse(message=f"Error: {e}")

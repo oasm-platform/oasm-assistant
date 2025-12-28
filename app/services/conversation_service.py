@@ -4,17 +4,17 @@ from data.database import postgres_db
 from common.logger import logger
 from data.database.models import Conversation
 from llms.prompts import ConversationPrompts
-from llms import llm_manager
+from llms import LLMManager
 
 class ConversationService:
     def __init__(self):
         self.db = postgres_db
-        self.llm = llm_manager.get_llm()
 
-    async def update_conversation_title_async(self, conversation_id: str, question: str):
+    async def update_conversation_title_async(self, conversation_id: str, question: str, workspace_id: Optional[UUID] = None, user_id: Optional[UUID] = None):
         """Generate and update conversation title in background"""
         try:
-            title_response = await self.llm.ainvoke(
+            llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id)
+            title_response = await llm.ainvoke(
                 ConversationPrompts.get_conversation_title_prompt(question=question)
             )
 
@@ -26,9 +26,9 @@ class ConversationService:
                 if conversation:
                     conversation.title = title_response.content
                     session.commit()
-                    logger.debug(f"Conversation {conversation_id} title updated: {title_response.content}")
+                    logger.debug("Conversation {} title updated: {}", conversation_id, title_response.content)
         except Exception as e:
-            logger.error(f"Failed to update conversation title: {e}", exc_info=True)
+            logger.error("Failed to update conversation title: {}", e)
 
     async def get_conversations(
         self, 
@@ -79,7 +79,7 @@ class ConversationService:
                 session.expunge_all()
                 return conversations, total_count
         except Exception as e:
-            logger.error(f"Error getting conversations: {e}")
+            logger.error("Error getting conversations: {}", e)
             raise
 
     async def update_conversation(self, conversation_id: str, title: str, description: str, workspace_id: UUID, user_id: UUID) -> Optional[Conversation]:
@@ -113,7 +113,7 @@ class ConversationService:
                 session.expunge(conversation)
                 return conversation
         except Exception as e:
-            logger.error(f"Error updating conversation: {e}")
+            logger.error("Error updating conversation: {}", e)
             raise
 
     async def delete_conversation(self, conversation_id: str, workspace_id: UUID, user_id: UUID) -> bool:
@@ -141,7 +141,7 @@ class ConversationService:
                 session.commit()
                 return True
         except Exception as e:
-            logger.error(f"Error deleting conversation: {e}")
+            logger.error("Error deleting conversation: {}", e)
             raise
 
     async def delete_conversations(self, workspace_id: UUID, user_id: UUID) -> int:
@@ -165,5 +165,5 @@ class ConversationService:
                 session.commit()
                 return count
         except Exception as e:
-            logger.error(f"Error deleting conversations: {e}")
+            logger.error("Error deleting conversations: {}", e)
             raise

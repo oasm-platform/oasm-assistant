@@ -14,7 +14,7 @@ from app.protos import assistant_pb2
 @pytest.fixture
 def mock_llm():
     """Mock LLM manager"""
-    with patch('app.services.nuclei_template.llm_manager') as mock_mgr:
+    with patch('app.services.nuclei_template.LLMManager') as mock_mgr:
         mock_llm_instance = Mock()
         mock_response = Mock()
         mock_response.content = """```yaml
