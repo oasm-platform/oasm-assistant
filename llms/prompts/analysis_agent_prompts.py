@@ -82,12 +82,11 @@ You MUST classify the question into ONE of these types: {valid_types_str}
     "question_type": {valid_types_str},
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{ "arg_name": "value", "workspaceId": "{workspace_id}" }},
+    "args": {{ "arg_name": "value" }},
     "reasoning": "brief explanation"
 }}
 
 **Note on args:** 
-- Include "workspaceId": "{workspace_id}" if the tool supports it (e.g. internal tools).
 - ALWAYS include the tool's required parameters (e.g. "query" for search).
 
 **Examples:**
@@ -125,7 +124,6 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 - You MUST respond with ONLY valid JSON, nothing else
 - Do NOT include any explanation, commentary, or markdown formatting
 - Do NOT wrap the JSON in code blocks (no ```)
-- workspaceId optional: "{workspace_id}" (include if tool needs context)
 - Check "Required Parameters" for each tool and include them in args
 - Only use tools from the list above
 - Choose based on tool description and user question intent
@@ -134,7 +132,7 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 {{
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{ "arg_name": "value", "workspaceId": "{workspace_id}" }},
+    "args": {{ "arg_name": "value" }},
     "reasoning": "brief explanation why you selected this tool"
 }}
 
