@@ -185,8 +185,8 @@ class AnalysisAgent(BaseAgent):
             tool_name = selected["tool"]
             tool_args = selected["args"]
             
-            # Ensure workspaceId is always present if available
-            if self.workspace_id and "workspaceId" not in tool_args:
+            # Force overwrite workspaceId to prevent prompt injection
+            if self.workspace_id:
                 tool_args["workspaceId"] = str(self.workspace_id)
                 
             question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
@@ -310,8 +310,8 @@ class AnalysisAgent(BaseAgent):
             tool_name = selected["tool"]
             tool_args = selected["args"]
             
-            # Ensure workspaceId is always present if available
-            if self.workspace_id and "workspaceId" not in tool_args:
+            # Force overwrite workspaceId to prevent prompt injection
+            if self.workspace_id:
                 tool_args["workspaceId"] = str(self.workspace_id)
 
             question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
@@ -532,5 +532,3 @@ You MUST respond with valid JSON containing exactly these fields:
                 "error": error_message,
                 "agent": self.name
             }
-
-

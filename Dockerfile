@@ -100,7 +100,6 @@ COPY --chown=nonroot:nonroot ./common/ ./common/
 COPY --chown=nonroot:nonroot ./llms/ ./llms/
 COPY --chown=nonroot:nonroot ./tools/ ./tools/
 COPY --chown=nonroot:nonroot ./data/ ./data/
-COPY --chown=nonroot:nonroot ./scripts/ ./scripts/
 
 # Copy logs directory from builder with proper permissions for nonroot user
 COPY --from=builder --chown=nonroot:nonroot /tmp/logs/ /app/logs/
