@@ -121,37 +121,216 @@ class AnalysisAgent(BaseAgent):
         """Analyze with streaming - single LLM call for classification and tool selection"""
         logger.info(f"Streaming analysis: {question[:100]}...")
 
-        # Use streaming version of data fetching to emit events during the process
-        scan_data = None
-        tool_executed = False
-        
-        async for event in self._fetch_mcp_data_streaming(question):
-            if event["type"] == "result_data":
-                scan_data = event["data"]
-                tool_executed = True
-            else:
-                yield event
-
-        question_type = self._ensure_question_type_enum(scan_data.get("question_type") if scan_data else None)
-
-        # If no tool was executed (e.g. MCP disabled or no tool selected), we might need generic events
-        if not tool_executed and not scan_data:
-             yield {"type": "thinking", "thought": "No appropriate tool found or MCP disabled. Proceeding with general analysis.", "agent": self.name}
-
-        # Stream LLM analysis
-        async for event in self._generate_analysis_streaming(question, scan_data, question_type, chat_history):
+        # Use CoT reasoning for complex multi-tool tasks
+        async for event in self._execute_cot_reasoning(question, chat_history):
             yield event
 
         # Yield final result
         yield {
             "type": "result",
             "data": {
-                "success": bool(scan_data),
-                "has_data": bool(scan_data),
-                "data_source": scan_data.get("source", "MCP") if scan_data else None
-            },
-            "agent": self.name
+                "success": True,
+                "agent": self.name
+            }
         }
+
+    async def _execute_cot_reasoning(
+        self,
+        question: str,
+        chat_history: List[Dict] = None,
+        max_steps: int = 5
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        """Execute Chain of Thought (CoT) reasoning loop with MCP tools"""
+        if not self.mcp_manager:
+            yield {"type": "thinking", "thought": "MCP is disabled. I will answer based on general knowledge.", "agent": self.name}
+            async for event in self._generate_analysis_streaming(question, None, QuestionType.GENERAL_KNOWLEDGE, chat_history):
+                yield event
+            return
+
+        try:
+            await self.mcp_manager.initialize()
+            all_tools = await self.mcp_manager.get_all_tools()
+            tools_desc = AnalysisAgentPrompts.format_tools_for_llm(all_tools)
+            logger.info(f"Available MCP Tools for AI:\n{tools_desc}")
+            
+            steps = []
+            final_answer = None
+            initial_tasks = []  # Track the original task list
+            parser = JsonOutputParser()
+            
+            for i in range(max_steps):
+                prompt = AnalysisAgentPrompts.get_cot_reasoning_prompt(
+                    question=question,
+                    tools_description=tools_desc,
+                    history=chat_history or [],
+                    steps=steps,
+                    initial_tasks=initial_tasks
+                )
+                
+                try:
+                    chain = self.llm | parser
+                    result = await chain.ainvoke(prompt)
+                except Exception as e:
+                    logger.error(f"CoT step {i} failed: {e}")
+                    yield {"type": "error", "error": f"Reasoning failed at step {i+1}: {str(e)}", "agent": self.name}
+                    break
+
+                # Process the step
+                thought = result.get("thought", "Thinking...")
+                plan = result.get("plan")
+                tasks = result.get("tasks", [])
+                
+                # Store initial tasks on first step
+                if i == 0 and tasks and isinstance(tasks, list):
+                    initial_tasks = tasks
+                
+                # Show thought in UI only (not in message content)
+                yield {"type": "thinking", "thought": thought, "agent": self.name}
+                
+                # Dynamic checklist: Show ONCE at the beginning if multiple tasks
+                if i == 0 and tasks and isinstance(tasks, list) and len(tasks) > 1:
+                    # Initial checklist display
+                    checklist_md = "\n### Kế hoạch\n"
+                    yield {"type": "delta", "text": checklist_md, "agent": self.name}
+                
+                action = result.get("action")
+                
+                if action == "final_answer":
+                    final_answer = result.get("answer")
+                    yield {"type": "delta", "text": f"\n### Kết quả\n{final_answer}\n", "agent": self.name}
+                    break
+                
+                if action == "call_tool":
+                    tool_call = result.get("tool_call", {})
+                    server = tool_call.get("server")
+                    tool_name = tool_call.get("name")
+                    args = tool_call.get("args", {})
+                    
+                    if not server or not tool_name:
+                        yield {"type": "thinking", "thought": "Invalid tool call. Continuing...", "agent": self.name}
+                        continue
+
+                    # Overwrite workspaceId for security
+                    if self.workspace_id:
+                        args["workspaceId"] = str(self.workspace_id)
+
+                    # --- TASK COMPLETION CHECK ---
+                    # If we have a task list, check if we're calling the right tool
+                    if initial_tasks:
+                        completed_tools = [s.get('tool_call', {}).get('name') for s in steps]
+                        pending_tasks = [t for t in initial_tasks if t not in completed_tools]
+                        
+                        # If there are pending tasks and we're trying to call a tool we already called
+                        if pending_tasks and tool_name in completed_tools:
+                            yield {"type": "thinking", "thought": f"I already called {tool_name}. I should call {pending_tasks[0]} next.", "agent": self.name}
+                            continue
+                    
+                    # --- LOOP PREVENTION ---
+                    # Check if this EXACT tool + args has been called already (allow once, prevent loops)
+                    # Use a normalized version of args to catch slight variations like spaces
+                    normalized_args = json.dumps(args, sort_keys=True).strip().lower()
+                    call_id = f"{server}:{tool_name}:{normalized_args}"
+                    duplicate_count = sum(1 for s in steps if f"{s['tool_call'].get('server')}:{s['tool_call'].get('name')}:{json.dumps(s['tool_call'].get('args'), sort_keys=True).strip().lower()}" == call_id)
+                    
+                    if duplicate_count >= 1:  # Changed from 2 to 1 - don't allow ANY duplicates
+                        yield {"type": "thinking", "thought": f"I already called {tool_name}. Moving to next task or final answer.", "agent": self.name}
+                        # Don't break, just continue to let AI decide next step
+                        continue
+
+                    # Validate tool exists to prevent hallucination
+                    available_server_tools = all_tools.get(server, [])
+                    if not any(t["name"] == tool_name for t in available_server_tools):
+                        error_msg = f"Tool '{tool_name}' not found on server '{server}'."
+                        yield {"type": "thinking", "thought": f"I tried to call a tool that doesn't exist: {tool_name}. I must stick to the available tools list.", "agent": self.name}
+                        yield {"type": "delta", "text": f"\n> Lỗi: Công cụ `{tool_name}` không tồn tại trên server `{server}`.\n", "agent": self.name}
+                        steps.append({
+                            "thought": thought,
+                            "tool_call": tool_call,
+                            "observation": {"content": error_msg, "isError": True}
+                        })
+                        continue
+
+                    yield {
+                        "type": "tool_start",
+                        "tool_name": tool_name,
+                        "tool_description": f"Executing {server}.{tool_name}",
+                        "parameters": args,
+                        "agent": self.name
+                    }
+                    
+                    try:
+                        observation = await self.mcp_manager.call_tool(server=server, tool=tool_name, args=args)
+                        status = "success" if not observation.get("isError") else "error"
+                        
+                        yield {
+                            "type": "tool_output",
+                            "tool_name": tool_name,
+                            "status": status,
+                            "output": observation,
+                            "agent": self.name
+                        }
+                        
+                        # Add tool execution to message content
+                        status_icon = "✅" if status == "success" else "❌"
+                        tool_md = f"\n> {status_icon} **Công cụ:** `{server}.{tool_name}`: {thought}\n"
+                        
+                        if status != "success":
+                            # MCPManager puts error message in 'content' field
+                            error_detail = observation.get('content', 'Unknown error')
+                            tool_md += f"> ⚠️ *Lỗi: {error_detail}*\n"
+                            
+                        yield {"type": "delta", "text": tool_md, "agent": self.name}
+                        
+                        steps.append({
+                            "thought": thought,
+                            "tool_call": tool_call,
+                            "observation": observation
+                        })
+                    except Exception as tool_err:
+                        logger.error(f"Tool execution failed: {tool_err}")
+                        yield {
+                            "type": "tool_output",
+                            "tool_name": tool_name,
+                            "status": "error",
+                            "error": str(tool_err),
+                            "agent": self.name
+                        }
+                        yield {"type": "delta", "text": f"\n> Lỗi gọi Tool: {str(tool_err)}\n", "agent": self.name}
+                        
+                        steps.append({
+                            "thought": thought,
+                            "tool_call": tool_call,
+                            "observation": {"error": str(tool_err), "isError": True}
+                        })
+                else:
+                    yield {"type": "thinking", "thought": "I need to rethink my approach.", "agent": self.name}
+
+            if not final_answer and steps:
+                yield {"type": "thinking", "thought": "Summarizing results...", "agent": self.name}
+                yield {"type": "delta", "text": "\n### Tóm tắt kết quả\n", "agent": self.name}
+
+                # Format steps with truncated observations to prevent context window overflow
+                formatted_steps = []
+                for s in steps:
+                    obs = s.get('observation', {})
+                    if isinstance(obs, dict) and 'content' in obs and isinstance(obs['content'], str):
+                        truncated_obs = obs.copy()
+                        if len(truncated_obs['content']) > 2000:
+                            truncated_obs['content'] = truncated_obs['content'][:2000] + "... [truncated]"
+                        formatted_steps.append({**s, 'observation': truncated_obs})
+                    else:
+                        obs_str = str(obs)
+                        if len(obs_str) > 2000:
+                            obs_str = obs_str[:2000] + "... [truncated]"
+                        formatted_steps.append({**s, 'observation': obs_str})
+
+                summary_prompt = AnalysisAgentPrompts.get_summary_prompt(question, formatted_steps)
+                async for event in self._buffer_llm_chunks(self.llm.astream(summary_prompt), 50):
+                    yield {"type": "delta", "text": event, "agent": self.name}
+
+        except Exception as e:
+            logger.exception("CoT reasoning failed: {}", e)
+            yield {"type": "error", "error": f"CoT failure: {str(e)}", "agent": self.name}
 
     async def _fetch_mcp_data_streaming(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch data from MCP with events streaming"""

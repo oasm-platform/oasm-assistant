@@ -83,18 +83,17 @@ You MUST classify the question into ONE of these types: {valid_types_str}
     "server": "server-name",
     "tool": "tool-name",
     "args": {{ "arg_name": "value" }},
-    "reasoning": "brief explanation"
+    "reasoning": "A short justification in the SAME LANGUAGE as the user's question"
 }}
 
-**Note on args:** 
-- ALWAYS include the tool's required parameters (e.g. "query" for search).
+**CRITICAL LANGUAGE RULE:**
+- You MUST detect the language of the user's question: "{question}"
+- All text in "reasoning" MUST be in that same language.
+- DO NOT use Chinese or English if the user asks in Vietnamese.
 
 **Examples:**
-- "Thời tiết Hà Nội?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
-- "Đưa cho tôi lộ trình học tiếng anh B1" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
-- "How to learn Python?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
-- "Show vulnerabilities" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
-- "Có bao nhiêu lỗ hổng nghiêm trọng?" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
+- "Thời tiết Hà Nội?" → {{"question_type": "general_knowledge", "reasoning": "Tôi cần tra cứu thời tiết tại Hà Nội...", ...}}
+- "How to learn Python?" → {{"question_type": "general_knowledge", "reasoning": "User wants to learn programming...", ...}}
 
 **Your JSON response:**"""
 
@@ -133,8 +132,10 @@ You MUST classify the question into ONE of these types: {valid_types_str}
     "server": "server-name",
     "tool": "tool-name",
     "args": {{ "arg_name": "value" }},
-    "reasoning": "brief explanation why you selected this tool"
+    "reasoning": "brief explanation in the user's language"
 }}
+
+**LANGUAGE COMPLIANCE:** You MUST respond in the SAME LANGUAGE as the user question: "{question}"
 
 **Your JSON response:**"""
 
@@ -493,3 +494,101 @@ Generate a helpful, professional response that:
 - **Match the language of the user's question (English, Vietnamese, etc.)**
 
 **Your Response:"""
+
+    @staticmethod
+    def get_cot_reasoning_prompt(
+        question: str,
+        tools_description: str,
+        history: List[Dict[str, Any]],
+        steps: List[Dict[str, Any]],
+        initial_tasks: List[str] = None
+    ) -> str:
+        """
+        Prompt for Chain of Thought (CoT) / ReAct reasoning loop.
+        Allows the LLM to call multiple tools sequentially to answer the question.
+        """
+        steps_text = ""
+        if steps:
+            steps_text = "\n**Previous Steps:**\n"
+            for i, step in enumerate(steps):
+                steps_text += f"{i+1}. Thought: {step.get('thought')}\n"
+                if 'tool_call' in step:
+                    call = step['tool_call']
+                    steps_text += f"   Tool: {call.get('server')}.{call.get('name')}\n"
+                    steps_text += f"   Output: {json.dumps(step.get('observation'))[:1000]}\n"
+
+        # Check for pending tasks to inject as a reminder
+        pending_reminder = ""
+        if initial_tasks and steps:
+            completed_tools = [s.get('tool_call', {}).get('name') for s in steps]
+            pending_tasks = [t for t in initial_tasks if t not in completed_tools]
+            if pending_tasks:
+                pending_reminder = f"""
+**URGENT REMINDER:** You have NOT completed all tasks yet.
+Pending tasks: {pending_tasks}
+You MUST call {pending_tasks[0]} next. DO NOT provided 'final_answer' until these are done."""
+
+        history_section = MemoryPrompts.format_short_term_memory(history)
+
+        return f"""### CRITICAL: LANGUAGE REQUIREMENT
+1. Detect user language: "{question}"
+2. You MUST respond EXCLUSIVELY in that language (e.g., if Vietnamese, all fields MUST be in Vietnamese).
+3. STRIČTLY PROHIBITED: Do not use Chinese or English if the question is in another language.
+4. This applies to BOTH 'thought' and 'answer' fields.
+
+You are an elite Security Orchestrator acting as a **Read-Only Observer**.
+You have access to MCP (Model Context Protocol) tools to gather data.
+
+**User Question:**
+"{question}"
+
+**Available MCP Tools:**
+{tools_description}
+{history_section}
+{steps_text}
+{pending_reminder}
+
+**Your Task:**
+1. **Analyze the Question:** Determine if it's simple (1 tool) or complex (multiple tools needed).
+2. **For Simple Questions (1 tool):**
+   - Just call the tool directly without creating a plan.
+3. **For Complex Questions (multiple parts):**
+   - Create a **tasks** list with exact tool names you will call.
+   - Execute EVERY tool in the tasks list sequentially.
+4. **Execution Rules:**
+   - **CRITICAL: If you created a tasks list with N tools, you MUST call ALL N tools before final_answer.**
+   - After each tool call, check: "Have I called all tools in my tasks list?"
+   - If YES → provide final_answer.
+
+**Output Format (JSON):**
+{{
+    "thought": "Brief explanation in the USER'S LANGUAGE",
+    "tasks": ["optional", "list", "of", "tool", "names"],
+    "action": "call_tool OR final_answer",
+    "tool_call": {{ "server": "...", "name": "...", "args": {{ ... }} }},
+    "answer": "Final analysis in the USER'S LANGUAGE"
+}}
+
+**Your Response (JSON):**"""
+
+    @staticmethod
+    def get_summary_prompt(
+        question: str,
+        formatted_steps: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Prompt for the final summary answer after all steps are completed.
+        """
+        return f"""### CRITICAL: LANGUAGE COMPLIANCE
+1. User language: "{question}"
+2. You MUST synthesize information and answer EXCLUSIVELY in that language.
+3. DO NOT use Chinese or English if the user asked in Vietnamese.
+
+USER QUESTION: {question}
+
+STEPS TAKEN AND DATA FOUND:
+{json.dumps(formatted_steps, indent=2)}
+
+TASK: Provide a comprehensive final answer to the user's question based ONLY on the data found above.
+
+FINAL RESPONSE:"""
