@@ -67,20 +67,8 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 api_key=request.api_key
             )
 
-            async for stream_message, conversation_data in stream:
-                 # Convert conversation_data to proto
-                pb_conversation = assistant_pb2.Conversation(
-                    conversation_id=conversation_data.get("conversation_id"),
-                    title=conversation_data.get("title", ""),
-                    description=conversation_data.get("description", ""),
-                    created_at=conversation_data.get("created_at").isoformat() if conversation_data.get("created_at") else "",
-                    updated_at=conversation_data.get("updated_at").isoformat() if conversation_data.get("updated_at") else ""
-                )
-                
-                yield assistant_pb2.CreateMessageResponse(
-                    message=stream_message,  # stream_message is already protobuf per current service implementation
-                    conversation=pb_conversation
-                )
+            async for response in stream:
+                yield response
 
         except Exception as e:
             logger.error("Error in CreateMessage: {}", e)
@@ -107,8 +95,8 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 agent_type=request.agent_type
             )
 
-            async for stream_message in stream:
-                yield assistant_pb2.UpdateMessageResponse(message=stream_message)
+            async for response in stream:
+                yield response
 
         except Exception as e:
             logger.error("Error in UpdateMessage: {}", e)

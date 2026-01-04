@@ -23,18 +23,19 @@ class StreamingMessageHandler:
         self.tools_used = []
         self.past_actions = []
 
-    def _create_message(self, msg_type: str, content_dict: Dict[str, Any]) -> assistant_pb2.Message:
-        """Create a Message protobuf with JSON content"""
+    def _create_message(self, msg_type: str, content: Any) -> assistant_pb2.Message:
+        """Create a Message protobuf"""
         try:
-            content_json = json.dumps(content_dict, ensure_ascii=False)
+            content_str = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
             return assistant_pb2.Message(
                 message_id=self.message_id,
-                question=self.question,
-                type=msg_type,
-                content=content_json,
                 conversation_id=self.conversation_id,
+                content=content_str,
+                type=msg_type,
                 created_at=datetime.utcnow().isoformat(),
-                updated_at=datetime.utcnow().isoformat()
+                updated_at=datetime.utcnow().isoformat(),
+                role="assistant",
+                question=self.question
             )
         except Exception as e:
             logger.error("Error creating message: {}", e)
@@ -42,13 +43,7 @@ class StreamingMessageHandler:
 
     def message_start(self) -> assistant_pb2.Message:
         """Create message_start event"""
-        content = {
-            "message_id": self.message_id,
-            "conversation_id": self.conversation_id,
-            "question": self.question,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        return self._create_message("message_start", content)
+        return self._create_message("message_start", "")
 
     def thinking(
         self,
@@ -58,18 +53,8 @@ class StreamingMessageHandler:
         context: Optional[Dict[str, Any]] = None
     ) -> assistant_pb2.Message:
         """Create thinking event"""
-        content = {
-            "agent": agent,
-            "thought": thought,
-            "roadmap": roadmap or [],
-            "context": context or {}
-        }
-
-        # Track agent usage
-        if agent not in self.agents_used:
-            self.agents_used.append(agent)
-
-        return self._create_message("thinking", content)
+        # simplified for flat stream
+        return self._create_message("thinking", thought)
 
     def tool_start(
         self,
@@ -79,19 +64,7 @@ class StreamingMessageHandler:
         agent: str
     ) -> assistant_pb2.Message:
         """Create tool_start event"""
-        content = {
-            "tool_name": tool_name,
-            "tool_description": tool_description,
-            "parameters": parameters,
-            "agent": agent,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-
-        # Track tool usage
-        if tool_name not in self.tools_used:
-            self.tools_used.append(tool_name)
-
-        return self._create_message("tool_start", content)
+        return self._create_message("tool_start", f"Using tool: {tool_name}")
 
     def tool_output(
         self,
@@ -103,20 +76,7 @@ class StreamingMessageHandler:
         execution_time_ms: Optional[int] = None
     ) -> assistant_pb2.Message:
         """Create tool_output event"""
-        content = {
-            "tool_name": tool_name,
-            "status": status,
-            "agent": agent
-        }
-
-        if output is not None:
-            content["output"] = output
-        if error is not None:
-            content["error"] = error
-        if execution_time_ms is not None:
-            content["execution_time_ms"] = execution_time_ms
-
-        return self._create_message("tool_output", content)
+        return self._create_message("tool_output", f"Tool {tool_name} finished: {status}")
 
     def tool_end(
         self,
@@ -126,29 +86,11 @@ class StreamingMessageHandler:
         next_action: Optional[str] = None
     ) -> assistant_pb2.Message:
         """Create tool_end event"""
-        content = {
-            "tool_name": tool_name,
-            "agent": agent,
-            "summary": summary,
-            "next_action": next_action or ""
-        }
-
-        # Track past action
-        self.past_actions.append({
-            "agent": agent,
-            "action": f"Executed {tool_name}",
-            "result": summary
-        })
-
-        return self._create_message("tool_end", content)
+        return self._create_message("tool_end", summary)
 
     def delta(self, text: str, agent: str) -> assistant_pb2.Message:
         """Create delta event for streaming text"""
-        content = {
-            "text": text,
-            "agent": agent
-        }
-        return self._create_message("delta", content)
+        return self._create_message("text", text)
 
     def state(
         self,
@@ -158,13 +100,7 @@ class StreamingMessageHandler:
         details: Dict[str, Any]
     ) -> assistant_pb2.Message:
         """Create state event"""
-        content = {
-            "state_type": state_type,
-            "agent": agent,
-            "status": status,
-            "details": details
-        }
-        return self._create_message("state", content)
+        return self._create_message("state", status)
 
     def error(
         self,
@@ -176,18 +112,7 @@ class StreamingMessageHandler:
         stack_trace: Optional[str] = None
     ) -> assistant_pb2.Message:
         """Create error event"""
-        content = {
-            "error_type": error_type,
-            "error_message": error_message,
-            "agent": agent,
-            "recoverable": recoverable,
-            "retry_suggested": retry_suggested
-        }
-
-        if stack_trace:
-            content["stack_trace"] = stack_trace
-
-        return self._create_message("error", content)
+        return self._create_message("error", error_message)
 
     def message_end(
         self,
@@ -196,32 +121,11 @@ class StreamingMessageHandler:
         key_findings: Optional[List[str]] = None
     ) -> assistant_pb2.Message:
         """Create message_end event"""
-        elapsed_time_ms = int((datetime.utcnow() - self.start_time).total_seconds() * 1000)
-
-        content = {
-            "message_id": self.message_id,
-            "total_time_ms": elapsed_time_ms,
-            "agents_used": self.agents_used,
-            "tools_used": self.tools_used,
-            "success": success,
-            "summary": {
-                "past_actions": self.past_actions,
-                "key_findings": key_findings or []
-            }
-        }
-
-        if total_tokens is not None:
-            content["total_tokens"] = total_tokens
-
-        return self._create_message("message_end", content)
+        return self._create_message("message_end", "")
 
     def done(self, final_status: str = "success") -> assistant_pb2.Message:
         """Create done event"""
-        content = {
-            "message_id": self.message_id,
-            "final_status": final_status
-        }
-        return self._create_message("done", content)
+        return self._create_message("done", "")
 
     def system_message(
         self,
@@ -230,15 +134,7 @@ class StreamingMessageHandler:
         details: Optional[Dict[str, Any]] = None
     ) -> assistant_pb2.Message:
         """Create system event"""
-        content = {
-            "level": level,
-            "message": message
-        }
-
-        if details:
-            content["details"] = details
-
-        return self._create_message("system", content)
+        return self._create_message("system", message)
 
     def event(
         self,
@@ -246,12 +142,7 @@ class StreamingMessageHandler:
         event_data: Dict[str, Any]
     ) -> assistant_pb2.Message:
         """Create custom event"""
-        content = {
-            "event_name": event_name,
-            "event_data": event_data,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        return self._create_message("event", content)
+        return self._create_message("event", event_name)
 
 
 class StreamingResponseBuilder:
@@ -265,7 +156,7 @@ class StreamingResponseBuilder:
         conversation_id: str,
         question: str,
         response_generator: AsyncGenerator[Dict[str, Any], None]
-    ) -> AsyncGenerator[assistant_pb2.Message, None]:
+    ) -> AsyncGenerator[assistant_pb2.CreateMessageResponse, None]:
         """
         Build a complete streaming response from an async generator
 
@@ -276,13 +167,23 @@ class StreamingResponseBuilder:
             response_generator: Async generator yielding streaming events
 
         Yields:
-            assistant_pb2.Message: Streaming message chunks
+            assistant_pb2.CreateMessageResponse: Streaming message chunks
         """
         handler = StreamingMessageHandler(message_id, conversation_id, question)
 
+        def to_response(msg: assistant_pb2.Message, conversation=None) -> assistant_pb2.CreateMessageResponse:
+            return assistant_pb2.CreateMessageResponse(
+                message_id=msg.message_id,
+                conversation_id=msg.conversation_id,
+                content=msg.content,
+                type=msg.type,
+                conversation=conversation,
+                created_at=msg.created_at
+            )
+
         try:
             # Send message_start
-            yield handler.message_start()
+            yield to_response(handler.message_start())
 
             # Mapping for event handlers
             event_mapping = {
@@ -341,7 +242,7 @@ class StreamingResponseBuilder:
                 event_type = event.get("type")
                 
                 if event_type in event_mapping:
-                    yield event_mapping[event_type](event)
+                    yield to_response(event_mapping[event_type](event))
                 
                 elif event_type == "result":
                     data = event.get("data", {})
@@ -357,19 +258,19 @@ class StreamingResponseBuilder:
                         response_text = str(data)
                         
                     if response_text:
-                        yield handler.delta(
+                        yield to_response(handler.delta(
                             text=response_text,
                             agent=event.get("agent", "")
-                        )
+                        ))
 
             # Send message_end
-            yield handler.message_end(
+            yield to_response(handler.message_end(
                 success=True,
                 key_findings=[]
-            )
+            ))
 
             # Send done
-            yield handler.done(final_status="success")
+            yield to_response(handler.done(final_status="success"))
 
         except Exception as e:
             logger.error("Error in streaming response: {}", e)

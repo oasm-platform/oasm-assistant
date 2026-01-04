@@ -65,6 +65,7 @@ class OrchestrationAgent(BaseAgent):
                         "agents_assigned": ["AnalysisAgent"],
                         "status": "initiated"
                     },
+                    "response": "I am coordinating the security analysis workflow. I've assigned this task to the Analysis Agent.",
                     "agent": self.name
                 }
             
