@@ -258,16 +258,15 @@ requests:
 
 # CRITICAL OUTPUT REQUIREMENTS
 
-⚠️ **IMPORTANT**: Your response must contain ONLY the YAML template code.
+⚠️ **IMPORTANT**: Your response must be formatted as Markdown for better UI presentation.
 
 **Format Rules:**
-1. ✅ Start directly with `id:` (no explanation before)
-2. ✅ Use 2-space indentation (not tabs)
-3. ✅ End with the last line of YAML (no explanation after)
-4. ❌ NO markdown code blocks (no ```yaml or ```)
-5. ❌ NO explanatory text or comments outside the YAML
-6. ✅ Use `{{{{BaseURL}}}}` with 4 curly braces for URL variables
-7. ✅ Follow exact YAML syntax from reference templates (if provided)
+1. ✅ Start with a brief, professional introduction explaining what the template detects.
+2. ✅ Wrap the Nuclei YAML template in a Triple Backtick code block with `yaml` language identifier.
+3. ✅ Use 2-space indentation (not tabs) for the YAML content.
+4. ✅ Use `{{{{BaseURL}}}}` with 4 curly braces for URL variables.
+5. ✅ Provide a brief summary or next steps after the code block.
+6. ✅ Follow exact YAML syntax from reference templates (if provided).
 
 **Quality Checklist:**
 - [ ] ID is descriptive and follows naming convention

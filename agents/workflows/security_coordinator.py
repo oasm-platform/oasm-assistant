@@ -91,8 +91,8 @@ class SecurityCoordinator:
 
         return workflow.compile(checkpointer=checkpointer)
 
-    def execute_security_task(self, task: Dict[str, Any], conversation_id: Optional[str] = None) -> Dict[str, Any]:
-        """Execute security task through workflow (sync)"""
+    async def execute_security_task(self, task: Dict[str, Any], conversation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Execute security task through workflow (async)"""
         try:
             initial_state = SecurityWorkflowState(
                 messages=[HumanMessage(content=task.get("question", ""))],
@@ -108,7 +108,7 @@ class SecurityCoordinator:
             )
 
             config = {"configurable": {"thread_id": conversation_id}} if conversation_id else None
-            final_state = self.workflow_graph.invoke(initial_state, config=config)
+            final_state = await self.workflow_graph.ainvoke(initial_state, config=config)
 
             if final_state.get("error"):
                 return {
@@ -146,7 +146,7 @@ class SecurityCoordinator:
         
         return state
 
-    def _execute_agent(
+    async def _execute_agent(
         self,
         state: SecurityWorkflowState,
         agent_key: str,
@@ -198,7 +198,7 @@ class SecurityCoordinator:
                     "agent_results": state["agent_results"]
                 }
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
             
             state["agent_results"][agent_key] = result
             state["current_agent"] = agent_key
@@ -333,10 +333,10 @@ class SecurityCoordinator:
         except Exception as e:
             logger.error("Failed to update memory: {}", e)
 
-    def process_message_question(self, question: str) -> str:
-        """Process question and return formatted response (sync)"""
+    async def process_message_question(self, question: str) -> str:
+        """Process question and return formatted response (async)"""
         try:
-            result = self.execute_security_task({
+            result = await self.execute_security_task({
                 "type": "security_analysis",
                 "question": question,
                 "target": None,

@@ -45,11 +45,11 @@ class NucleiGeneratorAgent(BaseAgent):
         llm_config = kwargs.get('llm_config', {})
         self.llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id, **llm_config)
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute task synchronously"""
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task asynchronously"""
         try:
             question = task.get("question", "")
-            return self._run_async(self.generate_template(question))
+            return await self.generate_template(question)
         except Exception as e:
             logger.error("Nuclei generation failed: {}", e)
             return {"success": False, "error": str(e)}
@@ -147,6 +147,7 @@ class NucleiGeneratorAgent(BaseAgent):
 
         prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question, rag_context)
         
+        min_chunk_size = configs.llm.min_chunk_size
         try:
             async for chunk in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
                 yield {"type": "delta", "text": chunk, "agent": self.name}

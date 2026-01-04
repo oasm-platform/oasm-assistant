@@ -87,10 +87,10 @@ class BaseAgent(ABC):
         Returns:
             Callable node function for LangGraph
         """
-        def node_function(state: Dict[str, Any]) -> Dict[str, Any]:
+        async def node_function(state: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 task = state.get(input_key, {})
-                result = self.execute_task(task)
+                result = await self.execute_task(task)
                 state[output_key] = result
 
                 # Store in agent_results for coordinator
@@ -118,9 +118,9 @@ class BaseAgent(ABC):
         return node_function
 
     @abstractmethod
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute agent task (synchronous)
+        Execute agent task (asynchronous)
 
         Args:
             task: Task dictionary with action and parameters
@@ -150,8 +150,8 @@ class BaseAgent(ABC):
             - {"type": "error", "error": str, "agent": str}
         """
         try:
-            # Execute synchronously (fallback)
-            result = self.execute_task(task)
+            # Execute asynchronously
+            result = await self.execute_task(task)
 
             # Yield result
             yield {
@@ -214,7 +214,10 @@ class BaseAgent(ABC):
             yield buffer
 
     def _run_async(self, coro):
-        """Safely run an async coroutine from synchronous code"""
+        """
+        Safely run an async coroutine from synchronous code.
+        DEPRECATED: Refactor to use async/await throughout the call chain instead.
+        """
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
@@ -222,13 +225,8 @@ class BaseAgent(ABC):
             asyncio.set_event_loop(loop)
             
         if loop.is_running():
-            # If we are in an existing loop, we might need a different approach 
-            # (like nest_asyncio), but for OASM assistant we mostly run in thread pool
-            # or dedicated workers. A safer way is to use a background thread or
-            # just allow the caller to handle the loop.
-            # Simplified for now:
-            import nest_asyncio
-            nest_asyncio.apply()
+            # If we are in an existing loop, we cannot safely run_until_complete
+            logger.warning("Attempted to run async code from sync context while loop is running.")
             return loop.run_until_complete(coro)
         else:
             return loop.run_until_complete(coro)

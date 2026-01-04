@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 import re
 import json
+import json5
 import asyncio
 from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import JsonOutputParser
@@ -134,14 +135,7 @@ class CoTAgent(BaseAgent):
                 if action == "final_answer":
                     final_answer = result.get("answer")
                     if final_answer:
-                        # Stream the final answer instead of yielding it once
-                        # We can either stream it as chunks or use a simulated stream if it's already generated
-                        # Since LLM already generated it, we emit it but let's make it look like streaming for consistency
-                        # Actually, better if we just yield it as a delta but in chunks
-                        chunk_size = 20
-                        for j in range(0, len(final_answer), chunk_size):
-                            yield {"type": "delta", "text": final_answer[j:j+chunk_size], "agent": self.name}
-                            await asyncio.sleep(0.01) # Small delay for visual effect
+                        yield {"type": "delta", "text": final_answer, "agent": self.name}
                     break
                 
                 if action == "call_tool":
@@ -233,7 +227,7 @@ class CoTAgent(BaseAgent):
                     # Yield a thinking event for the summary phase
                     yield {"type": "thinking", "thought": "Synthesizing findings...", "agent": self.name}
                     
-                    async for chunk in self._buffer_llm_chunks(self.llm.astream(summary_prompt), 50):
+                    async for chunk in self._buffer_llm_chunks(self.llm.astream(summary_prompt), configs.llm.min_chunk_size):
                         yield {"type": "delta", "text": chunk, "agent": self.name}
                 else:
                     # No answer and no tools called - likely a reasoning failure or irrelevant question
@@ -291,36 +285,37 @@ class CoTAgent(BaseAgent):
         return formatted
 
     def _clean_json_comments(self, text: str) -> str:
-        """Remove JS-style comments (// and /* */) from a string that should be JSON"""
-        # 1. Remove /* ... */ comments (multi-line)
-        text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
-        
-        # 2. Remove // ... comments (line comments)
-        # Robust check: only remove // if not part of a URL (heuristic: not preceded by : and not inside quotes)
-        # We'll use a multi-pass approach or a more specific regex
-        
-        lines = text.split('\n')
-        clean_lines = []
-        for line in lines:
-            # Match // ONLY if it's NOT preceded by a colon (potential URL)
-            # and NOT inside a string (simplistic check: even number of quotes before it)
-            
-            comment_start = -1
-            in_quote = False
-            for idx in range(len(line)):
-                if line[idx] == '"' and (idx == 0 or line[idx-1] != '\\'):
-                    in_quote = not in_quote
-                if not in_quote and line[idx:idx+2] == '//':
-                    # Check if preceded by :
-                    if idx > 0 and line[idx-1] == ':':
-                        continue
-                    comment_start = idx
-                    break
-            
-            if comment_start != -1:
-                line = line[:comment_start]
-            clean_lines.append(line)
-        
-        text = '\n'.join(clean_lines)
-        return text.strip()
+        """Remove JS-style comments from a string that should be JSON using json5 library."""
+        try:
+            # Expand common LLM failure where it doesn't wrap in ```json
+            if "{" in text and not text.strip().startswith("{"):
+                start = text.find("{")
+                end = text.rfind("}")
+                if start != -1 and end != -1:
+                    text = text[start:end+1]
+
+            # json5 loads JSON with comments, then we dump it as a standard JSON string
+            data = json5.loads(text)
+            return json.dumps(data)
+        except Exception as e:
+            logger.warning(f"json5 parsing failed: {e}. Falling back to original cleaning.")
+            # Fallback to a simpler cleaning if json5 fails
+            text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+            lines = text.split('\n')
+            clean_lines = []
+            for line in lines:
+                comment_start = -1
+                in_quote = False
+                for idx in range(len(line)):
+                    if line[idx] == '"' and (idx == 0 or line[idx-1] != '\\'):
+                        in_quote = not in_quote
+                    if not in_quote and line[idx:idx+2] == '//':
+                        if idx > 0 and line[idx-1] == ':':
+                            continue
+                        comment_start = idx
+                        break
+                if comment_start != -1:
+                    line = line[:comment_start]
+                clean_lines.append(line)
+            return '\n'.join(clean_lines).strip()
 

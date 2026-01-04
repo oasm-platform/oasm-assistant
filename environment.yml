@@ -55,7 +55,7 @@ dependencies:
       - langchain-google-genai==3.2.0
       - langchain-ollama==1.0.0
       - langchain-mcp-adapters==0.1.14
-
+      - json5==0.10.0
       # Document Processing
       - pypdf==6.4.0
 

@@ -36,6 +36,7 @@ dependencies = [
     
     # Document Processing
     "pypdf==6.4.0",
+    "json5==0.10.0",
     
     # LangGraph for agent workflow
     "langgraph==1.0.4",

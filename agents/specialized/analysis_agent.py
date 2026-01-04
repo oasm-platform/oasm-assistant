@@ -38,15 +38,15 @@ class AnalysisAgent(CoTAgent):
             **kwargs
         )
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute task synchronously"""
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task asynchronously"""
         try:
             action = task.get("action", "analyze_vulnerabilities")
             question = task.get("question", "Provide security summary")
             chat_history = task.get("chat_history")
 
             if action == "analyze_vulnerabilities":
-                return self._run_async(self.analyze_vulnerabilities(question, chat_history))
+                return await self.analyze_vulnerabilities(question, chat_history)
 
             return {"success": False, "error": f"Unknown action: {action}"}
         except Exception as e:

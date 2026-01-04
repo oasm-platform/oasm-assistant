@@ -53,8 +53,13 @@ class StreamingMessageHandler:
         context: Optional[Dict[str, Any]] = None
     ) -> assistant_pb2.Message:
         """Create thinking event"""
-        # simplified for flat stream
-        return self._create_message("thinking", thought)
+        content = {
+            "agent": agent,
+            "thought": thought,
+            "roadmap": roadmap,
+            "context": context
+        }
+        return self._create_message("thinking", content)
 
     def tool_start(
         self,
@@ -64,7 +69,13 @@ class StreamingMessageHandler:
         agent: str
     ) -> assistant_pb2.Message:
         """Create tool_start event"""
-        return self._create_message("tool_start", f"Using tool: {tool_name}")
+        content = {
+            "agent": agent,
+            "tool_name": tool_name,
+            "description": tool_description,
+            "parameters": parameters
+        }
+        return self._create_message("tool_start", content)
 
     def tool_output(
         self,
@@ -76,7 +87,15 @@ class StreamingMessageHandler:
         execution_time_ms: Optional[int] = None
     ) -> assistant_pb2.Message:
         """Create tool_output event"""
-        return self._create_message("tool_output", f"Tool {tool_name} finished: {status}")
+        content = {
+            "agent": agent,
+            "tool_name": tool_name,
+            "status": status,
+            "output": output,
+            "error": error,
+            "execution_time": execution_time_ms
+        }
+        return self._create_message("tool_output", content)
 
     def tool_end(
         self,
