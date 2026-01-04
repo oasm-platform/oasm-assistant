@@ -45,11 +45,11 @@ class NucleiGeneratorAgent(BaseAgent):
         llm_config = kwargs.get('llm_config', {})
         self.llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id, **llm_config)
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute task synchronously"""
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task asynchronously"""
         try:
             question = task.get("question", "")
-            return asyncio.run(self.generate_template(question))
+            return await self.generate_template(question)
         except Exception as e:
             logger.error("Nuclei generation failed: {}", e)
             return {"success": False, "error": str(e)}
@@ -59,11 +59,6 @@ class NucleiGeneratorAgent(BaseAgent):
         try:
             question = task.get("question", "")
 
-            yield {
-                "type": "thinking",
-                "thought": "Generating Nuclei template based on description...",
-                "agent": self.name
-            }
 
             async for event in self.generate_template_streaming(question):
                 yield event
@@ -152,26 +147,10 @@ class NucleiGeneratorAgent(BaseAgent):
 
         prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question, rag_context)
         
-        # Buffer similar to AnalysisAgent to avoid too many small chunks
-        buffer = ""
         min_chunk_size = configs.llm.min_chunk_size
-
         try:
-            async for chunk in self.llm.astream(prompt):
-                if isinstance(chunk, BaseMessage) and chunk.content:
-                    text = chunk.content
-                elif isinstance(chunk, str):
-                    text = chunk
-                else:
-                    continue
-                
-                buffer += text
-                if len(buffer) >= min_chunk_size:
-                    yield {"type": "delta", "text": buffer, "agent": self.name}
-                    buffer = ""
-            
-            if buffer:
-                yield {"type": "delta", "text": buffer, "agent": self.name}
+            async for chunk in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
+                yield {"type": "delta", "text": chunk, "agent": self.name}
                 
         except Exception as e:
              logger.error("Failed to stream template generation: {}", e)

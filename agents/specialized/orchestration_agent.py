@@ -50,7 +50,7 @@ class OrchestrationAgent(BaseAgent):
             )
             logger.debug(f"OrchestrationAgent initialized with {'full' if workspace_id and user_id else 'partial'} MCP context")
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute task by action type"""
         try:
             action = task.get("action", "coordinate_workflow")
@@ -65,6 +65,7 @@ class OrchestrationAgent(BaseAgent):
                         "agents_assigned": ["AnalysisAgent"],
                         "status": "initiated"
                     },
+                    "response": "I am coordinating the security analysis workflow. I've assigned this task to the Analysis Agent.",
                     "agent": self.name
                 }
             
@@ -77,7 +78,7 @@ class OrchestrationAgent(BaseAgent):
                     }
                 
                 # Delegate directly to analysis agent
-                result = self.analysis_agent.execute_task({
+                result = await self.analysis_agent.execute_task({
                     "action": "analyze_vulnerabilities",
                     "question": task.get("question", "Analyze security vulnerabilities"),
                     "scan_results": task.get("scan_results")

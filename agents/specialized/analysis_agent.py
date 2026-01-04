@@ -9,17 +9,16 @@ import traceback
 
 from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import JsonOutputParser
-from agents.core import BaseAgent, AgentRole, AgentType
+from agents.core import CoTAgent, AgentRole, AgentType
 from common.logger import logger
 from common.config import configs
 from common.types import QuestionType
 from llms import LLMManager
 from llms.prompts import AnalysisAgentPrompts
-from tools.mcp_client import MCPManager
 from data.database import postgres_db
 
 
-class AnalysisAgent(BaseAgent):
+class AnalysisAgent(CoTAgent):
     """Analyzes security vulnerabilities using LLM and MCP tools"""
 
     def __init__(
@@ -32,33 +31,22 @@ class AnalysisAgent(BaseAgent):
         super().__init__(
             name="AnalysisAgent",
             role=AgentRole.ANALYSIS_AGENT,
+            db_session=db_session,
+            workspace_id=workspace_id,
+            user_id=user_id,
             agent_type=AgentType.GOAL_BASED,
             **kwargs
         )
 
-        self.session = db_session
-        self.workspace_id = workspace_id
-        self.user_id = user_id
-        
-        llm_config = kwargs.get('llm_config', {})
-        self.llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id, **llm_config)
-
-        if workspace_id and user_id:
-            self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
-            logger.debug(f"✓ MCP enabled for workspace {workspace_id}")
-        else:
-            self.mcp_manager = None
-            logger.warning("MCP disabled - no workspace/user provided")
-
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute task synchronously"""
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task asynchronously"""
         try:
             action = task.get("action", "analyze_vulnerabilities")
             question = task.get("question", "Provide security summary")
             chat_history = task.get("chat_history")
 
             if action == "analyze_vulnerabilities":
-                return asyncio.run(self.analyze_vulnerabilities(question, chat_history))
+                return await self.analyze_vulnerabilities(question, chat_history)
 
             return {"success": False, "error": f"Unknown action: {action}"}
         except Exception as e:
@@ -71,12 +59,6 @@ class AnalysisAgent(BaseAgent):
             action = task.get("action", "analyze_vulnerabilities")
             question = task.get("question", "Provide security summary")
             chat_history = task.get("chat_history")
-
-            yield {
-                "type": "thinking",
-                "thought": "Analyzing security data and preparing response",
-                "agent": self.name
-            }
 
             if action == "analyze_vulnerabilities":
                 async for event in self.analyze_vulnerabilities_streaming(question, chat_history):
@@ -118,40 +100,33 @@ class AnalysisAgent(BaseAgent):
         }
 
     async def analyze_vulnerabilities_streaming(self, question: str, chat_history: List[Dict] = None) -> AsyncGenerator[Dict[str, Any], None]:
-        """Analyze with streaming - single LLM call for classification and tool selection"""
+        """Analyze with streaming - using centralized CoT reasoning"""
         logger.info(f"Streaming analysis: {question[:100]}...")
 
-        # Use streaming version of data fetching to emit events during the process
-        scan_data = None
-        tool_executed = False
-        
-        async for event in self._fetch_mcp_data_streaming(question):
-            if event["type"] == "result_data":
-                scan_data = event["data"]
-                tool_executed = True
-            else:
-                yield event
-
-        question_type = self._ensure_question_type_enum(scan_data.get("question_type") if scan_data else None)
-
-        # If no tool was executed (e.g. MCP disabled or no tool selected), we might need generic events
-        if not tool_executed and not scan_data:
-             yield {"type": "thinking", "thought": "No appropriate tool found or MCP disabled. Proceeding with general analysis.", "agent": self.name}
-
-        # Stream LLM analysis
-        async for event in self._generate_analysis_streaming(question, scan_data, question_type, chat_history):
+        async for event in self._execute_cot_loop(question, chat_history):
             yield event
 
-        # Yield final result
         yield {
             "type": "result",
             "data": {
-                "success": bool(scan_data),
-                "has_data": bool(scan_data),
-                "data_source": scan_data.get("source", "MCP") if scan_data else None
-            },
-            "agent": self.name
+                "success": True,
+                "agent": self.name
+            }
         }
+
+    def get_reasoning_prompt(self, **kwargs) -> str:
+        """Provide specialized CoT prompt for security analysis"""
+        return AnalysisAgentPrompts.get_cot_reasoning_prompt(**kwargs)
+
+    def get_summary_prompt(self, question: str, steps: List[Dict], **kwargs) -> str:
+        """Provide specialized summary prompt for security analysis"""
+        return AnalysisAgentPrompts.get_summary_prompt(question, steps)
+
+    async def _generate_fallback_response(self, question: str, chat_history: List[Dict]) -> AsyncGenerator[Dict[str, Any], None]:
+        """Specific fallback for AnalysisAgent when MCP is unavailable"""
+        async for event in self._generate_analysis_streaming(question, None, QuestionType.GENERAL_KNOWLEDGE, chat_history):
+            yield event
+
 
     async def _fetch_mcp_data_streaming(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch data from MCP with events streaming"""
@@ -159,8 +134,8 @@ class AnalysisAgent(BaseAgent):
             logger.warning("MCP not available")
             return
         try:
-            yield {"type": "thinking", "thought": "Initializing MCP tools...", "agent": self.name}
             await self.mcp_manager.initialize()
+
 
             all_tools = await self.mcp_manager.get_all_tools()
             if not all_tools:
@@ -168,18 +143,14 @@ class AnalysisAgent(BaseAgent):
                 return
 
             tool_count = sum(len(tools) for tools in all_tools.values())
-            yield {
-                "type": "thinking", 
-                "thought": f"Exploring {tool_count} tools from {len(all_tools)} servers to find the best match...", 
-                "agent": self.name
-            }
             logger.debug(f"Discovered {tool_count} MCP tools from {len(all_tools)} servers")
+
 
             selected = await self._classify_and_select_tool_combined(question, all_tools)
             if not selected:
                 logger.warning("LLM could not classify and select tool")
-                yield {"type": "thinking", "thought": "Could not determine appropriate tool.", "agent": self.name}
                 return
+
 
             server_name = selected["server"]
             tool_name = selected["tool"]
@@ -223,6 +194,8 @@ class AnalysisAgent(BaseAgent):
                 "parameters": tool_args,
                 "agent": self.name
             }
+            yield {"type": "delta", "text": f"\n\n> 🔍 **Searching:** Calling tool `{server_name}.{tool_name}`...\n", "agent": self.name}
+
 
             # Execute tool
             result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
@@ -256,6 +229,8 @@ class AnalysisAgent(BaseAgent):
                 },
                 "agent": self.name
             }
+            yield {"type": "delta", "text": f"> ✅ **Found data:** {full_tool_name}\n\n", "agent": self.name}
+
 
             final_data = {
                 "source": f"MCP ({server_name}/{tool_name})",
@@ -477,30 +452,6 @@ You MUST respond with valid JSON containing exactly these fields:
                 return f"Analysis data retrieved:\n\n{json.dumps(stats, indent=2)[:500]}"
             return f"Error during analysis: {LLMManager.get_friendly_error_message(e)}"
 
-    async def _buffer_llm_chunks(
-        self,
-        llm_stream: AsyncGenerator,
-        min_chunk_size: int
-    ) -> AsyncGenerator[str, None]:
-        """Buffer LLM chunks to reduce response count"""
-        buffer = ""
-
-        async for chunk in llm_stream:
-            if isinstance(chunk, BaseMessage) and chunk.content:
-                text = chunk.content
-            elif isinstance(chunk, str):
-                text = chunk
-            else:
-                continue
-
-            buffer += text
-
-            if len(buffer) >= min_chunk_size:
-                yield buffer
-                buffer = ""
-
-        if buffer:
-            yield buffer
 
     async def _generate_analysis_streaming(
         self,

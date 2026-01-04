@@ -27,7 +27,7 @@ class ThreatIntelligenceAgent(BaseAgent):
             **kwargs
         )
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute threat intelligence task by action type"""
         try:
             action = task.get("action", "gather_intelligence")

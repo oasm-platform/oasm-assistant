@@ -41,6 +41,7 @@ loguru==0.7.3
 # Utilities
 aiohttp==3.13.2
 nest-asyncio==1.6.0
+json5==0.10.0
 
 # Web Search
 requests==2.32.5

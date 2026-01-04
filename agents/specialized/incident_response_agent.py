@@ -31,7 +31,7 @@ class IncidentResponseAgent(BaseAgent):
             **kwargs
         )
 
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute incident response task by action type"""
         try:
             action = task.get("action", "assess_incident")

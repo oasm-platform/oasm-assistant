@@ -46,6 +46,7 @@ class SecurityCoordinator:
         self.workspace_id = workspace_id
         self.user_id = user_id
         self.llm_config = llm_config or {}
+        self.agent_instances = {} # Cache agent instances
         self.available_agents = {
             "analysis": AnalysisAgent,
             "orchestration": OrchestrationAgent,
@@ -90,8 +91,8 @@ class SecurityCoordinator:
 
         return workflow.compile(checkpointer=checkpointer)
 
-    def execute_security_task(self, task: Dict[str, Any], conversation_id: Optional[str] = None) -> Dict[str, Any]:
-        """Execute security task through workflow (sync)"""
+    async def execute_security_task(self, task: Dict[str, Any], conversation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Execute security task through workflow (async)"""
         try:
             initial_state = SecurityWorkflowState(
                 messages=[HumanMessage(content=task.get("question", ""))],
@@ -107,7 +108,7 @@ class SecurityCoordinator:
             )
 
             config = {"configurable": {"thread_id": conversation_id}} if conversation_id else None
-            final_state = self.workflow_graph.invoke(initial_state, config=config)
+            final_state = await self.workflow_graph.ainvoke(initial_state, config=config)
 
             if final_state.get("error"):
                 return {
@@ -145,7 +146,7 @@ class SecurityCoordinator:
         
         return state
 
-    def _execute_agent(
+    async def _execute_agent(
         self,
         state: SecurityWorkflowState,
         agent_key: str,
@@ -153,21 +154,25 @@ class SecurityCoordinator:
     ) -> SecurityWorkflowState:
         """Execute task with specified agent"""
         try:
-            agent_class = self.available_agents.get(agent_key)
-            if not agent_class:
-                state["error"] = f"{agent_key} agent not available"
-                return state
+            agent_key = agent_key.lower()
+            if agent_key not in self.agent_instances:
+                agent_class = self.available_agents.get(agent_key)
+                if not agent_class:
+                    state["error"] = f"{agent_key} agent not available"
+                    return state
 
-            # Create agent with context
-            if agent_key in ["orchestration", "analysis"]:
-                agent = agent_class(
-                    db_session=self.db_session,
-                    workspace_id=self.workspace_id,
-                    user_id=self.user_id,
-                    llm_config=self.llm_config
-                )
-            else:
-                agent = agent_class(llm_config=self.llm_config)
+                # Create agent instance
+                if agent_key in ["orchestration", "analysis", "nuclei"]:
+                    self.agent_instances[agent_key] = agent_class(
+                        db_session=self.db_session,
+                        workspace_id=self.workspace_id,
+                        user_id=self.user_id,
+                        llm_config=self.llm_config
+                    )
+                else:
+                    self.agent_instances[agent_key] = agent_class(llm_config=self.llm_config)
+
+            agent = self.agent_instances[agent_key]
 
             # Prepare task payload
             # STM (Short Term Memory): Use sliding window defined in configs
@@ -193,7 +198,7 @@ class SecurityCoordinator:
                     "agent_results": state["agent_results"]
                 }
 
-            result = agent.execute_task(task)
+            result = await agent.execute_task(task)
             
             state["agent_results"][agent_key] = result
             state["current_agent"] = agent_key
@@ -328,10 +333,10 @@ class SecurityCoordinator:
         except Exception as e:
             logger.error("Failed to update memory: {}", e)
 
-    def process_message_question(self, question: str) -> str:
-        """Process question and return formatted response (sync)"""
+    async def process_message_question(self, question: str) -> str:
+        """Process question and return formatted response (async)"""
         try:
-            result = self.execute_security_task({
+            result = await self.execute_security_task({
                 "type": "security_analysis",
                 "question": question,
                 "target": None,
@@ -384,51 +389,24 @@ class SecurityCoordinator:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Process question with streaming events (async)"""
         try:
-            yield {
-                "type": "thinking",
-                "agent": "SecurityCoordinator",
-                "thought": "Analyzing security question and determining workflow",
-                "roadmap": [
-                    {"step": "1", "description": "Route to appropriate security agent"},
-                    {"step": "2", "description": "Execute security analysis with LLM"},
-                    {"step": "3", "description": "Stream response to user"}
-                ]
-            }
-
-            # ROUTING LOGIC via LLM
-            # If default orchestration is requested, we now use the Router to decide
-            # whether to go to Analysis, Nuclei, etc.
+            # UNIFIED ROUTING LOGIC
+            # If orchestration is requested, we identify the best agent for the job
             if agent_type == "orchestration":
                  agent_key = await self._identify_intent_and_route(question)
             else:
-                 agent_key = agent_type
+                 agent_key = agent_type.lower()
 
-            # Validation
-            if agent_key not in self.available_agents:
-                 logger.warning(f"Agent type {agent_key} not found, defaulting to analysis")
-                 agent_key = "analysis"
+            # Delegate to internal execution but with streaming
+            if agent_key not in self.agent_instances:
+                agent_class = self.available_agents.get(agent_key, AnalysisAgent)
+                self.agent_instances[agent_key] = agent_class(
+                    db_session=self.db_session,
+                    workspace_id=self.workspace_id,
+                    user_id=self.user_id,
+                    llm_config=self.llm_config
+                )
             
-            yield {
-                "type": "thinking",
-                "agent": "SecurityCoordinator",
-                "thought": f"Delegating task to **{agent_key.title()}Agent** based on your request.",
-            }
-
-            agent_class = self.available_agents.get(agent_key)
-            if not agent_class:
-                yield {
-                    "type": "error",
-                    "error": "Selected agent not available",
-                    "agent": "SecurityCoordinator"
-                }
-                return
-
-            agent = agent_class(
-                db_session=self.db_session,
-                workspace_id=self.workspace_id,
-                user_id=self.user_id,
-                llm_config=self.llm_config
-            )
+            agent = self.agent_instances[agent_key]
 
             # Chat history is now handled by LangGraph state + conversation_id checkpointer
             chat_history = self._get_chat_history_from_memory(conversation_id) if conversation_id else []

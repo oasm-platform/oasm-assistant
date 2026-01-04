@@ -44,59 +44,39 @@ You have access to security tools and databases. Use your expertise to provide c
         valid_types = QuestionType.list_values()
         valid_types_str = " or ".join([f'"{qt}"' for qt in valid_types])
 
-        return f"""Analyze the user's question and respond with a JSON containing classification and tool selection.
+        return f"""You are an Elite Security Analysis System. Your task is to perform an initial assessment of the user's inquiry and determine the optimal path for data retrieval.
 
-**User Question:**
-{question}
+**USER INQUIRY:**
+"{question}"
 
-**Available MCP Tools:**
+**MCP SECURITY INFRASTRUCTURE (Available Tools):**
 {tools_description}
 
-**Question Type Classification:**
+**INTERNAL CLASSIFICATION PROTOCOL:**
+You MUST categorize this question into exactly one of these types: {valid_types}
 
-You MUST classify the question into ONE of these types: {valid_types_str}
+1. **{QuestionType.SECURITY_RELATED.value}**: Inquiries about vulnerabilities, CVEs, scans, attack surface, or security metrics. 
+   - *Action*: Select the most relevant security MCP tool.
+   
+2. **{QuestionType.GENERAL_KNOWLEDGE.value}**: Inquiries about general topics, educational content, or non-security facts.
+   - *Action*: Select a general search or knowledge tool if available.
 
-1. **{QuestionType.SECURITY_RELATED.value}** - ONLY if question is explicitly about:
-   - Security vulnerabilities, CVEs, exploits
-   - Security scans, penetration testing results
-   - Security assets, targets, attack surface (in security context)
-   - Threat intelligence, security statistics
-   - Security tools, configurations
-   - Keywords: vulnerability, CVE, scan, threat, exploit, security
-
-2. **{QuestionType.GENERAL_KNOWLEDGE.value}** - ALL other questions:
-   - Weather, news, current events
-   - Educational topics (learning languages, courses, studying)
-   - General facts, how-to guides, recommendations
-   - ANY topic NOT explicitly about cybersecurity
-   - If unsure → default to {QuestionType.GENERAL_KNOWLEDGE.value}
-
-**Your Task:**
-1. Classify the question into one of the valid types: {valid_types}
-2. IF {QuestionType.SECURITY_RELATED.value}: Select the MOST appropriate security MCP tool
-3. IF {QuestionType.GENERAL_KNOWLEDGE.value}: Select a general-purpose tool (like searxng_web_search if available)
-
-**CRITICAL: Respond with ONLY valid JSON (no markdown, no explanation):**
-
+**STRICT OUTPUT REQUIREMENT (JSON ONLY):**
+Respond with a single, pure JSON object. NO comments, NO markdown.
 {{
-    "question_type": {valid_types_str},
-    "server": "server-name",
+    "question_type": "security_related", 
+    "server": "mcp-server-name",
     "tool": "tool-name",
-    "args": {{ "arg_name": "value" }},
-    "reasoning": "brief explanation"
+    "args": {{ "arg_name": "value", "workspaceId": "your_workspace_id" }},
+    "reasoning": "A professional justification for this tool selection, written in the EXACT same language as the user's question."
 }}
 
-**Note on args:** 
-- ALWAYS include the tool's required parameters (e.g. "query" for search).
+**LANGUAGE COMPLIANCE:**
+- Detected language for "{question}" MUST be used for the "reasoning" field.
+- If user asks in English, reasoning MUST be English.
+- If user asks in Vietnamese, reasoning MUST be Vietnamese.
 
-**Examples:**
-- "Thời tiết Hà Nội?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
-- "Đưa cho tôi lộ trình học tiếng anh B1" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
-- "How to learn Python?" → {{"question_type": "{QuestionType.GENERAL_KNOWLEDGE.value}", "server": "searxng", "tool": "searxng_web_search", ...}}
-- "Show vulnerabilities" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
-- "Có bao nhiêu lỗ hổng nghiêm trọng?" → {{"question_type": "{QuestionType.SECURITY_RELATED.value}", "server": "...", "tool": "get_vulnerabilities", ...}}
-
-**Your JSON response:**"""
+**YOUR ASSESSMENT (JSON):**"""
 
     @staticmethod
     def get_mcp_tool_selection_prompt(question: str, workspace_id: str, tools_description: str) -> str:
@@ -128,13 +108,15 @@ You MUST classify the question into ONE of these types: {valid_types_str}
 - Only use tools from the list above
 - Choose based on tool description and user question intent
 
-**Required JSON format (respond with this exact structure):**
+**Required JSON structure (NO COMMENTS, NO MARKDOWN):**
 {{
     "server": "server-name",
     "tool": "tool-name",
-    "args": {{ "arg_name": "value" }},
-    "reasoning": "brief explanation why you selected this tool"
+    "args": {{ "arg_name": "value", "workspaceId": "your_workspace_id" }},
+    "reasoning": "brief explanation in the user's language"
 }}
+
+**LANGUAGE COMPLIANCE:** You MUST respond in the SAME LANGUAGE as the user question: "{question}"
 
 **Your JSON response:**"""
 
@@ -149,39 +131,32 @@ You MUST classify the question into ONE of these types: {valid_types_str}
         stats_json = json.dumps(stats, indent=2)
         history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
-        return f"""You are an expert security analyst providing insights on workspace security metrics.
+        return f"""You are an elite Lead Security Analyst providing strategic insights on workspace security posture.
 
 **User's Question:**
 "{question}"
 
-**Security Statistics Data:**
+**Security Metrics Snapshot (JSON):**
 ```json
 {stats_json}
 ```
 {history_section}
 
 **Your Task:**
-Analyze the security statistics and provide a comprehensive, natural response that:
+Perform a high-level security posture analysis. Your response MUST follow this structure:
 
-1. **Directly answers the user's question** based on the data (and context if relevant)
-2. **Highlights key security metrics**:
-   - Security score (0-10 scale)
-   - Asset inventory (assets, targets, technologies, ports)
-   - Vulnerability breakdown by severity (critical, high, medium, low, info)
-3. **Provides risk assessment**:
-   - Focus on critical and high severity issues
-   - Explain the security posture (good/moderate/poor)
-4. **Offers actionable recommendations** based on findings
-5. **Responds in the SAME LANGUAGE as the user's question**
+1. **📊 Executive Summary**: A concise overview of the current security health. Mention the overall **Security Score** and the total asset count.
+2. **🛡️ Attack Surface Overview**: Summarize the scope (Assets, Targets, Technologies, Ports). Identify if the footprint is large or compact.
+3. **⚠️ Vulnerability Profile**: Breakdown issues by severity (Critical, High, Medium, Low). Highlight any alarming counts.
+4. **💡 Strategic Recommendations**: Provide 2-3 high-level security improvements based on these metrics.
 
-**Response Guidelines:**
-- Be conversational and professional
-- Use clear, non-technical language where possible
-- Structure your response logically (overview → details → recommendations)
-- If there are critical vulnerabilities, emphasize urgency
-- Keep response concise but informative (4-8 sentences)
+**Response Requirements:**
+- **LANGUAGE**: You MUST respond EXCLUSIVELY in the same language as the user's question: "{question}".
+- **TONE**: Professional, authoritative, and data-driven.
+- **STYLE**: Use clear headings and bullet points. Avoid fluff.
+- **LENGTH**: 6-10 sentences total.
 
-**Your analysis:**"""
+**Your expert analysis:**"""
 
     @staticmethod
     def get_vulnerabilities_analysis_prompt(question: str, data: Dict, chat_history: List[Dict] = None) -> str:
@@ -201,44 +176,34 @@ Analyze the security statistics and provide a comprehensive, natural response th
         vulns_json = json.dumps(vuln_list, indent=2)
         history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
-        return f"""You are an expert security analyst specializing in vulnerability assessment and remediation.
+        return f"""You are a Senior Vulnerability Management Expert. Your goal is to transform raw scan data into an actionable remediation plan.
 
 **User's Question:**
 "{question}"
 
-**Vulnerability Data:**
-- Total vulnerabilities found: {total}
-- Showing top {len(vuln_list)} vulnerabilities:
-
+**Vulnerability Intelligence:**
+- Total Vulnerabilities: {total}
+- Sample Data (JSON):
 ```json
 {vulns_json}
 ```
 {history_section}
 
 **Your Task:**
-Analyze the vulnerabilities and provide a helpful, natural response that:
+Synthesize the vulnerability data into a professional remediation report. Use this structure:
 
-1. **Directly answers the user's question** based on the vulnerability data
-2. **Summarizes the vulnerability landscape**:
-   - Total count and severity distribution
-   - Most critical issues to address first
-   - Common vulnerability patterns if applicable
-3. **Prioritizes remediation**:
-   - Which vulnerabilities need immediate attention
-   - Recommended order of fixes based on severity
-4. **Provides actionable guidance**:
-   - Specific recommendations for high-priority issues
-   - General security hygiene suggestions
-5. **Responds in the SAME LANGUAGE as the user's question**
+1. **🔴 Critical & High Risks**: Identify the most dangerous vulnerabilities. Explain the potential business impact (why should they care?).
+2. **📉 Severity Distribution**: Briefly summarize the counts (e.g., "Found 5 Critical, 12 High...").
+3. **✅ Immediate Action Plan**: Provide clear, technical steps to fix the top 3 issues. 
+4. **🛡️ Long-term Hardening**: Suggest one process improvement (e.g., patching policy, WAF) to prevent these issues.
 
-**Response Guidelines:**
-- Be practical and action-oriented
-- Explain severity levels in business impact terms
-- Prioritize critical and high severity vulnerabilities
-- Keep response focused and actionable (4-8 sentences)
-- If showing specific vulnerabilities, limit to top 3-5 most critical
+**Response Requirements:**
+- **LANGUAGE**: You MUST respond EXCLUSIVELY in the same language as the user's question: "{question}".
+- **TONE**: Urgent yet professional.
+- **STYLE**: Focus on "Action over Observation". Use bold text for key terms.
+- **LIMIT**: Show a Maximum of top 5 vulnerabilities if listing them.
 
-**Your analysis:**"""
+**Your expert analysis:**"""
 
     @staticmethod
     def get_assets_analysis_prompt(question: str, data: Dict, chat_history: List[Dict] = None) -> str:
@@ -257,45 +222,33 @@ Analyze the vulnerabilities and provide a helpful, natural response that:
         assets_json = json.dumps(asset_list, indent=2)
         history_section = MemoryPrompts.format_short_term_memory(chat_history)
 
-        return f"""You are an expert security analyst specializing in asset discovery and attack surface management.
+        return f"""You are an Attack Surface Management (ASM) Expert. Your goal is to map out the digital footprint and identify exposure points.
 
 **User's Question:**
 "{question}"
 
-**Asset/Target Data:**
-- Total assets/targets found: {total}
-- Showing {len(asset_list)} items:
-
+**Asset Intelligence:**
+- Total Discovered Items: {total}
+- Specific Assets (JSON):
 ```json
 {assets_json}
 ```
 {history_section}
 
 **Your Task:**
-Analyze the assets/targets and provide an informative, natural response that:
+Provide a professional attack surface analysis. Use this structure:
 
-1. **Directly answers the user's question** based on the asset data
-2. **Summarizes the attack surface**:
-   - Total count and types of assets/targets
-   - Notable patterns or groupings (domains, IPs, services, etc.)
-   - Coverage of the security assessment
-3. **Identifies key focus areas**:
-   - Critical assets that need attention
-   - Exposed services or endpoints
-   - Potential security concerns
-4. **Provides context and recommendations**:
-   - How these assets relate to overall security posture
-   - Suggestions for asset management
-5. **Responds in the SAME LANGUAGE as the user's question**
+1. **🌐 Digital Footprint Summary**: Describe the composition of the workspace (Domains, IP Ranges, Cloud services).
+2. **🔍 Critical Assets**: Identify the 3-5 most important or exposed assets. Explain their role.
+3. **🚩 Potential Exposure**: Point out any assets that look suspicious or high-risk (e.g., dev environments exposed to internet).
+4. **📋 Governance Tips**: Suggest how to maintain this inventory and monitor for "Shadow IT".
 
-**Response Guidelines:**
-- Be informative and context-aware
-- Categorize assets if patterns are obvious (e.g., web servers, databases, APIs)
-- Highlight any unusual or high-risk assets
-- Keep response clear and organized (4-8 sentences)
-- If listing specific assets, limit to most important 3-5
+**Response Requirements:**
+- **LANGUAGE**: You MUST respond EXCLUSIVELY in the same language as the user's question: "{question}".
+- **TONE**: Insightful and organized.
+- **STYLE**: Use categories to group assets (e.g., "Web Endpoints", "Infrastructure").
 
-**Your analysis:**"""
+**Your expert analysis:**"""
 
     @staticmethod
     def get_generic_analysis_prompt(question: str, data: Any, chat_history: List[Dict] = None) -> str:
@@ -493,3 +446,120 @@ Generate a helpful, professional response that:
 - **Match the language of the user's question (English, Vietnamese, etc.)**
 
 **Your Response:"""
+
+    @staticmethod
+    def get_cot_reasoning_prompt(
+        question: str,
+        tools_description: str,
+        history: List[Dict[str, Any]],
+        steps: List[Dict[str, Any]],
+        initial_tasks: List[str] = None
+    ) -> str:
+        """
+        Prompt for Chain of Thought (CoT) / ReAct reasoning loop.
+        Allows the LLM to call multiple tools sequentially to answer the question.
+        """
+        steps_text = ""
+        if steps:
+            steps_text = "\n**Previous Steps:**\n"
+            for i, step in enumerate(steps):
+                steps_text += f"{i+1}. Thought: {step.get('thought')}\n"
+                if 'tool_call' in step:
+                    call = step['tool_call']
+                    steps_text += f"   Tool: {call.get('server')}.{call.get('name')}\n"
+                    steps_text += f"   Output: {json.dumps(step.get('observation'))[:1000]}\n"
+
+        # Check for pending tasks to inject as a reminder
+        pending_reminder = ""
+        if initial_tasks and steps:
+            completed_tools = [s.get('tool_call', {}).get('name') for s in steps]
+            pending_tasks = [t for t in initial_tasks if t not in completed_tools]
+            if pending_tasks:
+                pending_reminder = f"""
+**URGENT REMINDER:** You have NOT completed all tasks yet.
+Pending tasks: {pending_tasks}
+You MUST call {pending_tasks[0]} next. DO NOT provided 'final_answer' until these are done."""
+
+        history_section = MemoryPrompts.format_short_term_memory(history)
+
+        template = """### SYSTEM PROTOCOL: LANGUAGE COMPLIANCE
+- The user's language is: "{question}"
+- You MUST use this language for BOTH the 'thought' and 'answer' fields.
+- PROHIBITED: Do not use any other language (like Korean, Chinese, or English) if the user's question is in a different language.
+
+You are an Elite Security Orchestrator (Level 5 Analyst).
+Your mission is to gather and analyze security intelligence following a strict Chain-of-Thought process.
+
+**MISSION TARGET (User Question):**
+"{question}"
+
+**MCP INTELLIGENCE TOOLS:**
+{tools_description}
+{history_section}
+{steps_text}
+{pending_reminder}
+
+**OPERATIONAL PHASE:**
+1. **Assessment**: Determine if multiple data points are needed for a complete answer.
+2. **Strategy**: 
+   - If complex: Create a 'tasks' list of tool names to call.
+   - If simple: Call the tool directly.
+3. **Execution**: You MUST execute every tool in your 'tasks' list before providing a 'final_answer'.
+4. **No Hallucinations**: DO NOT use placeholders like "[Actual data here]" or templates. If no data is found, state that clearly in the user's language.
+
+**JSON OUTPUT SPECIFICATION (STRICT):**
+You MUST provide ONLY a single, valid JSON object.
+- NO comments inside the JSON.
+- NO markdown delimiters.
+- If 'workspaceId' is required and unknown, use "your_workspace_id".
+
+{{
+    "thought": "Deep reasoning in the USER'S LANGUAGE",
+    "tasks": ["optional_list_of_tool_names"],
+    "action": "call_tool",
+    "tool_call": {{ "server": "server-name", "name": "tool-name", "args": {{ "arg": "val" }} }},
+    "answer": "Professional synthesis/answer in the USER'S LANGUAGE (REQUIRED only if action is final_answer)"
+}}
+
+**YOUR ANALYTICAL RESPONSE (PURE JSON):**"""
+        
+        return template.format(
+            question=question,
+            tools_description=tools_description,
+            history_section=history_section,
+            steps_text=steps_text,
+            pending_reminder=pending_reminder
+        )
+
+    @staticmethod
+    def get_summary_prompt(
+        question: str,
+        formatted_steps: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Prompt for the final summary answer after all steps are completed.
+        """
+        return f"""### CRITICAL: LANGUAGE COMPLIANCE
+1. User language: "{question}"
+2. You MUST synthesize information and respond EXCLUSIVELY in that language.
+3. DO NOT use Chinese or English if the user asked in Vietnamese.
+
+**Expert Synthesis Context:**
+USER QUESTION: {question}
+
+**Raw Intelligence Gathered:**
+{json.dumps(formatted_steps, indent=2)}
+
+**Your Task:**
+As an Elite Security Orchestrator, provide the final definitive answer. Your response MUST be:
+- **Comprehensive**: Summarize ALL data found across all tools.
+- **Structured**: Use clear headings (e.g., Summary, Findings, Next Steps).
+- **Technical yet Actionable**: Provide specific IDs or names of vulnerabilities/assets found.
+- **Direct**: Answer the question immediately in the first paragraph.
+
+**Final Response Format:**
+1. **Summary**: Direct answer to user question.
+2. **Deep Dive/Findings**: The technical details extracted from the tools.
+3. **Conclusion/Advisory**: What the user should do right now.
+
+**Expert FINAL RESPONSE:**"""

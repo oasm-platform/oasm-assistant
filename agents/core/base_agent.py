@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Any, Optional, AsyncGenerator
 import uuid
+import asyncio
 
 from langchain_core.messages import BaseMessage
 from common.logger import logger
@@ -86,10 +87,10 @@ class BaseAgent(ABC):
         Returns:
             Callable node function for LangGraph
         """
-        def node_function(state: Dict[str, Any]) -> Dict[str, Any]:
+        async def node_function(state: Dict[str, Any]) -> Dict[str, Any]:
             try:
                 task = state.get(input_key, {})
-                result = self.execute_task(task)
+                result = await self.execute_task(task)
                 state[output_key] = result
 
                 # Store in agent_results for coordinator
@@ -117,9 +118,9 @@ class BaseAgent(ABC):
         return node_function
 
     @abstractmethod
-    def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute agent task (synchronous)
+        Execute agent task (asynchronous)
 
         Args:
             task: Task dictionary with action and parameters
@@ -149,15 +150,8 @@ class BaseAgent(ABC):
             - {"type": "error", "error": str, "agent": str}
         """
         try:
-            # Yield thinking event
-            yield {
-                "type": "thinking",
-                "thought": "{} is processing the task".format(self.name),
-                "agent": self.name
-            }
-
-            # Execute synchronously (fallback)
-            result = self.execute_task(task)
+            # Execute asynchronously
+            result = await self.execute_task(task)
 
             # Yield result
             yield {
@@ -202,3 +196,37 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.error("LLM streaming failed: {}", e)
             raise
+
+    async def _buffer_llm_chunks(
+        self,
+        llm_stream: AsyncGenerator,
+        min_chunk_size: int = 50
+    ) -> AsyncGenerator[str, None]:
+        """Buffer small chunks into larger ones for smoother UI delivery"""
+        buffer = ""
+        async for chunk in llm_stream:
+            text = chunk.content if isinstance(chunk, BaseMessage) else str(chunk)
+            buffer += text
+            if len(buffer) >= min_chunk_size:
+                yield buffer
+                buffer = ""
+        if buffer:
+            yield buffer
+
+    def _run_async(self, coro):
+        """
+        Safely run an async coroutine from synchronous code.
+        DEPRECATED: Refactor to use async/await throughout the call chain instead.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        if loop.is_running():
+            # If we are in an existing loop, we cannot safely run_until_complete
+            logger.warning("Attempted to run async code from sync context while loop is running.")
+            return loop.run_until_complete(coro)
+        else:
+            return loop.run_until_complete(coro)

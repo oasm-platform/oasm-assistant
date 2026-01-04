@@ -9,6 +9,7 @@ from data.database import postgres_db as database_instance
 from common.logger import logger
 from data.database.models import Message, Conversation, LLMConfig
 from agents.workflows.security_coordinator import SecurityCoordinator
+from app.protos import assistant_pb2
 from app.services.conversation_service import ConversationService
 from llms import LLMManager
 from data.embeddings import embeddings_manager
@@ -126,6 +127,15 @@ class MessageService:
                     agent_type=agent_key
                 )
 
+                # Convert conversation_data to proto
+                pb_conversation = assistant_pb2.Conversation(
+                    conversation_id=conversation_data.get("conversation_id"),
+                    title=conversation_data.get("title", ""),
+                    description=conversation_data.get("description", ""),
+                    created_at=conversation_data.get("created_at").isoformat() if conversation_data.get("created_at") else "",
+                    updated_at=conversation_data.get("updated_at").isoformat() if conversation_data.get("updated_at") else ""
+                )
+
                 async_stream = StreamingResponseBuilder.build_response_stream(
                     message_id=message_id,
                     conversation_id=conversation_id,
@@ -134,46 +144,58 @@ class MessageService:
                 )
 
                 async for stream_message in async_stream:
-                    if stream_message.type == "delta":
-                        content_data = json.loads(stream_message.content)
-                        accumulated_answer.append(content_data.get("text", ""))
+                    if stream_message.type == "text":
+                        accumulated_answer.append(stream_message.content)
 
-                    yield stream_message, conversation_data
+                    # Update conversation if it's the first response
+                    if pb_conversation:
+                        stream_message.conversation.CopyFrom(pb_conversation)
+                        pb_conversation = None # Only send once
 
-                # Save complete message
-                answer = "".join(accumulated_answer)
-                embedding = await self.embeddings_manager.generate_message_embedding_async(question, answer)
+                    # IMPORTANT: Save complete message BEFORE the stream officially 'ends' for the client
+                    # This prevents the race condition where frontend refetches BEFORE the DB commit is done.
+                    if stream_message.type == "message_end":
+                        try:
+                            answer = "".join(accumulated_answer)
+                            embedding = await self.embeddings_manager.generate_message_embedding_async(question, answer)
 
-                message = Message(
-                    conversation_id=conversation_id,
-                    question=question,
-                    answer=answer,
-                    embedding=embedding
-                )
-                session.add(message)
-                session.commit()
-                logger.debug(f"Message {message.message_id} created and saved to database")
-                
-                # Update LangGraph memory
-                await coordinator.update_memory(conversation_id, question, answer)
+                            message = Message(
+                                conversation_id=conversation_id,
+                                question=question,
+                                answer=answer,
+                                embedding=embedding
+                            )
+                            session.add(message)
+                            session.commit()
+                            logger.debug(f"Message {message.message_id} created and saved to database (pre-done yield)")
+                            
+                            # Update LangGraph memory
+                            await coordinator.update_memory(conversation_id, question, answer)
+                        except Exception as save_err:
+                            logger.error(f"Failed to auto-save message during stream: {save_err}")
+
+                    yield stream_message
 
             except Exception as agent_error:
                 logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
                 # Stream error response
                 handler = StreamingMessageHandler(message_id, conversation_id, question)
                 
-                # Yield error events
-                # Create messages manually since StreamingResponseBuilder is not used here for error
-                yield handler.message_start(), conversation_data
-                yield handler.error(
+                error_msg = handler.error(
                     error_type="AgentProcessingError",
                     error_message=LLMManager.get_friendly_error_message(agent_error),
                     agent="MessageService",
                     recoverable=True,
                     retry_suggested=True
-                ), conversation_data
-                yield handler.message_end(success=False), conversation_data
-                yield handler.done(final_status="error"), conversation_data
+                )
+                
+                yield assistant_pb2.CreateMessageResponse(
+                    message_id=message_id,
+                    conversation_id=conversation_id,
+                    content=error_msg.content,
+                    type="error",
+                    created_at=datetime.utcnow().isoformat()
+                )
 
 
     async def update_message_stream(
@@ -185,7 +207,7 @@ class MessageService:
         new_question: str,
         agent_type: int = 0
     ):
-        """Yields stream_message"""
+        """Yields UpdateMessageResponse"""
         accumulated_answer = []
 
         with self.db.get_session() as session:
@@ -236,44 +258,51 @@ class MessageService:
                     )
 
                     async for stream_message in async_stream:
-                        if stream_message.type == "delta":
-                            content_data = json.loads(stream_message.content)
-                            accumulated_answer.append(content_data.get("text", ""))
-                        yield stream_message
+                        if stream_message.type == "text":
+                            accumulated_answer.append(stream_message.content)
+                        
+                        if stream_message.type == "message_end":
+                            try:
+                                new_answer = "".join(accumulated_answer)
+                                message.question = new_question
+                                message.answer = new_answer
+                                message.embedding = await self.embeddings_manager.generate_message_embedding_async(new_question, new_answer)
+                                session.commit()
+                                logger.debug(f"Message {message.message_id} updated and saved (pre-done yield)")
+                                
+                                # Update LangGraph memory
+                                await coordinator.update_memory(conversation_id, new_question, new_answer)
+                            except Exception as save_err:
+                                logger.error(f"Failed to auto-save update during stream: {save_err}")
 
-                    new_answer = "".join(accumulated_answer)
-                    message.question = new_question
-                    message.answer = new_answer
-                    message.embedding = await self.embeddings_manager.generate_message_embedding_async(new_question, new_answer)
-                    session.commit()
-                    
-                    # Update LangGraph memory
-                    await coordinator.update_memory(conversation_id, new_question, new_answer)
+                        yield assistant_pb2.UpdateMessageResponse(
+                            message_id=stream_message.message_id,
+                            conversation_id=stream_message.conversation_id,
+                            content=stream_message.content,
+                            type=stream_message.type
+                        )
 
                 except Exception as agent_error:
                     logger.error(f"Error during update: {agent_error}")
-                    handler = StreamingMessageHandler(message_id, conversation_id, new_question)
-                    yield handler.message_start()
-                    yield handler.error(
-                         error_type="AgentProcessingError",
-                         error_message=LLMManager.get_friendly_error_message(agent_error),
-                         agent="MessageService",
-                         recoverable=True,
-                         retry_suggested=True
+                    yield assistant_pb2.UpdateMessageResponse(
+                        message_id=message_id,
+                        conversation_id=conversation_id,
+                        content=str(agent_error),
+                        type="error"
                     )
-                    yield handler.message_end(success=False)
-                    yield handler.done(final_status="error")
 
             else:
                 # Return existing
-                handler = StreamingMessageHandler(message_id, conversation_id, new_question)
-                yield handler.message_start()
                 chunk_size = 50
                 for i in range(0, len(message.answer), chunk_size):
                     chunk = message.answer[i:i + chunk_size]
-                    yield handler.delta(text=chunk, agent="MessageService")
-                yield handler.message_end(success=True)
-                yield handler.done(final_status="success")
+                    yield assistant_pb2.UpdateMessageResponse(
+                        message_id=message_id,
+                        conversation_id=conversation_id,
+                        content=chunk,
+                        type="text"
+                    )
+
 
     async def delete_message(self, conversation_id: str, message_id: str, workspace_id: UUID, user_id: UUID) -> bool:
         try:

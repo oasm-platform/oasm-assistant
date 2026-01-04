@@ -10,11 +10,7 @@ from contextlib import asynccontextmanager
 import warnings
 import logging
 import asyncio
-import nest_asyncio
 from common.config import configs
-
-# Enable nested asyncio for MCP calls within event loop
-nest_asyncio.apply()
 
 # Suppress pydantic validation warnings from MCP notification parsing
 warnings.filterwarnings("ignore", message="Failed to validate notification")

@@ -211,8 +211,9 @@ __marimo__/
 chroma_data/
 
 .claude/
-.vscode/
 
 # Log files
 logs/
 *.lognuclei-templates/
+
+*/nuclei-templates/
