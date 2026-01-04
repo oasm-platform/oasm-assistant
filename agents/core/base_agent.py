@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Any, Optional, AsyncGenerator
 import uuid
+import asyncio
 
 from langchain_core.messages import BaseMessage
 from common.logger import logger
@@ -149,13 +150,6 @@ class BaseAgent(ABC):
             - {"type": "error", "error": str, "agent": str}
         """
         try:
-            # Yield thinking event
-            yield {
-                "type": "thinking",
-                "thought": "{} is processing the task".format(self.name),
-                "agent": self.name
-            }
-
             # Execute synchronously (fallback)
             result = self.execute_task(task)
 
@@ -202,3 +196,39 @@ class BaseAgent(ABC):
         except Exception as e:
             logger.error("LLM streaming failed: {}", e)
             raise
+
+    async def _buffer_llm_chunks(
+        self,
+        llm_stream: AsyncGenerator,
+        min_chunk_size: int = 50
+    ) -> AsyncGenerator[str, None]:
+        """Buffer small chunks into larger ones for smoother UI delivery"""
+        buffer = ""
+        async for chunk in llm_stream:
+            text = chunk.content if isinstance(chunk, BaseMessage) else str(chunk)
+            buffer += text
+            if len(buffer) >= min_chunk_size:
+                yield buffer
+                buffer = ""
+        if buffer:
+            yield buffer
+
+    def _run_async(self, coro):
+        """Safely run an async coroutine from synchronous code"""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        if loop.is_running():
+            # If we are in an existing loop, we might need a different approach 
+            # (like nest_asyncio), but for OASM assistant we mostly run in thread pool
+            # or dedicated workers. A safer way is to use a background thread or
+            # just allow the caller to handle the loop.
+            # Simplified for now:
+            import nest_asyncio
+            nest_asyncio.apply()
+            return loop.run_until_complete(coro)
+        else:
+            return loop.run_until_complete(coro)
