@@ -45,11 +45,11 @@ class PostgresDatabase:
             # Create session factory
             self.SessionFactory = sessionmaker(bind=self.engine)
             
+            # Run initial migrations (extensions, etc.)
+            self._run_migrations()
+
             # Create tables
             self._create_tables()
-
-            # Run initial migrations
-            self._run_migrations()
             
             self.retries = retries
             self.retry_delay = retry_delay

@@ -3,7 +3,6 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 import re
 import json
-import json5
 import asyncio
 from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import JsonOutputParser
@@ -285,7 +284,7 @@ class CoTAgent(BaseAgent):
         return formatted
 
     def _clean_json_comments(self, text: str) -> str:
-        """Remove JS-style comments from a string that should be JSON using json5 library."""
+        """Remove JS-style comments from a string that should be JSON."""
         try:
             # Expand common LLM failure where it doesn't wrap in ```json
             if "{" in text and not text.strip().startswith("{"):
@@ -294,12 +293,7 @@ class CoTAgent(BaseAgent):
                 if start != -1 and end != -1:
                     text = text[start:end+1]
 
-            # json5 loads JSON with comments, then we dump it as a standard JSON string
-            data = json5.loads(text)
-            return json.dumps(data)
-        except Exception as e:
-            logger.warning(f"json5 parsing failed: {e}. Falling back to original cleaning.")
-            # Fallback to a simpler cleaning if json5 fails
+            # Fallback to a simpler cleaning since json5 might be missing
             text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
             lines = text.split('\n')
             clean_lines = []
@@ -317,5 +311,12 @@ class CoTAgent(BaseAgent):
                 if comment_start != -1:
                     line = line[:comment_start]
                 clean_lines.append(line)
-            return '\n'.join(clean_lines).strip()
+            
+            clean_content = '\n'.join(clean_lines).strip()
+            # Validate it's valid JSON
+            data = json.loads(clean_content)
+            return json.dumps(data)
+        except Exception as e:
+            logger.warning(f"JSON cleaning/parsing failed: {e}")
+            return text
 
