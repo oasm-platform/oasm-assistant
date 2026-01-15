@@ -21,7 +21,8 @@ class LLMConfig(BaseEntity):
     provider = Column(String(50), nullable=False) # e.g., "openai", "anthropic", "google"
     api_key = Column(String(255), nullable=True)
     model = Column(String(100), nullable=True) # Optional default model for this provider
+    api_url = Column(String(255), nullable=True) # Optional Base URL/API URL
     is_preferred = Column(Boolean, default=False, nullable=False) # Only one can be preferred per user/workspace
 
     def __repr__(self) -> str:
-        return f"<LLMConfig(workspace={self.workspace_id}, user={self.user_id}, provider={self.provider}, model={self.model})>"
+        return f"<LLMConfig(workspace={self.workspace_id}, user={self.user_id}, provider={self.provider}, model={self.model}, api_url={self.api_url})>"
