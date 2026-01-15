@@ -114,8 +114,18 @@ class CoTAgent(BaseAgent):
                         result = parser.parse(clean_content)
                     except Exception as parse_err:
                         logger.warning(f"[{self.name}] Parser failed, trying fuzzy search: {parse_err}")
-                        # Fallback to standard parser which can sometimes handle messy strings
-                        result = await parser.ainvoke(clean_content)
+                        try:
+                            # Fallback to standard parser which can sometimes handle messy strings
+                            result = await parser.ainvoke(clean_content)
+                        except Exception:
+                            # Final Fallback: treat the entire raw content as a final answer
+                            # This handles models that forget to use JSON structure
+                            logger.warning(f"[{self.name}] All parsing failed. Treating output as Final Answer.")
+                            result = {
+                                "thought": "The model provided a direct response without valid JSON formatting.",
+                                "action": "final_answer",
+                                "answer": raw_content
+                            }
 
                 except Exception as e:
                     logger.error(f"[{self.name}] CoT step {i} failed: {e}")

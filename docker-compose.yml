@@ -1,8 +1,8 @@
 services:
   # PostgreSQL with pgvector extension
-  oasm-assistant-postgresql:
-    image: pgvector/pgvector:pg16
-    container_name: oasm-assistant-postgresql
+  assistant-postgresql:
+    image: pgvector/pgvector:pg17
+    container_name: assistant-postgresql
     restart: unless-stopped
     env_file:
       - .env
@@ -22,9 +22,28 @@ services:
     environment:
       - POSTGRES_INITDB_ARGS=--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8
 
+  # Redis - Cache and Message Broker
+  assistant-redis:
+    image: redis:alpine
+    container_name: assistant-redis
+    restart: unless-stopped
+    ports:
+      - "9379:6379"
+    command: redis-server --requirepass password
+    volumes:
+      - redis_data:/data
+    networks:
+      - oasm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "password", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # OASM Assistant Application
-  oasm-assistant-app:
-    container_name: oasm-assistant-app
+  assistant-app:
+    container_name: assistant-app
     build:
       context: .
       dockerfile: Dockerfile
@@ -38,10 +57,12 @@ services:
     ports:
       - "8000:8000" # gRPC port
     environment:
-      - POSTGRES_HOST=oasm-assistant-postgresql
+      - POSTGRES_HOST=assistant-postgresql
       - POSTGRES_PORT=5432
-      - SEARXNG_URL=http://oasm-assistant-searxng:8080
-      - LLM_BASE_URL=http://oasm-assistant-vllm:8000/v1
+      - REDIS_URL=redis://:password@assistant-redis:6379/1
+      - SEARXNG_URL=http://assistant-searxng:8080
+      - LLM_BASE_URL=http://host.docker.internal:3000/openai/v1
+      - OASM_CORE_API_URL=http://host.docker.internal:6276
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -62,8 +83,8 @@ services:
         max-file: "3"
 
   # SearXNG - Meta search engine
-  oasm-assistant-searxng:
-    container_name: oasm-assistant-searxng
+  assistant-searxng:
+    container_name: assistant-searxng
     image: docker.io/searxng/searxng:latest
     restart: unless-stopped
     ports:
@@ -89,8 +110,8 @@ services:
         max-file: "1"
 
   # Ollama - LLM Runtime
-  oasm-assistant-ollama:
-    container_name: oasm-assistant-ollama
+  assistant-ollama:
+    container_name: assistant-ollama
     image: ollama/ollama:latest
     restart: unless-stopped
     ports:
@@ -121,8 +142,8 @@ services:
       start_period: 30s
 
   # vLLM - High-performance LLM Inference Server
-  oasm-assistant-vllm:
-    container_name: oasm-assistant-vllm
+  assistant-vllm:
+    container_name: assistant-vllm
     image: vllm/vllm-openai:latest
     restart: unless-stopped
     ports:
@@ -161,8 +182,8 @@ services:
       start_period: 60s
 
   # SGLang - Fast and Expressive LLM Inference Server
-  oasm-assistant-sglang:
-    container_name: oasm-assistant-sglang
+  assistant-sglang:
+    container_name: assistant-sglang
     image: lmsysorg/sglang:latest
     restart: unless-stopped
     ports:
@@ -204,19 +225,13 @@ services:
 networks:
   oasm-network:
     driver: bridge
-    name: oasm-network
+    name: assistant-network
 
 volumes:
   postgres_data:
-    name: oasm-assistant-postgres-data
+  redis_data:
   searxng-data:
-    name: oasm-assistant-searxng-data
   ollama-data:
-    name: oasm-assistant-ollama-data
   vllm-data:
-    name: oasm-assistant-vllm-data
   sglang-data:
-    name: oasm-assistant-sglang-data
-
   app-logs:
-    name: oasm-assistant-app-logs
