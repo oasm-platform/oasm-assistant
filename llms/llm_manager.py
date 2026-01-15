@@ -57,7 +57,7 @@ class LLMManager:
             max_tokens=get_p("max_tokens", max_tokens),
             timeout=get_p("timeout", timeout),
             max_retries=get_p("max_retries", max_retries),
-            base_url=get_p("base_url", base_url),
+            base_url=get_p("base_url", base_url) or resolved.get("base_url"),
             default_config=configs.llm
         )
 
@@ -86,7 +86,8 @@ class LLMManager:
             return {
                 "provider": provider,
                 "model": model,
-                "api_key": api_key or "EMPTY"
+                "api_key": api_key or "EMPTY",
+                # Explicit args don't usually include base_url here, handled by caller or llm_config
             }
             
         # 2. Use llm_config if provided
@@ -98,7 +99,8 @@ class LLMManager:
             return {
                 "provider": cfg_provider,
                 "model": llm_config.get("model"),
-                "api_key": cfg_api_key or "EMPTY"
+                "api_key": cfg_api_key or "EMPTY",
+                "base_url": llm_config.get("api_url") or llm_config.get("base_url")
             }
 
         # 3. Try DB-based config
@@ -119,7 +121,8 @@ class LLMManager:
                         return {
                             "provider": config_obj.provider,
                             "model": config_obj.model,
-                            "api_key": config_obj.api_key
+                            "api_key": config_obj.api_key,
+                            "base_url": config_obj.api_url
                         }
             except Exception as e:
                 logger.error("Error fetching preferred LLM config from DB: {}", e)
@@ -129,7 +132,8 @@ class LLMManager:
         return {
             "provider": provider or cfg_provider or default.provider,
             "model": model or (llm_config.get("model") if llm_config else None) or default.model_name,
-            "api_key": api_key or cfg_api_key or default.api_key
+            "api_key": api_key or cfg_api_key or default.api_key,
+            "base_url": (llm_config.get("api_url") if llm_config else None) or (llm_config.get("base_url") if llm_config else None) or default.base_url
         }
 
     @staticmethod

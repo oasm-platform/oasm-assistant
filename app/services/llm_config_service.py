@@ -3,46 +3,12 @@ from uuid import UUID
 from data.database import postgres_db 
 from common.logger import logger
 from data.database.models import LLMConfig
-from common.config.constants import OASM_MODELS
 from common.config import configs
 
 class LLMConfigService:
     def __init__(self):
         self.db = postgres_db
 
-    async def sync_oasm_system_models(self, session, workspace_id: UUID, user_id: UUID):
-        """Ensure all OASM system models from constants exist in DB for this user/workspace"""
-        # Check if ANY config exists for this user/workspace before we add new ones
-        any_exists = session.query(LLMConfig).filter(
-            LLMConfig.workspace_id == workspace_id,
-            LLMConfig.user_id == user_id
-        ).first() is not None
-
-        for model_info in OASM_MODELS:
-            exists = session.query(LLMConfig).filter(
-                LLMConfig.workspace_id == workspace_id,
-                LLMConfig.user_id == user_id,
-                LLMConfig.provider == model_info["provider"],
-                LLMConfig.model == model_info["name"]
-            ).first()
-            
-            if not exists:
-                # Only set as preferred if we have a valid OASM key and no other configs exist
-                oasm_key_valid = configs.oasm_cloud_apikey and configs.oasm_cloud_apikey != "change_me"
-                is_preferred = False
-                if not any_exists and model_info.get("is_recommended", False) and oasm_key_valid:
-                    is_preferred = True
-
-                new_cfg = LLMConfig(
-                    workspace_id=workspace_id,
-                    user_id=user_id,
-                    provider=model_info["provider"],
-                    model=model_info["name"],
-                    api_key=model_info["api_key"],
-                    is_preferred=is_preferred
-                )
-                session.add(new_cfg)
-        session.commit()
 
     async def get_llm_configs(
         self, 
@@ -56,9 +22,6 @@ class LLMConfigService:
     ) -> tuple[List[LLMConfig], int]:
         try:
             with self.db.get_session() as session:
-                # Synchronize OASM models first
-                await self.sync_oasm_system_models(session, workspace_id, user_id)
-
                 query = session.query(LLMConfig).filter(
                     LLMConfig.workspace_id == workspace_id,
                     LLMConfig.user_id == user_id
@@ -82,10 +45,39 @@ class LLMConfigService:
                     offset = (page - 1) * limit
                     query = query.offset(offset).limit(limit)
 
-                configs = query.all()
+                db_configs = query.all()
                 session.expunge_all()
 
-                return configs, total_count
+                # Inject default system config if configured
+                if configs.llm.provider and configs.llm.model_name:
+                    # Check if it matches search
+                    matches_search = True
+                    if search:
+                        search_term = search.lower()
+                        if search_term not in configs.llm.provider.lower():
+                            matches_search = False
+
+                    if matches_search:
+                        total_count += 1
+                        
+                        if page == 1:
+                            # Check if any DB config is preferred
+                            any_preferred = any(cfg.is_preferred for cfg in db_configs)
+                            
+                            default_config = LLMConfig(
+                                id=UUID("00000000-0000-0000-0000-000000000000"),
+                                workspace_id=workspace_id,
+                                user_id=user_id,
+                                provider=configs.llm.provider,
+                                model=configs.llm.model_name,
+                                api_key="built-in",
+                                api_url=configs.llm.base_url,
+                                is_preferred=not any_preferred
+                            )
+                            # Prepend to list
+                            db_configs.insert(0, default_config)
+
+                return db_configs, total_count
         except Exception as e:
             logger.error("Error getting LLM configs: {}", e)
             raise
@@ -97,7 +89,8 @@ class LLMConfigService:
         provider: str, 
         api_key: str, 
         model: Optional[str] = None,
-        config_id: Optional[str] = None
+        config_id: Optional[str] = None,
+        api_url: Optional[str] = None
     ) -> LLMConfig:
         try:
             with self.db.get_session() as session:
@@ -111,7 +104,7 @@ class LLMConfigService:
                     ).first()
                 
                 if config and config.api_key == "built-in":
-                    raise ValueError("System OASM models cannot be modified")
+                    raise ValueError("Built-in system models cannot be modified")
                 
                 if not config:
                      # Create NEW
@@ -120,7 +113,8 @@ class LLMConfigService:
                         user_id=user_id,
                         provider=provider,
                         api_key=api_key,
-                        model=model
+                        model=model,
+                        api_url=api_url
                     )
                     session.add(config)
                 else:
@@ -131,6 +125,8 @@ class LLMConfigService:
                         config.api_key = api_key
                     if model is not None:
                         config.model = model
+                    if api_url is not None:
+                        config.api_url = api_url
 
                 session.flush()
                 session.commit()
@@ -154,7 +150,7 @@ class LLMConfigService:
                     return False
                 
                 if config.api_key == "built-in":
-                     raise ValueError("System OASM models cannot be deleted")
+                     raise ValueError("Built-in system models cannot be deleted")
 
                 session.delete(config)
                 session.commit()
@@ -169,6 +165,28 @@ class LLMConfigService:
         Automatically unsets all other configs for this user/workspace.
         """
         try:
+            # Handle special case for system default config
+            if str(config_id) == "00000000-0000-0000-0000-000000000000":
+                with self.db.get_session() as session:
+                    # Unset all preferred flags
+                    session.query(LLMConfig).filter(
+                        LLMConfig.workspace_id == workspace_id,
+                        LLMConfig.user_id == user_id
+                    ).update({"is_preferred": False})
+                    session.commit()
+                
+                # Return the virtual default config with is_preferred=True
+                return LLMConfig(
+                    id=UUID("00000000-0000-0000-0000-000000000000"),
+                    workspace_id=workspace_id,
+                    user_id=user_id,
+                    provider=configs.llm.provider,
+                    model=configs.llm.model_name,
+                    api_key="built-in",
+                    api_url=configs.llm.base_url,
+                    is_preferred=True
+                )
+
             with self.db.get_session() as session:
                 # First, unset all preferred flags for this user/workspace
                 session.query(LLMConfig).filter(
@@ -199,32 +217,37 @@ class LLMConfigService:
 
     async def get_available_models(self, workspace_id: UUID, user_id: UUID) -> List[dict]:
         """
-        Returns a list of models. 
-        Always includes internal OASM models from constants.
-        Includes all specifically configured models from the user's LLM configs.
+        Returns a list of models from the user's LLM configs.
+        Always includes the default model from .env if configured.
         """
         models = []
-        for m in OASM_MODELS:
-             models.append({
-                "id": m["id"],
-                "name": m["name"],
-                "provider": m["provider"],
-                "description": m["description"],
-                "is_active": m["is_active"],
-                "is_recommended": m["is_recommended"]
-            })
         
         try:
             with self.db.get_session() as session:
-                configs = session.query(LLMConfig).filter(
+                configs_list = session.query(LLMConfig).filter(
                     LLMConfig.workspace_id == workspace_id,
                     LLMConfig.user_id == user_id
                 ).all()
                 
+                # Check if any user config is preferred
+                any_preferred = any(cfg.is_preferred for cfg in configs_list)
+                
+                # Add default model from .env if configured
+                if configs.llm.provider and configs.llm.model_name:
+                    default_model_id = f"{configs.llm.provider}-{configs.llm.model_name}".lower().replace(" ", "-").replace("/", "-")
+                    models.append({
+                        "id": default_model_id,
+                        "name": configs.llm.model_name,
+                        "provider": configs.llm.provider,
+                        "description": configs.llm.description or f"Default {configs.llm.provider} model from configuration",
+                        "is_active": True,
+                        "is_recommended": not any_preferred
+                    })
+                
                 added_ids = {m["id"] for m in models}
                 
-                for cfg in configs:
-                    if not cfg.model or cfg.provider == "oasm":
+                for cfg in configs_list:
+                    if not cfg.model:
                         continue
                     
                     # Avoid duplicates
@@ -245,5 +268,4 @@ class LLMConfigService:
             return models
         except Exception as e:
             logger.error("Error fetching available models: {}", e)
-            # Fallback to just the internal model
             return models

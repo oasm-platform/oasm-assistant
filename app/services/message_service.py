@@ -14,7 +14,6 @@ from app.services.conversation_service import ConversationService
 from llms import LLMManager
 from data.embeddings import embeddings_manager
 from app.services.streaming_handler_service import StreamingResponseBuilder, StreamingMessageHandler
-from common.config.constants import OASM_MODELS
 from common.config import configs
 
 class MessageService:

@@ -5,7 +5,6 @@ from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_ollama import ChatOllama
 from common.config import configs, LlmConfigs
-from common.config.constants import OASM_MODELS
 from common.logger import logger
 
 
@@ -19,10 +18,9 @@ class LLMFactory:
         "ollama": "_create_ollama_provider",
         "vllm": "_create_vllm_provider",
         "sglang": "_create_sglang_provider",
-        "oasm": "_create_oasm_provider",
     }
 
-    LOCAL_PROVIDERS = {"ollama", "vllm", "sglang", "oasm"}
+    LOCAL_PROVIDERS = {"ollama", "vllm", "sglang"}
 
     @staticmethod
     def create_llm(
@@ -42,12 +40,8 @@ class LLMFactory:
         if not default_config:
             default_config = configs.llm
 
-        # Auto-detect if it's an OASM system model
+        # Use actual model
         actual_model = model or default_config.model_name
-        if actual_model:
-            is_oasm = any(m["name"] == actual_model or m["id"] == actual_model for m in OASM_MODELS)
-            if is_oasm:
-                provider = "oasm"
 
         if provider not in LLMFactory.SUPPORTED_PROVIDERS:
             available = list(LLMFactory.SUPPORTED_PROVIDERS.keys())
@@ -264,47 +258,4 @@ class LLMFactory:
             base_url=base_url
         )
 
-    @staticmethod
-    def _create_oasm_provider(
-        api_key: str,
-        model: str,
-        temperature: float,
-        max_tokens: int,
-        timeout: int,
-        max_retries: int,
-        base_url: Optional[str] = None
-    ) -> BaseLanguageModel:
-        """Create OASM specialized provider (Built-in)"""
-        system_key = api_key
-        
-        # If OASM cloud key is not configured, dispatch to the default system LLM (e.g., vLLM)
-        if not system_key or system_key == "change_me":
-             # Avoid infinite loop if general provider is also 'oasm'
-             if configs.llm.provider == "oasm":
-                raise ValueError("Infinite loop detected: OASM_CLOUD_APIKEY missing and LLM_PROVIDER is also 'oasm'")
-                
-             logger.debug(f"OASM_CLOUD_APIKEY not set, dispatching {model} to default provider: {configs.llm.provider}")
-             return LLMFactory.create_llm(
-                 provider=configs.llm.provider,
-                 api_key=configs.llm.api_key,
-                 model=configs.llm.model_name,
-                 temperature=temperature,
-                 max_tokens=max_tokens,
-                 timeout=timeout,
-                 max_retries=max_retries,
-                 base_url=base_url
-             )
-            
-        # Map OASM display name to internal model name
-        oasm_info = next((m for m in OASM_MODELS if m["name"] == model or m["id"] == model), None)
-        model_name = oasm_info["internal_model"] if oasm_info else "gemini-1.5-flash"
-        
-        return LLMFactory._create_vllm_provider(
-            api_key=system_key,
-            model=model_name,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=timeout,
-            max_retries=max_retries,
-            base_url=base_url
-        )
+

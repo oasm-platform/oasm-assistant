@@ -51,6 +51,7 @@ class LlmConfigs(BaseSettings):
     base_url: str = Field("", alias="LLM_BASE_URL")
     extra_params: Dict[str, Any] = Field({}, alias="LLM_EXTRA_PARAMS")
     min_chunk_size: int = Field(5, alias="LLM_MIN_CHUNK_SIZE")  # Minimum characters before sending chunk
+    description: str = Field("", alias="LLM_DESCRIPTION")
 
     class Config:
         env_file = ".env"
