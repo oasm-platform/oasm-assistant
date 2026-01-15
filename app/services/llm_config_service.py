@@ -64,14 +64,9 @@ class LLMConfigService:
                             # Check if any DB config is preferred
                             any_preferred = any(cfg.is_preferred for cfg in db_configs)
                             
-                            default_config = LLMConfig(
-                                id=UUID("00000000-0000-0000-0000-000000000000"),
+                            default_config = self._create_default_llm_config(
                                 workspace_id=workspace_id,
                                 user_id=user_id,
-                                provider=configs.llm.provider,
-                                model=configs.llm.model_name,
-                                api_key="built-in",
-                                api_url=configs.llm.base_url,
                                 is_preferred=not any_preferred
                             )
                             # Prepend to list
@@ -176,16 +171,7 @@ class LLMConfigService:
                     session.commit()
                 
                 # Return the virtual default config with is_preferred=True
-                return LLMConfig(
-                    id=UUID("00000000-0000-0000-0000-000000000000"),
-                    workspace_id=workspace_id,
-                    user_id=user_id,
-                    provider=configs.llm.provider,
-                    model=configs.llm.model_name,
-                    api_key="built-in",
-                    api_url=configs.llm.base_url,
-                    is_preferred=True
-                )
+                return self._create_default_llm_config(workspace_id, user_id, is_preferred=True)
 
             with self.db.get_session() as session:
                 # First, unset all preferred flags for this user/workspace
@@ -269,3 +255,16 @@ class LLMConfigService:
         except Exception as e:
             logger.error("Error fetching available models: {}", e)
             return models
+
+    def _create_default_llm_config(self, workspace_id: UUID, user_id: UUID, is_preferred: bool) -> LLMConfig:
+        """Helper to create the default system LLM config object"""
+        return LLMConfig(
+            id=UUID("00000000-0000-0000-0000-000000000000"),
+            workspace_id=workspace_id,
+            user_id=user_id,
+            provider=configs.llm.provider,
+            model=configs.llm.model_name,
+            api_key="built-in",
+            api_url=configs.llm.base_url,
+            is_preferred=is_preferred
+        )

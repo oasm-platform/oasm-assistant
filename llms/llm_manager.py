@@ -133,7 +133,7 @@ class LLMManager:
             "provider": provider or cfg_provider or default.provider,
             "model": model or (llm_config.get("model") if llm_config else None) or default.model_name,
             "api_key": api_key or cfg_api_key or default.api_key,
-            "base_url": (llm_config.get("api_url") if llm_config else None) or (llm_config.get("base_url") if llm_config else None) or default.base_url
+            "base_url": ((llm_config.get("api_url") or llm_config.get("base_url")) if llm_config else None) or default.base_url
         }
 
     @staticmethod
