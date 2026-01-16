@@ -1,24 +1,24 @@
-"""Security analysis agent with MCP integration and streaming support"""
-
 from typing import Dict, Any, Optional, AsyncGenerator, List
 from uuid import UUID
 from sqlalchemy.orm import Session
 import asyncio
 import json
+import re
 import traceback
 
 from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import JsonOutputParser
-from agents.core import CoTAgent, AgentRole, AgentType
+from agents.core import BaseAgent, AgentRole, AgentType
 from common.logger import logger
 from common.config import configs
 from common.types import QuestionType
 from llms import LLMManager
 from llms.prompts import AnalysisAgentPrompts
+from tools.mcp_client import MCPManager
 from data.database import postgres_db
 
 
-class AnalysisAgent(CoTAgent):
+class AnalysisAgent(BaseAgent):
     """Analyzes security vulnerabilities using LLM and MCP tools"""
 
     def __init__(
@@ -31,12 +31,25 @@ class AnalysisAgent(CoTAgent):
         super().__init__(
             name="AnalysisAgent",
             role=AgentRole.ANALYSIS_AGENT,
-            db_session=db_session,
-            workspace_id=workspace_id,
-            user_id=user_id,
             agent_type=AgentType.GOAL_BASED,
             **kwargs
         )
+
+        self.session = db_session
+        self.workspace_id = workspace_id
+        self.user_id = user_id
+        
+        self.llm = LLMManager.get_llm(
+            workspace_id=workspace_id,
+            user_id=user_id
+        )
+
+        if workspace_id and user_id:
+            self.mcp_manager = MCPManager(postgres_db, workspace_id, user_id)
+            logger.debug(f"✓ MCP enabled for {self.name} in workspace {workspace_id}")
+        else:
+            self.mcp_manager = None
+            logger.warning(f"MCP disabled for {self.name} - no workspace/user provided")
 
     async def execute_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
         """Execute task asynchronously"""
@@ -100,12 +113,27 @@ class AnalysisAgent(CoTAgent):
         }
 
     async def analyze_vulnerabilities_streaming(self, question: str, chat_history: List[Dict] = None) -> AsyncGenerator[Dict[str, Any], None]:
-        """Analyze with streaming - using centralized CoT reasoning"""
+        """Analyze with streaming - fetch data then generate analysis"""
         logger.info(f"Streaming analysis: {question[:100]}...")
 
-        async for event in self._execute_cot_loop(question, chat_history):
+        # Fetch MCP data with streaming events
+        scan_data = None
+        async for event in self._fetch_mcp_data_streaming(question):
+            if event.get("type") == "result_data":
+                scan_data = event.get("data")
+            else:
+                yield event
+
+        # Determine question type
+        question_type = self._ensure_question_type_enum(
+            scan_data.get("question_type") if scan_data else None
+        )
+
+        # Generate analysis with streaming
+        async for event in self._generate_analysis_streaming(question, scan_data, question_type, chat_history):
             yield event
 
+        # Final result
         yield {
             "type": "result",
             "data": {
@@ -113,19 +141,6 @@ class AnalysisAgent(CoTAgent):
                 "agent": self.name
             }
         }
-
-    def get_reasoning_prompt(self, **kwargs) -> str:
-        """Provide specialized CoT prompt for security analysis"""
-        return AnalysisAgentPrompts.get_cot_reasoning_prompt(**kwargs)
-
-    def get_summary_prompt(self, question: str, steps: List[Dict], **kwargs) -> str:
-        """Provide specialized summary prompt for security analysis"""
-        return AnalysisAgentPrompts.get_summary_prompt(question, steps)
-
-    async def _generate_fallback_response(self, question: str, chat_history: List[Dict]) -> AsyncGenerator[Dict[str, Any], None]:
-        """Specific fallback for AnalysisAgent when MCP is unavailable"""
-        async for event in self._generate_analysis_streaming(question, None, QuestionType.GENERAL_KNOWLEDGE, chat_history):
-            yield event
 
 
     async def _fetch_mcp_data_streaming(self, question: str) -> AsyncGenerator[Dict[str, Any], None]:
@@ -185,16 +200,6 @@ class AnalysisAgent(CoTAgent):
                 return
 
             logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
-            
-            # Yield tool start event BEFORE execution
-            yield {
-                "type": "tool_start", 
-                "tool_name": tool_name, 
-                "tool_description": tool_description, 
-                "parameters": tool_args,
-                "agent": self.name
-            }
-            yield {"type": "delta", "text": f"\n\n> 🔍 **Searching:** Calling tool `{server_name}.{tool_name}`...\n", "agent": self.name}
 
 
             # Execute tool
@@ -215,21 +220,6 @@ class AnalysisAgent(CoTAgent):
             has_data = self._has_data(result, tool_name)
             if not has_data:
                 logger.warning(f"MCP returned empty data for {tool_name}")
-            
-            # Yield tool output event AFTER execution
-            full_tool_name = f"{server_name}/{tool_name}"
-            yield {
-                "type": "tool_output",
-                "tool_name": tool_name,
-                "status": "success",
-                "output": {
-                    "has_data": has_data,
-                    "source": f"MCP ({full_tool_name})",
-                    "full_tool_name": full_tool_name
-                },
-                "agent": self.name
-            }
-            yield {"type": "delta", "text": f"> ✅ **Found data:** {full_tool_name}\n\n", "agent": self.name}
 
 
             final_data = {
