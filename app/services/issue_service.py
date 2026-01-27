@@ -36,7 +36,8 @@ class IssueService:
             str: The LLM generated solution/response
         """
         try:
-            llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id)
+            llm_config = await LLMManager.resolve_llm_config_async(workspace_id=workspace_id, user_id=user_id)
+            llm = LLMManager.get_llm(llm_config=llm_config)
             
             # Select prompt based on issue type
             # 0: SSL_ISSUE
