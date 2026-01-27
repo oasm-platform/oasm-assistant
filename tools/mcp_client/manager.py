@@ -59,7 +59,7 @@ class MCPManager:
         self._multi_client = None
         self._initialized = False
 
-        servers = self._load_servers()
+        servers = await self._load_servers()
         if not servers:
             logger.warning("No servers found")
             return
@@ -91,13 +91,15 @@ class MCPManager:
             logger.warning("No active servers to initialize")
             self._initialized = True  # Mark as initialized even with no servers
 
-    def _load_servers(self) -> List[MCPConnection]:
-        """Load MCP config from database and convert to connections (only enabled/not disabled servers)"""        
-        with self.database.get_session() as session:
-            mcp_config = session.query(MCPConfig).filter(
+    async def _load_servers(self) -> List[MCPConnection]:
+        """Load MCP config from database and convert to connections (only enabled/not disabled servers)"""
+        from sqlalchemy import select
+        async with self.database.get_session() as session:
+            result = await session.execute(select(MCPConfig).filter(
                 MCPConfig.workspace_id == self.workspace_id,
                 MCPConfig.user_id == self.user_id
-            ).first()
+            ))
+            mcp_config = result.scalars().first()
 
             all_connections = []
             
@@ -144,25 +146,29 @@ class MCPManager:
                     
             return all_connections
 
-    def _get_server_timeout(self, server_name: str) -> int:
+    async def _get_server_timeout(self, server_name: str) -> int:
         """Get timeout for a server from database config, default 60 seconds"""
-        with self.database.get_session() as session:
-            mcp_config = session.query(MCPConfig).filter(
+        from sqlalchemy import select
+        async with self.database.get_session() as session:
+            result = await session.execute(select(MCPConfig).filter(
                 MCPConfig.workspace_id == self.workspace_id,
                 MCPConfig.user_id == self.user_id
-            ).first()
+            ))
+            mcp_config = result.scalars().first()
             
             if mcp_config:
                 return mcp_config.get_timeout(server_name)
             return 60
     
-    def _get_allowed_tools(self, server_name: str) -> Optional[List[str]]:
+    async def _get_allowed_tools(self, server_name: str) -> Optional[List[str]]:
         """Get allowed tools for a server from database config. None means all tools allowed"""
-        with self.database.get_session() as session:
-            mcp_config = session.query(MCPConfig).filter(
+        from sqlalchemy import select
+        async with self.database.get_session() as session:
+            result = await session.execute(select(MCPConfig).filter(
                 MCPConfig.workspace_id == self.workspace_id,
                 MCPConfig.user_id == self.user_id
-            ).first()
+            ))
+            mcp_config = result.scalars().first()
             
             if mcp_config:
                 return mcp_config.get_allowed_tools(server_name)
@@ -170,7 +176,7 @@ class MCPManager:
 
     async def get_server_status(self, server_name: str, test_connection: bool = False) -> tuple[bool, Optional[str]]:
         """
-        Get connection status for a specific server
+        Get connection status for a specific server (Async)
 
         Args:
             server_name: Name of the server to check
@@ -181,12 +187,14 @@ class MCPManager:
             - (True, None) - Server connected and operational
             - (False, "error message") - Server failed with error or disabled
         """
+        from sqlalchemy import select
         # Check if server exists and is disabled in database
-        with self.database.get_session() as session:
-            mcp_config = session.query(MCPConfig).filter(
+        async with self.database.get_session() as session:
+            result = await session.execute(select(MCPConfig).filter(
                 MCPConfig.workspace_id == self.workspace_id,
                 MCPConfig.user_id == self.user_id
-            ).first()
+            ))
+            mcp_config = result.scalars().first()
 
             if not mcp_config:
                 return (False, "MCP config not found")
@@ -311,7 +319,7 @@ class MCPManager:
             Tool result as dict, or None if error
         """        
         if timeout is None:
-            timeout = self._get_server_timeout(server)
+            timeout = await self._get_server_timeout(server)
         
         try:
             return await asyncio.wait_for(
@@ -355,7 +363,7 @@ class MCPManager:
                 
                 if apply_filter:
                     # Filter by allowed_tools if configured
-                    allowed_tools = self._get_allowed_tools(server_name)
+                    allowed_tools = await self._get_allowed_tools(server_name)
                     if allowed_tools is not None:
                         all_tools = [t for t in all_tools if t["name"] in allowed_tools]
                 
@@ -547,13 +555,15 @@ class MCPManager:
         Returns:
             True if successful, False otherwise
         """
+        from sqlalchemy import select
         try:
-            with self.database.get_session() as session:
+            async with self.database.get_session() as session:
                 # Get or create MCPConfig
-                mcp_config = session.query(MCPConfig).filter(
+                result = await session.execute(select(MCPConfig).filter(
                     MCPConfig.workspace_id == self.workspace_id,
                     MCPConfig.user_id == self.user_id
-                ).first()
+                ))
+                mcp_config = result.scalars().first()
 
                 if not mcp_config:
                     mcp_config = MCPConfig(
@@ -565,7 +575,7 @@ class MCPManager:
 
                 # Add server to JSON
                 mcp_config.add_server(name, server_config)
-                session.commit()
+                await session.commit()
 
                 # Re-initialize to include new server
                 await self.initialize()
@@ -585,12 +595,14 @@ class MCPManager:
         Returns:
             True if successful, False otherwise
         """
+        from sqlalchemy import select
         try:
-            with self.database.get_session() as session:
-                mcp_config = session.query(MCPConfig).filter(
+            async with self.database.get_session() as session:
+                result = await session.execute(select(MCPConfig).filter(
                     MCPConfig.workspace_id == self.workspace_id,
                     MCPConfig.user_id == self.user_id
-                ).first()
+                ))
+                mcp_config = result.scalars().first()
 
                 if not mcp_config or name not in mcp_config.servers:
                     logger.warning(f"Server '{name}' not found in config")
@@ -598,7 +610,7 @@ class MCPManager:
 
                 # Remove server from JSON
                 mcp_config.remove_server(name)
-                session.commit()
+                await session.commit()
 
                 # Re-initialize to remove from multi-client
                 await self.initialize()

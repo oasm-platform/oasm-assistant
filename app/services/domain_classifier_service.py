@@ -41,7 +41,8 @@ class DomainClassifierService:
         Classify using LLM - returns list of category strings
         """
         try:
-            llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id)
+            llm_config = await LLMManager.resolve_llm_config_async(workspace_id=workspace_id, user_id=user_id)
+            llm = LLMManager.get_llm(llm_config=llm_config)
 
             prompt = DomainClassificationPrompts.get_domain_classification_prompt(
                 categories=self.categories,

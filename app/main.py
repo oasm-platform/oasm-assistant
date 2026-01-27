@@ -28,6 +28,10 @@ async def serve():
     kb_updater = None
 
     try:
+        # Initialize Database
+        from data.database import postgres_db
+        await postgres_db.initialize()
+
         # Start Knowledge Base Auto Updater
         kb_updater = get_kb_updater()
         await kb_updater.start()

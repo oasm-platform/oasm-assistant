@@ -1,9 +1,11 @@
 from typing import List, Optional
 from uuid import UUID
+from sqlalchemy import select, update
 from data.database import postgres_db 
 from common.logger import logger
 from data.database.models import LLMConfig
 from common.config import configs
+from llms import LLMManager
 
 class LLMConfigService:
     def __init__(self):
@@ -13,7 +15,7 @@ class LLMConfigService:
     async def get_llm_configs(
         self, 
         workspace_id: UUID, 
-        user_id: UUID,
+        user_id: UUID, 
         search: Optional[str] = None,
         page: int = 1,
         limit: int = 20,
@@ -21,8 +23,8 @@ class LLMConfigService:
         sort_order: str = "asc"
     ) -> tuple[List[LLMConfig], int]:
         try:
-            with self.db.get_session() as session:
-                query = session.query(LLMConfig).filter(
+            async with self.db.get_session() as session:
+                query = select(LLMConfig).filter(
                     LLMConfig.workspace_id == workspace_id,
                     LLMConfig.user_id == user_id
                 )
@@ -30,8 +32,18 @@ class LLMConfigService:
                 if search:
                     search_filter = f"%{search}%"
                     query = query.filter(LLMConfig.provider.ilike(search_filter))
-
-                total_count = query.count()
+                
+                # Count
+                from sqlalchemy import func
+                count_query = select(func.count()).select_from(LLMConfig).filter(
+                     LLMConfig.workspace_id == workspace_id,
+                     LLMConfig.user_id == user_id
+                )
+                if search:
+                    count_query = count_query.filter(LLMConfig.provider.ilike(search_filter))
+                
+                total_count_res = await session.execute(count_query)
+                total_count = total_count_res.scalar()
 
                 # Sorting: Always put Preferred at the top
                 sort_col = getattr(LLMConfig, sort_by, LLMConfig.created_at)
@@ -45,11 +57,17 @@ class LLMConfigService:
                     offset = (page - 1) * limit
                     query = query.offset(offset).limit(limit)
 
-                db_configs = query.all()
-                session.expunge_all()
+                result = await session.execute(query)
+                db_configs = result.scalars().all()
+                db_configs = list(db_configs) # Convert to list
 
-                # Inject default system config if configured
-                if configs.llm.provider and configs.llm.model_name:
+                # Inject default system config if configured and usable
+                has_provider = bool(configs.llm.provider and configs.llm.model_name)
+                is_usable = False
+                if has_provider:
+                    is_usable = bool(configs.llm.api_key or LLMManager.is_local_provider(configs.llm.provider))
+                
+                if has_provider and is_usable:
                     # Check if it matches search
                     matches_search = True
                     if search:
@@ -88,20 +106,30 @@ class LLMConfigService:
         api_url: Optional[str] = None
     ) -> LLMConfig:
         try:
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 config = None
                 if config_id:
                     # Update existing by ID
-                    config = session.query(LLMConfig).filter(
+                    result = await session.execute(select(LLMConfig).filter(
                         LLMConfig.id == UUID(config_id),
                         LLMConfig.workspace_id == workspace_id,
                         LLMConfig.user_id == user_id
-                    ).first()
+                    ))
+                    config = result.scalars().first()
                 
                 if config and config.api_key == "built-in":
                     raise ValueError("Built-in system models cannot be modified")
                 
                 if not config:
+                     # Check if this is the first custom LLM for this user/workspace
+                    from sqlalchemy import func
+                    count_query = select(func.count()).select_from(LLMConfig).filter(
+                         LLMConfig.workspace_id == workspace_id,
+                         LLMConfig.user_id == user_id
+                    )
+                    count_res = await session.execute(count_query)
+                    is_first = count_res.scalar() == 0
+
                      # Create NEW
                     config = LLMConfig(
                         workspace_id=workspace_id,
@@ -109,7 +137,8 @@ class LLMConfigService:
                         provider=provider,
                         api_key=api_key,
                         model=model,
-                        api_url=api_url
+                        api_url=api_url,
+                        is_preferred=is_first
                     )
                     session.add(config)
                 else:
@@ -120,13 +149,13 @@ class LLMConfigService:
                         config.api_key = api_key
                     if model is not None:
                         config.model = model
-                    if api_url is not None:
+                    # Only update api_url if a non-empty value is provided
+                    if api_url:
                         config.api_url = api_url
 
-                session.flush()
-                session.commit()
-                session.refresh(config)
-                session.expunge(config)
+                await session.flush()
+                await session.commit()
+                await session.refresh(config)
                 return config
         except Exception as e:
             logger.error("Error updating LLM config: {}", e)
@@ -134,12 +163,13 @@ class LLMConfigService:
 
     async def delete_llm_config(self, workspace_id: UUID, user_id: UUID, config_id: str) -> bool:
         try:
-            with self.db.get_session() as session:
-                config = session.query(LLMConfig).filter(
+            async with self.db.get_session() as session:
+                result = await session.execute(select(LLMConfig).filter(
                     LLMConfig.id == UUID(config_id),
                     LLMConfig.workspace_id == workspace_id,
                     LLMConfig.user_id == user_id
-                ).first()
+                ))
+                config = result.scalars().first()
 
                 if not config:
                     return False
@@ -147,8 +177,23 @@ class LLMConfigService:
                 if config.api_key == "built-in":
                      raise ValueError("Built-in system models cannot be deleted")
 
-                session.delete(config)
-                session.commit()
+                was_preferred = config.is_preferred
+
+                await session.delete(config)
+                await session.flush()
+
+                # If we just deleted the preferred one, try to set the next available as preferred
+                if was_preferred:
+                    from sqlalchemy import desc
+                    next_result = await session.execute(select(LLMConfig).filter(
+                        LLMConfig.workspace_id == workspace_id,
+                        LLMConfig.user_id == user_id
+                    ).order_by(desc(LLMConfig.updated_at)))
+                    next_config = next_result.scalars().first()
+                    if next_config:
+                        next_config.is_preferred = True
+
+                await session.commit()
                 return True
         except Exception as e:
             logger.error("Error deleting LLM config: {}", e)
@@ -162,40 +207,42 @@ class LLMConfigService:
         try:
             # Handle special case for system default config
             if str(config_id) == "00000000-0000-0000-0000-000000000000":
-                with self.db.get_session() as session:
+                async with self.db.get_session() as session:
                     # Unset all preferred flags
-                    session.query(LLMConfig).filter(
-                        LLMConfig.workspace_id == workspace_id,
-                        LLMConfig.user_id == user_id
-                    ).update({"is_preferred": False})
-                    session.commit()
+                    await session.execute(
+                        update(LLMConfig).where(
+                            LLMConfig.workspace_id == workspace_id,
+                            LLMConfig.user_id == user_id
+                        ).values(is_preferred=False)
+                    )
+                    await session.commit()
                 
                 # Return the virtual default config with is_preferred=True
                 return self._create_default_llm_config(workspace_id, user_id, is_preferred=True)
 
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 # First, unset all preferred flags for this user/workspace
-                session.query(LLMConfig).filter(
-                    LLMConfig.workspace_id == workspace_id,
-                    LLMConfig.user_id == user_id
-                ).update({"is_preferred": False})
-                session.commit()
+                await session.execute(
+                    update(LLMConfig).where(
+                        LLMConfig.workspace_id == workspace_id,
+                        LLMConfig.user_id == user_id
+                    ).values(is_preferred=False)
+                )
                 
                 # Then set the specified config as preferred
-                config = session.query(LLMConfig).filter(
+                result = await session.execute(select(LLMConfig).filter(
                     LLMConfig.id == UUID(config_id),
                     LLMConfig.workspace_id == workspace_id,
                     LLMConfig.user_id == user_id
-                ).first()
+                ))
+                config = result.scalars().first()
                 
                 if not config:
                     raise ValueError(f"LLM config with id {config_id} not found")
                 
                 config.is_preferred = True
-                session.flush()
-                session.commit()
-                session.refresh(config)
-                session.expunge(config)
+                await session.commit()
+                await session.refresh(config)
                 return config
         except Exception as e:
             logger.error("Error setting preferred LLM config: {}", e)
@@ -209,17 +256,23 @@ class LLMConfigService:
         models = []
         
         try:
-            with self.db.get_session() as session:
-                configs_list = session.query(LLMConfig).filter(
+            async with self.db.get_session() as session:
+                result = await session.execute(select(LLMConfig).filter(
                     LLMConfig.workspace_id == workspace_id,
                     LLMConfig.user_id == user_id
-                ).all()
+                ))
+                configs_list = result.scalars().all()
                 
                 # Check if any user config is preferred
                 any_preferred = any(cfg.is_preferred for cfg in configs_list)
                 
-                # Add default model from .env if configured
-                if configs.llm.provider and configs.llm.model_name:
+                # Add default model from .env if configured and usable
+                has_provider = bool(configs.llm.provider and configs.llm.model_name)
+                is_usable = False
+                if has_provider:
+                    is_usable = bool(configs.llm.api_key or LLMManager.is_local_provider(configs.llm.provider))
+
+                if has_provider and is_usable:
                     default_model_id = f"{configs.llm.provider}-{configs.llm.model_name}".lower().replace(" ", "-").replace("/", "-")
                     models.append({
                         "id": default_model_id,

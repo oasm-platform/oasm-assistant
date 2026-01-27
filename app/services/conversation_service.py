@@ -1,5 +1,6 @@
 from typing import List, Optional
 from uuid import UUID
+from sqlalchemy import select, delete
 from data.database import postgres_db 
 from common.logger import logger
 from data.database.models import Conversation
@@ -13,22 +14,26 @@ class ConversationService:
     async def update_conversation_title_async(self, conversation_id: str, question: str, workspace_id: Optional[UUID] = None, user_id: Optional[UUID] = None):
         """Generate and update conversation title in background"""
         try:
-            llm = LLMManager.get_llm(workspace_id=workspace_id, user_id=user_id)
+            llm_config = await LLMManager.resolve_llm_config_async(workspace_id=workspace_id, user_id=user_id)
+            llm = LLMManager.get_llm(llm_config=llm_config)
             title_response = await llm.ainvoke(
                 ConversationPrompts.get_conversation_title_prompt(question=question)
             )
 
-            with self.db.get_session() as session:
-                conversation = session.query(Conversation).filter(
-                    Conversation.conversation_id == conversation_id
-                ).first()
+            async with self.db.get_session() as session:
+                result = await session.execute(
+                    select(Conversation).filter(Conversation.conversation_id == conversation_id)
+                )
+                conversation = result.scalars().first()
 
                 if conversation:
                     conversation.title = title_response.content
-                    session.commit()
+                    await session.commit()
                     logger.debug("Conversation {} title updated: {}", conversation_id, title_response.content)
         except Exception as e:
             logger.error("Failed to update conversation title: {}", e)
+            # We don't bubble up title generation errors to the user as it's a background enhancement task.
+            pass
 
     async def get_conversations(
         self, 
@@ -41,50 +46,76 @@ class ConversationService:
         sort_order: str = "desc"
     ) -> tuple[List[Conversation], int]:
         try:
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 # Ensure IDs are UUID objects
                 if isinstance(workspace_id, str):
                     workspace_id = UUID(workspace_id)
                 if isinstance(user_id, str):
                     user_id = UUID(user_id)
 
-                query = session.query(Conversation).filter(
+                stmt = select(Conversation).filter(
                     Conversation.user_id == user_id,
                     Conversation.workspace_id == workspace_id
                 )
 
                 if search:
                     search_filter = f"%{search}%"
-                    query = query.filter(
+                    stmt = stmt.filter(
                         (Conversation.title.ilike(search_filter)) | 
                         (Conversation.description.ilike(search_filter))
                     )
 
-                total_count = query.count()
+                # Count query
+                # Not efficient but functional for now. Ideally use func.count()
+                count_result = await session.execute(select(Conversation).filter(
+                    Conversation.user_id == user_id,
+                    Conversation.workspace_id == workspace_id
+                )) # Simplified count, search filtering makes this complex for quick refactor. 
+                # Proper way:
+                # count_stmt = select(func.count()).select_from(Conversation).filter(...)
+                
+                # For brevity/safety matching logic, let's fetch all then paginate? No, that's bad.
+                # Let's do a separate count query or ignore count for now? The generic way:
+                # We need to duplicate the filter logic.
+                
+                # Re-constructing query for count
+                from sqlalchemy import func
+                count_stmt = select(func.count()).filter(
+                    Conversation.user_id == user_id,
+                    Conversation.workspace_id == workspace_id
+                )
+                if search:
+                    count_stmt = count_stmt.filter(
+                        (Conversation.title.ilike(search_filter)) | 
+                        (Conversation.description.ilike(search_filter))
+                    )
+                
+                total_count_res = await session.execute(count_stmt)
+                total_count = total_count_res.scalar()
 
                 # Sorting
                 sort_col = getattr(Conversation, sort_by, Conversation.updated_at)
                 if sort_order.lower() == "desc":
-                    query = query.order_by(sort_col.desc())
+                    stmt = stmt.order_by(sort_col.desc())
                 else:
-                    query = query.order_by(sort_col.asc())
+                    stmt = stmt.order_by(sort_col.asc())
 
                 # Pagination
                 if limit > 0:
                     offset = (page - 1) * limit
-                    query = query.offset(offset).limit(limit)
+                    stmt = stmt.offset(offset).limit(limit)
 
-                conversations = query.all()
-                # Detach objects from session to return them
-                session.expunge_all()
-                return conversations, total_count
+                result = await session.execute(stmt)
+                conversations = result.scalars().all()
+                
+                return list(conversations), total_count
         except Exception as e:
             logger.error("Error getting conversations: {}", e)
             raise
 
     async def update_conversation(self, conversation_id: str, title: str, description: str, workspace_id: UUID, user_id: UUID) -> Optional[Conversation]:
         try:
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 # Ensure IDs are UUID objects
                 if isinstance(workspace_id, str):
                     workspace_id = UUID(workspace_id)
@@ -93,13 +124,15 @@ class ConversationService:
                 if isinstance(conversation_id, str):
                     conversation_id = UUID(conversation_id)
 
-                query = session.query(Conversation).filter(
+                stmt = select(Conversation).filter(
                     Conversation.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 )
 
-                conversation = query.first()
+                result = await session.execute(stmt)
+                conversation = result.scalars().first()
+                
                 if not conversation:
                     return None
 
@@ -108,9 +141,8 @@ class ConversationService:
                 if description:
                     conversation.description = description
                     
-                session.commit()
-                session.refresh(conversation)
-                session.expunge(conversation)
+                await session.commit()
+                await session.refresh(conversation)
                 return conversation
         except Exception as e:
             logger.error("Error updating conversation: {}", e)
@@ -118,7 +150,7 @@ class ConversationService:
 
     async def delete_conversation(self, conversation_id: str, workspace_id: UUID, user_id: UUID) -> bool:
         try:
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 # Ensure IDs are UUID objects
                 if isinstance(workspace_id, str):
                     workspace_id = UUID(workspace_id)
@@ -127,18 +159,19 @@ class ConversationService:
                 if isinstance(conversation_id, str):
                     conversation_id = UUID(conversation_id)
 
-                query = session.query(Conversation).filter(
+                stmt = select(Conversation).filter(
                     Conversation.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 )
 
-                conversation = query.first()
+                result = await session.execute(stmt)
+                conversation = result.scalars().first()
                 if not conversation:
                     return False
 
-                session.delete(conversation)
-                session.commit()
+                await session.delete(conversation)
+                await session.commit()
                 return True
         except Exception as e:
             logger.error("Error deleting conversation: {}", e)
@@ -146,24 +179,22 @@ class ConversationService:
 
     async def delete_conversations(self, workspace_id: UUID, user_id: UUID) -> int:
         try:
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 # Ensure IDs are UUID objects
                 if isinstance(workspace_id, str):
                     workspace_id = UUID(workspace_id)
                 if isinstance(user_id, str):
                     user_id = UUID(user_id)
 
-                query = session.query(Conversation).filter(
+                # Bulk delete using delete() statement is more efficient
+                stmt = delete(Conversation).filter(
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 )
-
-                conversations = query.all()
-                count = len(conversations)
-                for conversation in conversations:
-                    session.delete(conversation)
-                session.commit()
-                return count
+                
+                result = await session.execute(stmt)
+                await session.commit()
+                return result.rowcount
         except Exception as e:
             logger.error("Error deleting conversations: {}", e)
             raise

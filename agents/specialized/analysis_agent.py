@@ -39,9 +39,11 @@ class AnalysisAgent(BaseAgent):
         self.workspace_id = workspace_id
         self.user_id = user_id
         
+        llm_config = kwargs.get('llm_config', {})
         self.llm = LLMManager.get_llm(
             workspace_id=workspace_id,
-            user_id=user_id
+            user_id=user_id,
+            llm_config=llm_config
         )
 
         if workspace_id and user_id:
@@ -157,9 +159,11 @@ class AnalysisAgent(BaseAgent):
                 logger.warning("No MCP tools available")
                 return
 
+            for server, tools in all_tools.items():
+                all_tools[server] = [t for t in tools if t['name'] != 'get_workspaces']
+
             tool_count = sum(len(tools) for tools in all_tools.values())
             logger.debug(f"Discovered {tool_count} MCP tools from {len(all_tools)} servers")
-
 
             selected = await self._classify_and_select_tool_combined(question, all_tools)
             if not selected:
@@ -217,11 +221,6 @@ class AnalysisAgent(BaseAgent):
                 }
                 return
 
-            has_data = self._has_data(result, tool_name)
-            if not has_data:
-                logger.warning(f"MCP returned empty data for {tool_name}")
-
-
             final_data = {
                 "source": f"MCP ({server_name}/{tool_name})",
                 "stats": result,
@@ -264,7 +263,8 @@ class AnalysisAgent(BaseAgent):
                 logger.warning("No MCP tools available")
                 return None
 
-            logger.debug(f"Discovered {sum(len(tools) for tools in all_tools.values())} MCP tools from {len(all_tools)} servers")
+            for server, tools in all_tools.items():
+                all_tools[server] = [t for t in tools if t['name'] != 'get_workspaces']
 
             selected = await self._classify_and_select_tool_combined(question, all_tools)
             if not selected:
@@ -309,10 +309,6 @@ class AnalysisAgent(BaseAgent):
                 logger.warning(f"MCP call failed: {result.get('content') if result else 'No response'}")
                 return None
 
-            if not self._has_data(result, tool_name):
-                logger.warning(f"MCP returned empty data for {tool_name}")
-                return None
-
             return {
                 "source": f"MCP ({server_name}/{tool_name})",
                 "stats": result,
@@ -332,7 +328,6 @@ class AnalysisAgent(BaseAgent):
 
         base_prompt = AnalysisAgentPrompts.get_combined_classification_and_tool_selection_prompt(
             question=question,
-            workspace_id=str(self.workspace_id),
             tools_description=AnalysisAgentPrompts.format_tools_for_llm(all_tools)
         )
 
@@ -385,20 +380,7 @@ You MUST respond with valid JSON containing exactly these fields:
 
         return QuestionType.SECURITY_RELATED
 
-    def _has_data(self, result: Dict, tool_name: str) -> bool:
-        """Check if MCP result contains data"""
-        if "data" in result:
-            return bool(result.get("data")) or result.get("total", 0) > 0
 
-        if any(key in result for key in ["assets", "vuls", "vulnerabilities", "score"]):
-            return (
-                result.get("assets", 0) > 0 or
-                result.get("vuls", 0) > 0 or
-                result.get("vulnerabilities", 0) > 0 or
-                "score" in result
-            )
-
-        return bool(result and result != {})
 
     def _select_prompt(self, question: str, scan_data: Optional[Dict], question_type: QuestionType, chat_history: List[Dict] = None) -> str:
         """Select appropriate prompt based on question type and data"""

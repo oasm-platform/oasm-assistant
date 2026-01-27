@@ -7,6 +7,7 @@ from .llm_factory import LLMFactory
 from data.database import postgres_db
 from data.database.models import LLMConfig
 from contextlib import nullcontext
+from uuid import UUID
 
 
 class LLMManager:
@@ -62,7 +63,7 @@ class LLMManager:
         )
 
     @staticmethod
-    def resolve_llm_config(
+    async def resolve_llm_config_async(
         workspace_id: Optional[Any] = None,
         user_id: Optional[Any] = None,
         llm_config: Optional[Dict[str, Any]] = None,
@@ -72,22 +73,15 @@ class LLMManager:
         api_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Resolves the LLM configuration to use.
-        Priority: 
-        1. Explicitly provided arguments (provider, api_key)
-        2. Provided llm_config dictionary
-        3. Preferred config from database for workspace/user
-        4. System default from configs.llm
+        Resolves the LLM configuration asynchronously (DB-aware).
         """
         # 1. Use explicit if provided
-        # For local providers, we don't strictly require api_key
         is_local = LLMManager.is_local_provider(provider)
         if provider and (api_key or is_local):
             return {
                 "provider": provider,
                 "model": model,
                 "api_key": api_key or "EMPTY",
-                # Explicit args don't usually include base_url here, handled by caller or llm_config
             }
             
         # 2. Use llm_config if provided
@@ -103,21 +97,28 @@ class LLMManager:
                 "base_url": llm_config.get("api_url") or llm_config.get("base_url")
             }
 
-        # 3. Try DB-based config
+        # 3. Try DB-based config (Async)
         if workspace_id and user_id:
             try:
-                # Use provided session or create a new one
-                session_cm = nullcontext(db_session) if db_session and hasattr(db_session, 'query') else postgres_db.get_session()
+                db_workspace_id = UUID(str(workspace_id))
+                db_user_id = UUID(str(user_id))
                 
-                with session_cm as s:
-                    config_obj = s.query(LLMConfig).filter(
-                        LLMConfig.workspace_id == workspace_id,
-                        LLMConfig.user_id == user_id,
+                from sqlalchemy import select, desc
+                async with postgres_db.get_session() as session:
+                    # First try preferred
+                    result = await session.execute(select(LLMConfig).filter(
+                        LLMConfig.workspace_id == db_workspace_id,
+                        LLMConfig.user_id == db_user_id,
                         LLMConfig.is_preferred == True
-                    ).first()
+                    ))
+                    config_obj = result.scalars().first()
                     
+                    # If no preferred, it will skip and fallback to System Default below
+                    if not config_obj:
+                         pass
+
                     if config_obj:
-                        logger.debug("✓ Using preferred LLM config: {}/{} for user {}", config_obj.provider, config_obj.model, user_id)
+                        logger.debug("✓ Using LLM config: {}/{} for user {}", config_obj.provider, config_obj.model, user_id)
                         return {
                             "provider": config_obj.provider,
                             "model": config_obj.model,
@@ -125,7 +126,57 @@ class LLMManager:
                             "base_url": config_obj.api_url
                         }
             except Exception as e:
-                logger.error("Error fetching preferred LLM config from DB: {}", e)
+                logger.error("Error fetching LLM config from DB: {}", e)
+
+        # 4. Fallback to System Default
+        default = configs.llm
+        return {
+            "provider": provider or cfg_provider or default.provider,
+            "model": model or (llm_config.get("model") if llm_config else None) or default.model_name,
+            "api_key": api_key or cfg_api_key or default.api_key,
+            "base_url": ((llm_config.get("api_url") or llm_config.get("base_url")) if llm_config else None) or default.base_url
+        }
+
+    @staticmethod
+    def resolve_llm_config(
+        workspace_id: Optional[Any] = None,
+        user_id: Optional[Any] = None,
+        llm_config: Optional[Dict[str, Any]] = None,
+        db_session: Optional[Any] = None,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Resolves the LLM configuration to use (Sync).
+        NOTE: Does NOT support DB resolution anymore as DB is async.
+        """
+        # 1. Use explicit if provided
+        is_local = LLMManager.is_local_provider(provider)
+        if provider and (api_key or is_local):
+            return {
+                "provider": provider,
+                "model": model,
+                "api_key": api_key or "EMPTY",
+            }
+            
+        # 2. Use llm_config if provided
+        cfg_provider = llm_config.get("provider") if llm_config else None
+        cfg_api_key = llm_config.get("api_key") if llm_config else None
+        cfg_is_local = LLMManager.is_local_provider(cfg_provider)
+        
+        if cfg_provider and (cfg_api_key or cfg_is_local):
+            return {
+                "provider": cfg_provider,
+                "model": llm_config.get("model"),
+                "api_key": cfg_api_key or "EMPTY",
+                "base_url": llm_config.get("api_url") or llm_config.get("base_url")
+            }
+
+        # 3. DB Attempt - FAIL
+        if workspace_id and user_id:
+             # We cannot resolve from DB synchronously.
+             pass 
 
         # 4. Fallback to System Default
         default = configs.llm
@@ -141,31 +192,42 @@ class LLMManager:
         """Categorize error and return a user-friendly message"""
         error_str = str(e).lower()
         
-        # Anthropic Errors
-        if "authentication_error" in error_str or "invalid x-api-key" in error_str:
-            return "Invalid API key. Please check your LLM configuration settings."
-        elif "rate_limit_error" in error_str:
-            return "Rate limit exceeded for the selected LLM provider. Please try again later."
-        elif "overloaded_error" in error_str:
-            return "The LLM provider is currently overloaded. Please try again in a few moments."
+        # Missing Provider or API Key
+        if "provider '' not supported" in error_str or "provider 'none' not supported" in error_str:
+            return "No LLM provider selected. Please go to Settings -> LLM Manager and select (star) a preferred provider, or ensure a system default is configured."
         
-        # OpenAI Errors
-        elif "invalid_api_key" in error_str:
-            return "Invalid OpenAI API key. Please check your configuration."
-        elif "insufficient_quota" in error_str:
-            return "Your LLM provider quota has been exceeded. Please check your billing/limits."
+        if "requires api key but none provided" in error_str:
+            return "The selected LLM provider requires an API key. Please update your configuration in Settings."
+
+        # Authentication Errors (API Key Invalid)
+        if any(sig in error_str for sig in ["invalid_api_key", "authentication_error", "unauthorized", "invalid x-api-key", "401", "forbidden", "403"]):
+            return "Authentication failed: Your API key is incorrect, expired, or no longer valid. Please check and update your API key in Settings."
+
+        # Quota/Billing Errors
+        if any(sig in error_str for sig in ["insufficient_quota", "billing_not_active", "402", "quota exceeded", "credit"]):
+            return "Your LLM provider quota has been exceeded or billing is not active. Please check your provider account and billing settings."
+
+        # Rate Limit Errors
+        if any(sig in error_str for sig in ["rate_limit", "too many requests", "429"]):
+            return "Rate limit exceeded for the selected LLM provider. Please try again later or increase your request limits."
+
+        # Model Errors
+        if any(sig in error_str for sig in ["model_not_found", "invalid model", "404", "does not exist"]):
+            return "The selected model is not found or not accessible with your current configuration. Please verify the model name in Settings."
+
+        # Network/Timeout Errors
+        if any(sig in error_str for sig in ["deadline_exceeded", "timeout", "timed out", "504", "time out"]):
+            return "The request to the AI Service timed out. The provider might be overloaded. Please try again later."
         
-        # Google Errors
-        elif "api_key_invalid" in error_str or "403" in error_str:
-             return "Invalid Google AI API key or service restricted."
+        if any(sig in error_str for sig in ["unavailable", "connection failed", "failed to connect", "service_unavailable", "503", "502", "bad gateway", "unreachable"]):
+            return "The AI Service is currently unavailable. Please check your API URL configuration and try again later."
 
-        # General gRPC/Network Errors
-        if "deadline_exceeded" in error_str:
-            return "The request timed out. The LLM provider might be slow or unresponsive."
-        elif "unavailable" in error_str:
-            return "The LLM service is temporarily unavailable. Please try again later."
+        # Configuration/Validation Errors
+        if any(sig in error_str for sig in ["invalid", "configuration", "config", "validation", "malformed", "bad request", "400"]):
+            return "Configuration error: Please verify your LLM provider settings and API URL are correct."
 
-        return f"An error occurred while communicated with the AI Service: {str(e)}"
+        # Default: Generic error without provider details
+        return "Unable to connect to the LLM provider. Please verify your settings and try again."
 
     @staticmethod
     def get_available_providers() -> list[str]:
