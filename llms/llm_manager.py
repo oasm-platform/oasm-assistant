@@ -7,6 +7,7 @@ from .llm_factory import LLMFactory
 from data.database import postgres_db
 from data.database.models import LLMConfig
 from contextlib import nullcontext
+from uuid import UUID
 
 
 class LLMManager:
@@ -99,23 +100,22 @@ class LLMManager:
         # 3. Try DB-based config (Async)
         if workspace_id and user_id:
             try:
+                db_workspace_id = UUID(str(workspace_id))
+                db_user_id = UUID(str(user_id))
+                
                 from sqlalchemy import select, desc
                 async with postgres_db.get_session() as session:
                     # First try preferred
                     result = await session.execute(select(LLMConfig).filter(
-                        LLMConfig.workspace_id == workspace_id,
-                        LLMConfig.user_id == user_id,
+                        LLMConfig.workspace_id == db_workspace_id,
+                        LLMConfig.user_id == db_user_id,
                         LLMConfig.is_preferred == True
                     ))
                     config_obj = result.scalars().first()
                     
-                    # If no preferred, try any available config for this user/workspace (latest updated)
+                    # If no preferred, it will skip and fallback to System Default below
                     if not config_obj:
-                         result = await session.execute(select(LLMConfig).filter(
-                            LLMConfig.workspace_id == workspace_id,
-                            LLMConfig.user_id == user_id
-                        ).order_by(desc(LLMConfig.updated_at)))
-                         config_obj = result.scalars().first()
+                         pass
 
                     if config_obj:
                         logger.debug("✓ Using LLM config: {}/{} for user {}", config_obj.provider, config_obj.model, user_id)
