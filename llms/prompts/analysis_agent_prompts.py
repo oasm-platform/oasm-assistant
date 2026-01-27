@@ -33,7 +33,6 @@ You have access to security tools and databases. Use your expertise to provide c
     @staticmethod
     def get_combined_classification_and_tool_selection_prompt(
         question: str,
-        workspace_id: str,
         tools_description: str
     ) -> str:
         """
@@ -79,7 +78,7 @@ Respond with a single, pure JSON object. NO comments, NO markdown.
 **YOUR ASSESSMENT (JSON):**"""
 
     @staticmethod
-    def get_mcp_tool_selection_prompt(question: str, workspace_id: str, tools_description: str) -> str:
+    def get_mcp_tool_selection_prompt(question: str, tools_description: str) -> str:
         """
         Prompt for LLM to select the best MCP tool for a given question.
         Used in dynamic tool discovery and selection (like ChatGPT/Claude).

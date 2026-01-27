@@ -33,10 +33,7 @@ class LLMConfigServiceServicer(assistant_pb2_grpc.LLMConfigServiceServicer):
             
             pb_configs = []
             for cfg in configs:
-                # Mask API Key: Show only last 4 chars
                 masked_key = cfg.api_key
-                if masked_key and len(masked_key) > 4:
-                    masked_key = "****" + masked_key[-4:]
                 
                 pb_cfg = assistant_pb2.LLMConfig(
                     id=str(cfg.id),
@@ -75,10 +72,8 @@ class LLMConfigServiceServicer(assistant_pb2_grpc.LLMConfigServiceServicer):
                 api_url=request.api_url
             )
 
-            # Mask API Key for response
+            # Mask API Key for response - DISABLED by user request
             masked_key = config.api_key
-            if masked_key and len(masked_key) > 4:
-                masked_key = "****" + masked_key[-4:]
 
             return assistant_pb2.UpdateLLMConfigResponse(
                 config=assistant_pb2.LLMConfig(
