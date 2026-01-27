@@ -35,93 +35,22 @@ class NucleiTemplatesUpdater(BaseUpdater):
 
         # Use shared singleton embedding model
         self.embeddings_manager = embeddings_manager
-
-        # Ensure TSV column and index exist for hybrid search
-        self._ensure_tsv_column()
         
         # Flag to track if we've performed the startup check
         self._startup_check_done = False
 
-        logger.debug(f"NucleiTemplatesUpdater initialized with sync time: {self.sync_time}")
-
-    async def update_logic(self):
-        """
-        Check cron schedule and run sync if needed.
-        Also check for initial empty DB on startup.
-        """
-        needs_sync = False
-        sync_reason = ""
-
-        # 1. Startup Check: If DB is empty, sync immediately
-        if not self._startup_check_done:
-            self._startup_check_done = True # Ensure we only check this once
-            
-            loop = asyncio.get_running_loop()
-            has_templates = await loop.run_in_executor(None, self._has_templates)
-            
-            if not has_templates:
-                logger.info("Startup check: Database is empty. Scheduling immediate sync.")
-                needs_sync = True
-                sync_reason = "Startup (Empty Database)"
-
-        # 2. Cron Check: If not already syncing from startup check
-        if not needs_sync and is_cron_match(self.sync_time):
-            needs_sync = True
-            sync_reason = "Cron Schedule"
-
-        if needs_sync:
-            # Create a lock key
-            lock_key = "nuclei-scheduler"
-            
-            # Try to acquire lock via ASYNC redis
-            # Expire in 5 minutes (300s) to prevent overlapping runs
-            acquired = await redis_client.async_client.set(lock_key, "locked", nx=True, ex=300)
-            
-            if acquired:
-                logger.info(f"Acquired lock {lock_key}, starting sync (Reason: {sync_reason})...")
-                
-                # Execute heavy blocking task in a separate thread
-                loop = asyncio.get_running_loop()
-                await loop.run_in_executor(None, self.sync_templates)
-            else:
-                pass # Silent wait
-    
-    def _has_templates(self) -> bool:
-        """Check if any templates exist in the database"""
-        try:
-            with postgres_db.get_session() as session:
-                return session.query(NucleiTemplates).first() is not None
-        except Exception as e:
-            logger.error(f"Error checking template existence: {e}")
-            return False
-
-    def sync_templates(self):
-        """Execute the full sync process"""
-        try:
-            # Step 1: Clone or pull repo using common utility
-            success = clone_or_pull_repo(self.repo_url, self.clone_dir)
-            if not success:
-                logger.error("Failed to clone/pull repository via common utility")
-                return
-
-            # Step 2 & 3: Clear DB and Sync
-            self._clear_database()
-            self._sync_templates_to_database()
-            
-        except Exception as e:
-            logger.error(f"Sync error: {e}")
-
-    def _ensure_tsv_column(self):
+    async def _ensure_tsv_column(self):
         """Ensure tsv column and index exist for full-text search"""
         try:
-            with postgres_db.get_session() as session:
+            async with postgres_db.get_session() as session:
                 check_column = text("""
                     SELECT column_name FROM information_schema.columns
                     WHERE table_name = 'nuclei_templates' AND column_name = 'tsv'
                 """)
-                if not session.execute(check_column).fetchone():
+                result = await session.execute(check_column)
+                if not result.fetchone():
                     logger.info("Creating tsv column for full-text search...")
-                    session.execute(text("""
+                    await session.execute(text("""
                         ALTER TABLE nuclei_templates
                         ADD COLUMN tsv tsvector
                         GENERATED ALWAYS AS (
@@ -129,52 +58,62 @@ class NucleiTemplatesUpdater(BaseUpdater):
                             setweight(to_tsvector('english', COALESCE(description, '')), 'B')
                         ) STORED
                     """))
-                    session.execute(text("""
+                    await session.execute(text("""
                         CREATE INDEX IF NOT EXISTS nuclei_templates_tsv_idx
                         ON nuclei_templates USING GIN (tsv)
                     """))
-                    session.commit()
+                    await session.commit()
         except Exception as e:
             logger.warning(f"Could not ensure TSV column: {e}")
 
-    def _parse_template_file(self, file_path: Path) -> Optional[dict]:
-        """Parse a Nuclei template file"""
+    async def _has_templates(self) -> bool:
+        """Check if any templates exist in the database"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                template_data = yaml.safe_load(f)
+            from sqlalchemy import select
+            async with postgres_db.get_session() as session:
+                result = await session.execute(select(NucleiTemplates).limit(1))
+                return result.scalars().first() is not None
+        except Exception as e:
+            logger.error(f"Error checking template existence: {e}")
+            return False
 
-            if not template_data or not isinstance(template_data, dict):
-                return None
+    async def sync_templates(self):
+        """Execute the full sync process"""
+        try:
+            self.embeddings_manager = embeddings_manager # Reload to ensure init
 
-            info = template_data.get('info', {})
-            name = info.get('name', '')
-            if not name: return None
-
-            description = info.get('description', '') or name
+            # Step 1: Clone or pull repo 
+            # (Run Git operations in thread pool to avoid blocking async loop)
+            loop = asyncio.get_running_loop()
+            success = await loop.run_in_executor(
+                None, 
+                clone_or_pull_repo, 
+                self.repo_url, 
+                self.clone_dir
+            )
             
-            with open(file_path, 'r', encoding='utf-8') as f:
-                template_content = f.read()
+            if not success:
+                logger.error("Failed to clone/pull repository")
+                return
 
-            return {
-                'name': name,
-                'description': description,
-                'template': template_content,
-                'metadata': info
-            }
-        except Exception:
-            return None
+            # Step 2 & 3: Clear DB and Sync
+            await self._clear_database()
+            await self._sync_templates_to_database()
+            
+        except Exception as e:
+            logger.error(f"Sync error: {e}", exc_info=True)
 
-    def _clear_database(self):
+    async def _clear_database(self):
         """Clear all existing Nuclei templates from database"""
         try:
-            with postgres_db.get_session() as session:
-                session.execute(delete(NucleiTemplates))
-                session.commit()
+            async with postgres_db.get_session() as session:
+                await session.execute(delete(NucleiTemplates))
+                await session.commit()
         except Exception as e:
             logger.error(f"Failed to clear database: {e}")
             raise
 
-    def _sync_templates_to_database(self) -> int:
+    async def _sync_templates_to_database(self) -> int:
         """Sync templates from cloned repository to database"""
         count = 0
         templates_dir = Path(self.clone_dir)
@@ -184,8 +123,13 @@ class NucleiTemplatesUpdater(BaseUpdater):
         batch_size = 50
         batch_data = []
 
+        # We can still run CPU bound parsing in sync, effectively blocking slightly 
+        # but better than overhead of 12000 tasks.
+        # Alternatively, yield to loop occasionally.
+        
         for idx, yaml_file in enumerate(yaml_files):
             try:
+                # 1. Parse (Sync CPU)
                 data = self._parse_template_file(yaml_file)
                 if not data: continue
 
@@ -196,11 +140,12 @@ class NucleiTemplatesUpdater(BaseUpdater):
                 content = clean(data['template'])
                 meta = data['metadata']
 
-                # Create Embedding Text
+                # 2. Embedding (Async)
                 text_to_embed = f"Template: {name} Purpose: {desc}"
                 if 'tags' in meta: text_to_embed += f" Tags: {meta['tags']}"
                 
-                embedding = self.embeddings_manager.embed_query(text_to_embed)
+                # Use async embedding generation
+                embedding = await self.embeddings_manager.generate_embedding_async(text_to_embed)
 
                 batch_data.append({
                     'name': name[:255],
@@ -210,27 +155,71 @@ class NucleiTemplatesUpdater(BaseUpdater):
                 })
 
                 if len(batch_data) >= batch_size:
-                    self._insert_batch(batch_data)
+                    await self._insert_batch(batch_data)
                     count += len(batch_data)
                     batch_data = []
+                    
+                    # Yield to event loop every batch to keep heartbeat alive
+                    await asyncio.sleep(0.01)
 
             except Exception:
                 continue
 
         if batch_data:
-            self._insert_batch(batch_data)
+            await self._insert_batch(batch_data)
             count += len(batch_data)
 
         logger.info(f"Synced {count} templates")
         return count
 
-    def _insert_batch(self, batch_data: list):
+    async def _insert_batch(self, batch_data: list):
         """Insert batch to DB"""
         try:
-            with postgres_db.get_session() as session:
+            async with postgres_db.get_session() as session:
                 for data in batch_data:
                     session.add(NucleiTemplates(**data))
-                session.commit()
+                await session.commit()
         except:
             pass
+
+    async def update_logic(self):
+        """
+        Check cron schedule and run sync if needed.
+        Also check for initial empty DB on startup.
+        """
+        # Ensure Schema on first run
+        if not self._startup_check_done:
+             await self._ensure_tsv_column()
+
+        needs_sync = False
+        sync_reason = ""
+
+        # 1. Startup Check: If DB is empty, sync immediately
+        if not self._startup_check_done:
+            self._startup_check_done = True 
+            
+            has_templates = await self._has_templates()
+            
+            if not has_templates:
+                logger.info("Startup check: Database is empty. Scheduling immediate sync.")
+                needs_sync = True
+                sync_reason = "Startup (Empty Database)"
+
+        # 2. Cron Check
+        if not needs_sync and is_cron_match(self.sync_time):
+            needs_sync = True
+            sync_reason = "Cron Schedule"
+
+        if needs_sync:
+            lock_key = "nuclei-scheduler"
+            
+            # Try to acquire lock via ASYNC redis
+            acquired = await redis_client.async_client.set(lock_key, "locked", nx=True, ex=600)
+            
+            if acquired:
+                logger.info(f"Acquired lock {lock_key}, starting sync (Reason: {sync_reason})...")
+                # Run ASYNC sync
+                await self.sync_templates()
+            else:
+                pass
 
