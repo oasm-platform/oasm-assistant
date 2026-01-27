@@ -34,12 +34,6 @@ class RedisConfigs(BaseSettings):
         env_file_encoding = "utf-8"
         extra = "ignore"
 
-
-class AppConfigs(BaseSettings):
-    host: str = Field("0.0.0.0", alias="APP_HOST")
-    port: int = Field(8000, alias="APP_PORT")
-
-
 class LlmConfigs(BaseSettings):
     provider: str = Field("", alias="LLM_PROVIDER")
     api_key: str = Field("", alias="LLM_API_KEY")
@@ -163,7 +157,6 @@ class NucleiGenerateConfigs(BaseSettings):
 class Configs(BaseSettings):
     postgres: PostgresConfigs = PostgresConfigs()
     redis: RedisConfigs = RedisConfigs()
-    app: AppConfigs = AppConfigs()
     llm: LlmConfigs = LlmConfigs()
     embedding: EmbeddingConfigs = EmbeddingConfigs()
     scheduler: SchedulerConfigs = SchedulerConfigs()
@@ -173,14 +166,15 @@ class Configs(BaseSettings):
     nuclei: NucleiGenerateConfigs = NucleiGenerateConfigs()
 
     # Add missing fields used in main.py
-    host: str = Field("0.0.0.0", alias="HOST")
-    port: int = Field(8000, alias="PORT")
+    host: str = Field("0.0.0.0", alias="ASSISTANT_HOST")
+    port: int = Field(8000, alias="ASSISTANT_PORT")
     max_workers: int = Field(10, alias="MAX_WORKERS")
     service_name: str = Field("oasm-assistant", alias="SERVICE_NAME")
     version: str = Field("1.0.0", alias="VERSION")
     oasm_cloud_apikey: str = Field("change_me", alias="OASM_CLOUD_APIKEY")
     oasm_core_api_url: str = Field("http://localhost:6276", alias="OASM_CORE_API_URL")
     searxng_url: str = Field("http://localhost:8080", alias="SEARXNG_URL")
+    log_level: str = Field("INFO", alias="LOG_LEVEL")
 
     # Add missing fields used in domain_classifier.py
     crawl_timeout: int = Field(10, alias="CRAWL_TIMEOUT")

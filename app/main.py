@@ -22,6 +22,7 @@ from knowledge.updaters import get_kb_updater
 
 from common.logger import logger
 from common.config import configs as settings
+from data.database import postgres_db
 
 async def serve():
     """Start async gRPC server with scheduler"""
@@ -29,7 +30,6 @@ async def serve():
 
     try:
         # Initialize Database
-        from data.database import postgres_db
         await postgres_db.initialize()
 
         # Start Knowledge Base Auto Updater

@@ -1,5 +1,6 @@
 import sys
 from loguru import logger
+from common.config import configs
 
 def setup_logging():
     """Setup logging configuration using Loguru."""
@@ -11,7 +12,7 @@ def setup_logging():
     logger.add(
         sys.stdout,
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level="DEBUG",
+        level=configs.log_level,
         colorize=True,
         backtrace=False,
         diagnose=False,
