@@ -137,7 +137,7 @@ class MCPServerServiceServicer(assistant_pb2_grpc.MCPServerServiceServicer):
                 context.set_details("Must provide config ID")
                 return assistant_pb2.DeleteMCPServersResponse(success=False, message="Config ID required")
 
-            success, message = self.service.delete_config(config_id, workspace_id, user_id)
+            success, message = await self.service.delete_config(config_id, workspace_id, user_id)
             
             if not success and "not found" in message:
                 context.set_code(StatusCode.NOT_FOUND)

@@ -5,6 +5,7 @@ import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 
+from sqlalchemy import select
 from data.database import postgres_db
 from data.database.models import MCPConfig
 from tools.mcp_client import MCPManager
@@ -18,53 +19,35 @@ class MCPServerService:
     def __init__(self):
         self.db = postgres_db
         self._managers: Dict[Tuple[str, str], MCPManager] = {}
-        self._manager_lock = threading.Lock()
-        self._async_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._async_thread: Optional[threading.Thread] = None
-        self._executor = ThreadPoolExecutor(max_workers=5)
+        self._manager_lock = asyncio.Lock() # Use async lock
         self.mcp_timeout = configs.mcp_timeout
-        self._setup_async_loop()
-
-    def _setup_async_loop(self) -> None:
-        """Setup dedicated event loop for async operations"""
-        def run_loop(loop):
-            asyncio.set_event_loop(loop)
-            loop.run_forever()
-
-        self._async_loop = asyncio.new_event_loop()
-        self._async_thread = threading.Thread(target=run_loop, args=(self._async_loop,), daemon=True)
-        self._async_thread.start()
-
-    def _run_async(self, coro):
-        """Run async coroutine and wait for result"""
-        future = asyncio.run_coroutine_threadsafe(coro, self._async_loop)
-        return future.result(timeout=self.mcp_timeout)
-
-    def _get_manager(self, workspace_id: UUID, user_id: UUID) -> MCPManager:
-        """Get or create MCPManager (thread-safe)"""
+       
+    async def _get_manager(self, workspace_id: UUID, user_id: UUID) -> MCPManager:
+        """Get or create MCPManager (thread-safe, async)"""
         key = (str(workspace_id), str(user_id))
 
-        if key not in self._managers:
-            with self._manager_lock:
-                if key not in self._managers:
-                    self._managers[key] = MCPManager(self.db, workspace_id, user_id, self._async_loop)
+        async with self._manager_lock:
+            if key not in self._managers:
+                 # Pass None for async_loop as we use current loop
+                self._managers[key] = MCPManager(self.db, workspace_id, user_id, None)
 
         return self._managers[key]
 
-    def _initialize_manager(self, manager: MCPManager) -> None:
+    async def _initialize_manager(self, manager: MCPManager) -> None:
         """Initialize manager if not already initialized"""
         if not manager._initialized:
             try:
-                self._run_async(manager.initialize())
+                await manager.initialize()
             except Exception as e:
                 logger.warning("Manager initialization failed: {}", e)
 
-    def _get_or_create_config(self, session, workspace_id: UUID, user_id: UUID) -> MCPConfig:
+    async def _get_or_create_config(self, session, workspace_id: UUID, user_id: UUID) -> MCPConfig:
         """Get or create MCPConfig for workspace/user"""
-        config = session.query(MCPConfig).filter(
+        result = await session.execute(select(MCPConfig).filter(
             MCPConfig.workspace_id == workspace_id,
             MCPConfig.user_id == user_id
-        ).first()
+        ))
+        config = result.scalars().first()
 
         if not config:
             config = MCPConfig(
@@ -73,7 +56,7 @@ class MCPServerService:
                 config_json={"mcpServers": {}}
             )
             session.add(config)
-            session.flush()
+            await session.flush()
 
         return config
 
@@ -99,7 +82,7 @@ class MCPServerService:
         enriched_servers = {}
 
         # Ensure manager is initialized
-        self._initialize_manager(manager)
+        await self._initialize_manager(manager)
 
         for name, server_config in config.servers.items():
             # Use fast check by default (no actual connection test)
@@ -114,8 +97,8 @@ class MCPServerService:
                 # Only fetch tools and resources if explicitly requested
                 if include_tools:
                     try:
-                        tools = self._run_async(manager.get_tools(name, apply_filter=False))
-                        resources = self._run_async(manager.get_resources(name))
+                        tools = await manager.get_tools(name, apply_filter=False)
+                        resources = await manager.get_resources(name)
                         enriched_server["tools"] = tools
                         enriched_server["resources"] = resources
                     except Exception as e:
@@ -161,9 +144,9 @@ class MCPServerService:
             skip_health_check: If False, performs actual connection test (default: False for accuracy)
             include_tools: If True, fetch tools and resources (default: False for performance)
         """
-        with self.db.get_session() as session:
-            config = self._get_or_create_config(session, workspace_id, user_id)
-            manager = self._get_manager(workspace_id, user_id)
+        async with self.db.get_session() as session:
+            config = await self._get_or_create_config(session, workspace_id, user_id)
+            manager = await self._get_manager(workspace_id, user_id)
             return await self._build_response_dict(config, manager, skip_health_check=skip_health_check, include_tools=include_tools)
 
     async def add_servers(self, workspace_id: UUID, user_id: UUID, servers: Dict[str, Any]) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
@@ -171,8 +154,8 @@ class MCPServerService:
         Add servers to configuration
         Returns: (success, error_message, updated_config_dict)
         """
-        with self.db.get_session() as session:
-            config = self._get_or_create_config(session, workspace_id, user_id)
+        async with self.db.get_session() as session:
+            config = await self._get_or_create_config(session, workspace_id, user_id)
             
             successful_adds = False
             errors = []
@@ -193,12 +176,12 @@ class MCPServerService:
                     errors.append(f"{server_name}: {str(e)}")
 
             if successful_adds:
-                session.commit()
-                session.refresh(config)
+                await session.commit()
+                await session.refresh(config)
                 
                 # Reinitialize manager
-                manager = self._get_manager(workspace_id, user_id)
-                self._initialize_manager(manager)
+                manager = await self._get_manager(workspace_id, user_id)
+                await self._initialize_manager(manager)
                 
                 # Include tools and resources in response for UI display
                 return True, None, await self._build_response_dict(config, manager, skip_health_check=True, include_tools=True)
@@ -210,8 +193,8 @@ class MCPServerService:
         Update servers in configuration (REPLACES entire config)
         Returns: (success, error_message, updated_config_dict)
         """        
-        with self.db.get_session() as session:
-            config = self._get_or_create_config(session, workspace_id, user_id)
+        async with self.db.get_session() as session:
+            config = await self._get_or_create_config(session, workspace_id, user_id)
                     
             # Validate all servers first
             errors = []
@@ -235,20 +218,20 @@ class MCPServerService:
             
             if errors:
                 # Rollback if any server failed
-                session.rollback()
+                await session.rollback()
                 return False, "; ".join(errors), None
             
-            session.commit()
-            session.refresh(config)
+            await session.commit()
+            await session.refresh(config)
             
             # Force re-initialize manager to reload new config
-            manager = self._get_manager(workspace_id, user_id)
-            self._run_async(manager.initialize())  # Force reload
+            manager = await self._get_manager(workspace_id, user_id)
+            await manager.initialize()  # Force reload
             
             # Include tools and resources in response for UI display
             return True, None, await self._build_response_dict(config, manager, skip_health_check=True, include_tools=True)
 
-    def delete_config(self, config_id: str, workspace_id: UUID, user_id: UUID) -> Tuple[bool, str]:
+    async def delete_config(self, config_id: str, workspace_id: UUID, user_id: UUID) -> Tuple[bool, str]:
         """
         Delete entire MCP configuration
         Returns: (success, message)
@@ -258,23 +241,24 @@ class MCPServerService:
         except ValueError:
             return False, "Invalid config ID format"
 
-        with self.db.get_session() as session:
-            config = session.query(MCPConfig).filter(
+        async with self.db.get_session() as session:
+            result = await session.execute(select(MCPConfig).filter(
                 MCPConfig.id == config_uuid,
                 MCPConfig.workspace_id == workspace_id,
                 MCPConfig.user_id == user_id
-            ).first()
+            ))
+            config = result.scalars().first()
 
             if not config:
                 return False, f"MCP Config with ID {config_id} not found"
 
             server_count = len(config.servers)
-            session.delete(config)
-            session.commit()
+            await session.delete(config)
+            await session.commit()
 
             # Reinitialize manager to clear connections
-            manager = self._get_manager(workspace_id, user_id)
-            self._initialize_manager(manager)
+            manager = await self._get_manager(workspace_id, user_id)
+            await self._initialize_manager(manager)
             
             return True, f"Successfully deleted MCP config with {server_count} server(s)"
 
@@ -283,8 +267,8 @@ class MCPServerService:
         Get health status of a specific MCP server
         Returns: (is_active: bool, status: str, error_message: Optional[str])
         """
-        manager = self._get_manager(workspace_id, user_id)
-        self._initialize_manager(manager)
+        manager = await self._get_manager(workspace_id, user_id)
+        await self._initialize_manager(manager)
         
         is_active, error = await self._get_server_status(manager, server_name, test_connection=True)
         
@@ -298,20 +282,14 @@ class MCPServerService:
         
         return is_active, status, error
 
-    def cleanup(self):
+    async def cleanup(self):
         """Cleanup resources"""
         try:
             for manager in self._managers.values():
                 try:
-                    self._run_async(manager.shutdown())
+                    await manager.shutdown()
                 except Exception as e:
                     logger.error("Error shutting down manager: {}", e)
-
-            if self._async_loop and self._async_loop.is_running():
-                self._async_loop.call_soon_threadsafe(self._async_loop.stop)
-
-            if self._executor:
-                self._executor.shutdown(wait=True)
 
             logger.info("MCPServerService cleanup completed")
         except Exception as e:
