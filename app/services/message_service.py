@@ -4,6 +4,7 @@ import asyncio
 from typing import AsyncGenerator, Dict, Any, List, Optional
 from uuid import UUID
 from datetime import datetime
+from sqlalchemy import select
 
 from data.database import postgres_db as database_instance
 from common.logger import logger
@@ -26,15 +27,15 @@ class MessageService:
 
     async def get_messages(self, conversation_id: str, workspace_id: UUID, user_id: UUID) -> List[Message]:
         try:
-            with self.db.get_session() as session:
-                query = session.query(Message).join(Conversation).filter(
+            async with self.db.get_session() as session:
+                query = select(Message).join(Conversation).filter(
                     Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
                 ).order_by(Message.created_at.asc())  # Sort oldest first
-                messages = query.all()
-                session.expunge_all()
-                return messages
+                result = await session.execute(query)
+                messages = result.scalars().all()
+                return list(messages)
         except Exception as e:
             logger.error(f"Error getting messages: {e}")
             raise
@@ -59,7 +60,7 @@ class MessageService:
         if not conversation_id or is_create_conversation:
             is_create_conversation = True
 
-        with self.db.get_session() as session:
+        async with self.db.get_session() as session:
             # Handle conversation creation
             if is_create_conversation:
                 conversation = Conversation(
@@ -68,8 +69,8 @@ class MessageService:
                     title="New conversation"
                 )
                 session.add(conversation)
-                session.commit()
-                session.refresh(conversation)
+                await session.commit()
+                await session.refresh(conversation)
                 conversation_id = str(conversation.conversation_id)
 
                 asyncio.create_task(
@@ -78,17 +79,15 @@ class MessageService:
                     )
                 )
             else:
-                conversation = session.query(Conversation).filter(
+                result = await session.execute(select(Conversation).filter(
                     Conversation.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
-                ).first()
+                ))
+                conversation = result.scalars().first()
                 if not conversation:
                     raise ValueError("Conversation not found")
 
-            # Need to detach conversation to use it outside session or copy needed fields
-            # For streaming, we need properties.
-            # We can create a simple dict or object to carry conversation info
             conversation_data = {
                 "conversation_id": str(conversation.conversation_id),
                 "title": conversation.title or "",
@@ -98,7 +97,7 @@ class MessageService:
             }
             
             # Determine LLM configuration
-            llm_config = LLMManager.resolve_llm_config(
+            llm_config = await LLMManager.resolve_llm_config_async(
                 provider=provider,
                 model=model,
                 api_key=api_key,
@@ -165,7 +164,7 @@ class MessageService:
                                 embedding=embedding
                             )
                             session.add(message)
-                            session.commit()
+                            await session.commit()
                             logger.debug(f"Message {message.message_id} created and saved to database (pre-done yield)")
                             
                             # Update LangGraph memory
@@ -209,13 +208,14 @@ class MessageService:
         """Yields UpdateMessageResponse"""
         accumulated_answer = []
 
-        with self.db.get_session() as session:
-            message = session.query(Message).join(Conversation).filter(
+        async with self.db.get_session() as session:
+            result = await session.execute(select(Message).join(Conversation).filter(
                 Message.message_id == message_id,
                 Message.conversation_id == conversation_id,
                 Conversation.workspace_id == workspace_id,
                 Conversation.user_id == user_id
-            ).first()
+            ))
+            message = result.scalars().first()
 
             if not message:
                 raise ValueError("Message not found")
@@ -224,7 +224,7 @@ class MessageService:
 
             if old_question.strip() != new_question.strip():
                 # Regenerate
-                llm_config = LLMManager.resolve_llm_config(
+                llm_config = await LLMManager.resolve_llm_config_async(
                     workspace_id=workspace_id,
                     user_id=user_id
                 )
@@ -266,7 +266,7 @@ class MessageService:
                                 message.question = new_question
                                 message.answer = new_answer
                                 message.embedding = await self.embeddings_manager.generate_message_embedding_async(new_question, new_answer)
-                                session.commit()
+                                await session.commit()
                                 logger.debug(f"Message {message.message_id} updated and saved (pre-done yield)")
                                 
                                 # Update LangGraph memory
@@ -305,19 +305,19 @@ class MessageService:
 
     async def delete_message(self, conversation_id: str, message_id: str, workspace_id: UUID, user_id: UUID) -> bool:
         try:
-            with self.db.get_session() as session:
-                query = session.query(Message).join(Conversation).filter(
+            async with self.db.get_session() as session:
+                result = await session.execute(select(Message).join(Conversation).filter(
                     Message.message_id == message_id,
                     Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
-                )
-                message = query.first()
+                ))
+                message = result.scalars().first()
                 if not message:
                     return False
                 
-                session.delete(message)
-                session.commit()
+                await session.delete(message)
+                await session.commit()
                 return True
         except Exception as e:
             logger.error(f"Error deleting message: {e}")

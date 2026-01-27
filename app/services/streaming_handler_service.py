@@ -144,7 +144,7 @@ class StreamingMessageHandler:
 
     def done(self, final_status: str = "success") -> assistant_pb2.Message:
         """Create done event"""
-        return self._create_message("done", "")
+        return self._create_message("done", final_status)
 
     def system_message(
         self,
@@ -257,11 +257,19 @@ class StreamingResponseBuilder:
             }
 
             # Process events from async generator
+            error_occurred = False
             async for event in response_generator:
                 event_type = event.get("type")
                 
                 if event_type in event_mapping:
-                    yield to_response(event_mapping[event_type](event))
+                    response = event_mapping[event_type](event)
+                    yield to_response(response)
+                    
+                    # If error event, mark it and stop processing further events
+                    if event_type == "error":
+                        error_occurred = True
+                        logger.debug("Error event detected, stopping stream")
+                        break
                 
                 elif event_type == "result":
                     data = event.get("data", {})
@@ -282,24 +290,28 @@ class StreamingResponseBuilder:
                             agent=event.get("agent", "")
                         ))
 
-            # Send message_end
-            yield to_response(handler.message_end(
-                success=True,
-                key_findings=[]
-            ))
+            # Send message_end only if no error occurred
+            if not error_occurred:
+                yield to_response(handler.message_end(
+                    success=True,
+                    key_findings=[]
+                ))
 
-            # Send done
-            yield to_response(handler.done(final_status="success"))
+            # Send done with appropriate status
+            yield to_response(handler.done(
+                final_status="error" if error_occurred else "success"
+            ))
 
         except Exception as e:
             logger.error("Error in streaming response: {}", e)
-            # Send error message
-            yield handler.error(
+            # Send error message (wrapped properly)
+            yield to_response(handler.error(
                 error_type="StreamingError",
                 error_message=str(e),
                 agent="StreamingResponseBuilder",
                 recoverable=False,
                 retry_suggested=True
-            )
+            ))
             # Send done with error status
-            yield handler.done(final_status="error")
+            yield to_response(handler.done(final_status="error"))
+
