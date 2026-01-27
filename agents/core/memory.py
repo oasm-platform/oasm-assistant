@@ -21,11 +21,11 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 import asyncio
 import uuid
 from data.redis import redis_client
-
+from sqlalchemy import select
 
 class STMCheckpointer(BaseCheckpointSaver):
     """
-    Persist LangGraph state to PostgreSQL database.
+    Persist LangGraph state to PostgreSQL database (Async).
     """
     def __init__(self, serde=None, workspace_id=None, user_id=None):
         super().__init__(serde=serde)
@@ -51,17 +51,24 @@ class STMCheckpointer(BaseCheckpointSaver):
         return chat_history
 
     def get_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
-        """Get a checkpoint tuple from the database."""
+        """Get a checkpoint tuple from the database (Sync - Not Supported/Not Recommended)."""
+        # Since we switched to Async database, sync access is problematic.
+        # Ideally, we shouldn't be calling this in an async app.
+        raise NotImplementedError("STMCheckpointer only supports async operations via aget_tuple")
+
+    async def aget_tuple(self, config: RunnableConfig) -> Optional[CheckpointTuple]:
+        """Get a checkpoint tuple from the database (Async)."""
         conversation_id = config["configurable"].get("thread_id")
         if not conversation_id:
             return None
 
         try:
-            with self.db.get_session() as session:
+            async with self.db.get_session() as session:
                 # Retrieve the latest checkpoint for this conversation
-                row = session.query(STM).filter(
+                result = await session.execute(select(STM).filter(
                     STM.conversation_id == uuid.UUID(conversation_id)
-                ).first()
+                ))
+                row = result.scalars().first()
 
                 if not row:
                     return None
@@ -97,7 +104,8 @@ class STMCheckpointer(BaseCheckpointSaver):
                     parent_config=parent_config,
                 )
         except Exception as e:
-            logger.exception("Error reading checkpoint: {}", e)
+            # logger.exception("Error reading checkpoint: {}", e) # avoid log spam on init
+            logger.warning("Error reading checkpoint: {}", e)
             return None
 
     def list(
@@ -109,23 +117,10 @@ class STMCheckpointer(BaseCheckpointSaver):
         limit: Optional[int] = None,
     ) -> Iterator[CheckpointTuple]:
         """List checkpoints (Not implemented for STM focus)."""
-        # Simplification: we only store latest state in this table design for now.
         yield from []
 
-    async def aput(
-        self,
-        config: RunnableConfig,
-        checkpoint: Checkpoint,
-        metadata: CheckpointMetadata,
-        new_versions: ChannelVersions,
-    ) -> RunnableConfig:
-        """Async version of put that runs the synchronous `put` method in a separate thread to avoid blocking."""
-        return await asyncio.to_thread(
-            self.put, config, checkpoint, metadata, new_versions
-        )
-
-    def _summarize_sync(self, current_summary: str, messages_to_summarize: list) -> str:
-        """Generate summary synchronously"""
+    async def _summarize_async(self, current_summary: str, messages_to_summarize: list) -> str:
+        """Generate summary asynchronously"""
         try:
             conversation_text = ""
             for msg in messages_to_summarize:
@@ -143,9 +138,11 @@ class STMCheckpointer(BaseCheckpointSaver):
                 conversation_text += f"{role}: {msg.content}\n"
             
             prompt = MemoryPrompts.get_conversation_summary_prompt(current_summary, conversation_text)
-            llm = LLMManager.get_llm(workspace_id=self.workspace_id, user_id=self.user_id)
-            # Use invoke for sync call
-            summary = llm.invoke(prompt)
+            
+            llm_config = await LLMManager.resolve_llm_config_async(workspace_id=self.workspace_id, user_id=self.user_id)
+            llm = LLMManager.get_llm(llm_config=llm_config)
+            
+            summary = await llm.ainvoke(prompt)
             return summary.content.strip()
         except Exception as e:
             logger.exception("STM Summarization failed: {}", e)
@@ -158,7 +155,17 @@ class STMCheckpointer(BaseCheckpointSaver):
         metadata: CheckpointMetadata,
         new_versions: ChannelVersions,
     ) -> RunnableConfig:
-        """Save a checkpoint to the database with STM optimization (Sliding Window + Summary)."""
+        """Sync put - Not supported."""
+        raise NotImplementedError("STMCheckpointer only supports async operations via aput")
+
+    async def aput(
+        self,
+        config: RunnableConfig,
+        checkpoint: Checkpoint,
+        metadata: CheckpointMetadata,
+        new_versions: ChannelVersions,
+    ) -> RunnableConfig:
+        """Async version of put that saves state using async DB methods."""
         conversation_id = config["configurable"].get("thread_id")
         if not conversation_id:
             return config
@@ -169,35 +176,16 @@ class STMCheckpointer(BaseCheckpointSaver):
             messages = channel_values.get("messages", [])
             messages_len = len(messages)
             
-            # Configs (Unit: Pairs)
-            context_pairs = configs.memory.stm_context_messages
             stack_pairs = configs.memory.stm_summary_stack_messages
-            
-            context_limit_msg = context_pairs * 2
             
             # Redis Logic: Increment and Check
             redis_key = f"stm:stack_count:{conversation_id}"
             
-            # Because 'put' is called after AI generation (1 pair added), we increment.
-            # However, put might be called multiple times. 
-            # Ideally, we read current val, checking if we should trigger.
-            # But the user wants "Question 1 -> Redis 1".
-            # The most robust way is: Calculate Term Count relative to the last check? 
-            # No, user wants simple counter.
-            
-            # Let's trust the logic: Current Total Pairs
-            current_total_pairs = messages_len // 2
-            
-            # We need a volatile counter that resets. Total Pairs doesn't reset.
-            # So we use INCR.
-            # Warning: Repeated calls to put for same state? LangGraph usually checkpoints once per step.
-            
             # Increment atomic
             try:
-                # Increment atomic and get new count directly
-                # Removed redundant get() call as incr() returns the new value
-                new_count = redis_client.incr(redis_key)
-                redis_client.expire(redis_key, 86400)
+                # Use async redis client
+                new_count = await redis_client.async_client.incr(redis_key)
+                await redis_client.async_client.expire(redis_key, 86400)
                 
                 if new_count >= stack_pairs:
                     # Force Summary based on Stack Config
@@ -210,7 +198,8 @@ class STMCheckpointer(BaseCheckpointSaver):
                     messages_to_summarize = messages_to_process[:trim_count]
                     messages_to_keep = messages_to_process[trim_count:]
                     
-                    new_summary = self._summarize_sync(current_summary, messages_to_summarize)
+                    # Use ASYNC summarize
+                    new_summary = await self._summarize_async(current_summary, messages_to_summarize)
                     metadata["summary"] = new_summary
                     
                     checkpoint = checkpoint.copy()
@@ -218,26 +207,25 @@ class STMCheckpointer(BaseCheckpointSaver):
                     checkpoint["channel_values"]["messages"] = messages_to_keep
 
                     # Reset Redis
-                    redis_client.set(redis_key, 0, ex=86400)
+                    await redis_client.async_client.set(redis_key, 0, ex=86400)
                     
             except Exception as e:
                 logger.exception("STM Logic Error: {}", e)
                 
-            # Serialize for JSONB storage (hex-encoded binary)
+            # Serialize
             type_, data_bytes = self.serde.dumps_typed(checkpoint)
-            
             checkpoint_json = {
                 "__serializer_type": type_,
                 "__serializer_data": data_bytes.hex()
             }
-
             checkpoint_id = checkpoint["id"]
             
-            # Persist to database
-            with self.db.get_session() as session:
-                existing = session.query(STM).filter(
+            # Persist to database (Async)
+            async with self.db.get_session() as session:
+                result = await session.execute(select(STM).filter(
                     STM.conversation_id == uuid.UUID(conversation_id)
-                ).first()
+                ))
+                existing = result.scalars().first()
                 
                 if existing:
                     existing.checkpoint = checkpoint_json
@@ -252,7 +240,7 @@ class STMCheckpointer(BaseCheckpointSaver):
                     )
                     session.add(new_record)
                 
-                session.commit()
+                await session.commit()
                 
         except Exception as e:
             logger.exception("Error saving checkpoint: {}", e)

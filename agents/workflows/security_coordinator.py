@@ -229,7 +229,7 @@ class SecurityCoordinator:
 
         return state
 
-    def _get_chat_history_from_memory(self, conversation_id: str) -> List[Dict]:
+    async def _get_chat_history_from_memory(self, conversation_id: str) -> List[Dict]:
         """Helper to retrieve and format chat history from STM checkpointer"""
         chat_history = []
         if not conversation_id:
@@ -241,7 +241,7 @@ class SecurityCoordinator:
                 return chat_history
 
             config = {"configurable": {"thread_id": conversation_id}}
-            checkpoint_tuple = checkpointer.get_tuple(config)
+            checkpoint_tuple = await checkpointer.aget_tuple(config)
             
             if checkpoint_tuple and checkpoint_tuple.checkpoint:
                 # Get summary from metadata
@@ -281,7 +281,7 @@ class SecurityCoordinator:
                 return
             
             # Get current checkpoint
-            checkpoint_tuple = checkpointer.get_tuple(config)
+            checkpoint_tuple = await checkpointer.aget_tuple(config)
             
             current_messages = []
             metadata = {}
@@ -360,7 +360,11 @@ class SecurityCoordinator:
     async def _identify_intent_and_route(self, question: str) -> str:
         """Identify user intent and route to the appropriate agent logic"""
         try:
-            llm = LLMManager.get_llm(workspace_id=self.workspace_id, user_id=self.user_id)
+            llm = LLMManager.get_llm(
+                workspace_id=self.workspace_id, 
+                user_id=self.user_id,
+                llm_config=self.llm_config
+            )
             parser = JsonOutputParser()
             prompt = SecurityCoordinatorPrompts.get_routing_prompt(question)
             
@@ -409,7 +413,7 @@ class SecurityCoordinator:
             agent = self.agent_instances[agent_key]
 
             # Chat history is now handled by LangGraph state + conversation_id checkpointer
-            chat_history = self._get_chat_history_from_memory(conversation_id) if conversation_id else []
+            chat_history = await self._get_chat_history_from_memory(conversation_id) if conversation_id else []
             
             # Determine Action based on Agent
             if agent_key == "nuclei":
@@ -433,10 +437,15 @@ class SecurityCoordinator:
                 yield event
 
         except Exception as e:
-            logger.error("Streaming coordination error: {}", e)
-            yield {
+            logger.error("Streaming coordination error: {}", e, exc_info=True)
+            friendly_message = LLMManager.get_friendly_error_message(e)
+            error_event = {
                 "type": "error",
                 "error_type": "StreamingCoordinationError",
-                "error_message": str(e),
+                "error_message": friendly_message,
                 "agent": "SecurityCoordinator"
             }
+            logger.debug("Yielding error event: {}", error_event)
+            yield error_event
+
+

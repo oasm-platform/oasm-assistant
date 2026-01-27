@@ -16,6 +16,7 @@ from langchain_core.messages import BaseMessage
 from data.database import postgres_db
 from data.database.models import NucleiTemplates
 from data.embeddings import embeddings_manager
+from sqlalchemy import select
 
 class NucleiGeneratorAgent(BaseAgent):
     """Generates Nuclei templates using LLM"""
@@ -80,37 +81,32 @@ class NucleiGeneratorAgent(BaseAgent):
                 logger.warning("Embeddings manager not initialized, skipping RAG")
                 return ""
 
-            loop = asyncio.get_running_loop()
-            
             # 1. Generate embedding
-            query_embedding = await loop.run_in_executor(
-                None, 
-                embeddings_manager.embed_query, 
-                question
-            )
+            query_embedding = await embeddings_manager.generate_embedding_async(question)
             
-            # 2. Query database
-            def _query_db():
-                with postgres_db.get_session() as session:
-                    # using cosine_distance (operator <=>)
-                    results = session.query(NucleiTemplates).order_by(
+            # 2. Query database (Async)
+            async with postgres_db.get_session() as session:
+                # using cosine_distance (operator <=>)
+                result = await session.execute(
+                    select(NucleiTemplates).order_by(
                         NucleiTemplates.embedding.cosine_distance(query_embedding)
-                    ).limit(limit).all()
-                    if not results:
-                        return ""
-                    
-                    context_parts = []
-                    for idx, template in enumerate(results):
-                        context_parts.append(
-                            f"Example {idx+1}:\n"
-                            f"Template Name: {template.name}\n"
-                            f"Description: {template.description}\n"
-                            f"```yaml\n{template.template}\n```"
-                        )
-                    
-                    return "\n\n".join(context_parts)
-
-            return await loop.run_in_executor(None, _query_db)
+                    ).limit(limit)
+                )
+                results = result.scalars().all()
+                
+                if not results:
+                    return ""
+                
+                context_parts = []
+                for idx, template in enumerate(results):
+                    context_parts.append(
+                        f"Example {idx+1}:\n"
+                        f"Template Name: {template.name}\n"
+                        f"Description: {template.description}\n"
+                        f"```yaml\n{template.template}\n```"
+                    )
+                
+                return "\n\n".join(context_parts)
                 
         except Exception as e:
             logger.error("Failed to retrieve similar templates: {}", e)
