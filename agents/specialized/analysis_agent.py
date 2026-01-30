@@ -10,7 +10,6 @@ from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import JsonOutputParser
 from agents.core import BaseAgent, AgentRole, AgentType
 from common.logger import logger
-from common.config import configs
 from common.types import QuestionType
 from llms import LLMManager
 from llms.prompts import AnalysisAgentPrompts
@@ -171,62 +170,85 @@ class AnalysisAgent(BaseAgent):
                 return
 
 
-            server_name = selected["server"]
-            tool_name = selected["tool"]
-            tool_args = selected["args"]
-            
-            # Force overwrite workspaceId to prevent prompt injection
-            if self.workspace_id:
-                tool_args["workspaceId"] = str(self.workspace_id)
-                
-            question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
-
-            # Validate tool exists
-            tool_description = "Fetching data from MCP"
-            tool_exists = False
-            for server, tools in all_tools.items():
-                if server == server_name:
-                    for tool_info in tools:
-                        if tool_info.get("name") == tool_name:
-                            tool_exists = True
-                            tool_description = tool_info.get("description", tool_description)
-                            break
-                if tool_exists:
-                    break
-            
-            if not tool_exists:
-                yield {
-                    "type": "error",
-                    "error": f"Selected tool {tool_name} not found",
-                    "agent": self.name
-                }
-                logger.warning(f"Selected tool {server_name}/{tool_name} not found")
+            tool_calls = selected.get("tool_calls", [])
+            if not tool_calls:
+                logger.warning("No tools selected by LLM")
                 return
 
-            logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
+            results = []
+            question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
 
+            for call in tool_calls:
+                server_name = call.get("server")
+                tool_name = call.get("tool")
+                tool_args = call.get("args", {})
+                
+                # Force overwrite workspaceId to prevent prompt injection
+                if self.workspace_id:
+                    tool_args["workspaceId"] = str(self.workspace_id)
 
-            # Execute tool
-            result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
+                # Validate tool exists
+                tool_description = "Fetching data"
+                tool_exists = False
+                for server, tools in all_tools.items():
+                    if server == server_name:
+                        for tool_info in tools:
+                            if tool_info.get("name") == tool_name:
+                                tool_exists = True
+                                tool_description = tool_info.get("description", tool_description)
+                                break
+                    if tool_exists:
+                        break
+                
+                if not tool_exists:
+                    logger.warning(f"Selected tool {server_name}.{tool_name} not found")
+                    continue
 
-            if not result or result.get("isError"):
-                error_msg = result.get('content') if result else 'No response'
-                logger.warning(f"MCP call failed: {error_msg}")
+                logger.debug(f"Executing tool call: {server_name}.{tool_name}")
+                
+                # Inform UI about tool start
                 yield {
-                    "type": "tool_output",
-                    "tool_name": tool_name,
-                    "status": "error",
-                    "error": error_msg,
-                    "agent": self.name
+                    "type": "tool_start",
+                    "tool": tool_name,
+                    "server": server_name,
+                    "reasoning": call.get("reasoning", "")
                 }
+
+                # Execute tool
+                result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
+
+                if result and not result.get("isError"):
+                    results.append({
+                        "tool": tool_name,
+                        "server": server_name,
+                        "description": tool_description,
+                        "data": result
+                    })
+                    yield {
+                        "type": "tool_output",
+                        "tool_name": tool_name,
+                        "status": "success",
+                        "agent": self.name
+                    }
+                else:
+                    error_msg = result.get('content') if result else 'No response'
+                    yield {
+                        "type": "tool_output",
+                        "tool_name": tool_name,
+                        "status": "error",
+                        "error": error_msg,
+                        "agent": self.name
+                    }
+
+            if not results:
+                logger.warning("All tool calls failed or no calls made")
                 return
 
             final_data = {
-                "source": f"MCP ({server_name}/{tool_name})",
-                "stats": result,
-                "tool": tool_name,
-                "server": server_name,
-                "tool_description": tool_description,
+                "source": "Multiple MCP Tools" if len(results) > 1 else f"MCP ({results[0]['server']}/{results[0]['tool']})",
+                "stats": results if len(results) > 1 else results[0]["data"],
+                "tool": results[0]["tool"] if len(results) == 1 else "multi_tool",
+                "details": results,
                 "question_type": question_type
             }
             
@@ -271,100 +293,163 @@ class AnalysisAgent(BaseAgent):
                 logger.warning("LLM could not classify and select tool")
                 return None
 
-            server_name = selected["server"]
-            tool_name = selected["tool"]
-            tool_args = selected["args"]
-            
-            # Force overwrite workspaceId to prevent prompt injection
-            if self.workspace_id:
-                tool_args["workspaceId"] = str(self.workspace_id)
+            tool_calls = selected.get("tool_calls", [])
+            if not tool_calls:
+                logger.warning("No tools selected")
+                return None
 
+            results = []
             question_type = selected.get("question_type", QuestionType.SECURITY_RELATED)
 
-            # Validate that the selected tool actually exists
-            tool_description = "Fetching data from MCP"
-            tool_exists = False
-            for server, tools in all_tools.items():
-                if server == server_name:
-                    for tool_info in tools:
-                        if tool_info.get("name") == tool_name:
-                            tool_exists = True
-                            tool_description = tool_info.get("description", tool_description)
-                            break
-                if tool_exists:
-                    break
+            for call in tool_calls:
+                server_name = call.get("server")
+                tool_name = call.get("tool")
+                tool_args = call.get("args", {})
+                
+                if self.workspace_id:
+                    tool_args["workspaceId"] = str(self.workspace_id)
 
-            if not tool_exists:
-                logger.warning(f"Selected tool {server_name}/{tool_name} not found in available tools")
-                # Try to fuzzy match or find tool in other servers? 
-                # For now, just log and return None to trigger fallback
-                return None
+                # Validate tool
+                tool_exists = False
+                tool_desc = ""
+                for server, tools in all_tools.items():
+                    if server == server_name:
+                        for t in tools:
+                            if t["name"] == tool_name:
+                                tool_exists = True
+                                tool_desc = t.get("description", "")
+                                break
+                    if tool_exists: break
+                
+                if not tool_exists: continue
 
-            logger.debug(f"LLM classified as '{question_type}' and selected: {server_name}.{tool_name}")
-            logger.debug(f"Arguments: {tool_args}")
+                result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
+                if result and not result.get("isError"):
+                    results.append({
+                        "tool": tool_name,
+                        "server": server_name,
+                        "data": result,
+                        "description": tool_desc
+                    })
 
-            result = await self.mcp_manager.call_tool(server=server_name, tool=tool_name, args=tool_args)
-
-            if not result or result.get("isError"):
-                logger.warning(f"MCP call failed: {result.get('content') if result else 'No response'}")
-                return None
+            if not results: return None
 
             return {
-                "source": f"MCP ({server_name}/{tool_name})",
-                "stats": result,
-                "tool": tool_name,
-                "server": server_name,
-                "tool_description": tool_description,
-                "question_type": question_type
+                "source": "Multiple MCP Tools" if len(results) > 1 else f"MCP ({results[0]['server']}/{results[0]['tool']})",
+                "stats": results if len(results) > 1 else results[0]["data"],
+                "question_type": question_type,
+                "details": results
             }
 
         except Exception as e:
             logger.error("MCP fetch error: {}", e)
             return None
 
+    def _extract_all_json_objects(self, text: str) -> List[Dict]:
+        """Helper to extract all valid JSON objects from mixed text"""
+        objects = []
+        decoder = json.JSONDecoder()
+        pos = 0
+        while pos < len(text):
+            # Search for the next '{'
+            next_start = text.find('{', pos)
+            if next_start == -1:
+                break
+            
+            try:
+                # Attempt to decode a JSON object starting at next_start
+                # raw_decode returns (object, end_index)
+                obj, end_pos = decoder.raw_decode(text, next_start)
+                objects.append(obj)
+                pos = end_pos # Advance to end of this object
+            except json.JSONDecodeError:
+                # Not a valid object start, move forward by 1
+                pos = next_start + 1
+        return objects
+
     async def _classify_and_select_tool_combined(self, question: str, all_tools: Dict) -> Optional[Dict]:
         """Classify question type and select MCP tool in single LLM call"""
         parser = JsonOutputParser()
-
-        base_prompt = AnalysisAgentPrompts.get_combined_classification_and_tool_selection_prompt(
+        prompt = AnalysisAgentPrompts.get_combined_classification_and_tool_selection_prompt(
             question=question,
             tools_description=AnalysisAgentPrompts.format_tools_for_llm(all_tools)
         )
 
-        valid_types = QuestionType.list_values()
-        format_instructions = parser.get_format_instructions()
-        enhanced_prompt = f"""{base_prompt}
-
-You MUST respond with valid JSON containing exactly these fields:
-- "question_type": one of {valid_types} (string)
-- "server": the server name (string)
-- "tool": the tool name (string)
-- "args": the tool arguments (object)
-- "reasoning": brief explanation (string)
-"""
         try:
-            chain = self.llm | parser
-            result = await chain.ainvoke(enhanced_prompt)
+            response = await self.llm.ainvoke(prompt)
+            raw_content = response.content if hasattr(response, 'content') else str(response)
+            clean_content = raw_content.strip()
 
-            required_fields = ["server", "tool", "args", "question_type", "reasoning"]
-            if not all(key in result for key in required_fields):
-                logger.error("Missing required fields in JSON: {}", result)
+            result = None
+            
+            # Strategy 1: Regex for Code Block (Most reliable for chatty LLMs)
+            json_block = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', clean_content, re.DOTALL)
+            if json_block:
+                try:
+                    result = json.loads(json_block.group(1))
+                except: pass
+            
+            # Strategy 2: Multi-object extraction
+            if result is None:
+                json_objects = self._extract_all_json_objects(clean_content)
+                candidates = []
+                for obj in json_objects:
+                    if isinstance(obj, dict):
+                        score = 0
+                        if "question_type" in obj: score += 2
+                        if "tool_calls" in obj: score += 2
+                        if "tool" in obj: score += 1
+                        if "reasoning" in obj: score += 1
+                        if score > 0: candidates.append((score, obj))
+                
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                if candidates: 
+                    result = candidates[0][1]
+
+            # Strategy 3: Outermost braces (Fallback)
+            if result is None:
+                 try:
+                    start_idx = clean_content.find('{')
+                    end_idx = clean_content.rfind('}')
+                    if start_idx != -1 and end_idx != -1:
+                        s = clean_content[start_idx : end_idx + 1]
+                        # Mild repair for python-dict style
+                        s = s.replace("'", '"').replace("False", "false").replace("True", "true").replace("None", "null")
+                        result = json.loads(s)
+                 except: pass
+
+            if result is None:
+                logger.error(f"Failed to parse JSON. Raw: {clean_content[:200]}")
                 return None
 
+            # Normalization and Soft Validation
+            if "question_type" not in result:
+                 result["question_type"] = "security_related"
+            
+            if "reasoning" not in result:
+                 result["reasoning"] = "Inferred from content"
+
+            # Normalize legacy single 'tool' to 'tool_calls'
+            if "tool_calls" not in result and "tool" in result:
+                result["tool_calls"] = [{
+                    "server": result.get("server"),
+                    "tool": result.get("tool"),
+                    "args": result.get("args", {}),
+                    "reasoning": result.get("reasoning")
+                }]
+
+            # Convert enum safely
             try:
-                question_type_str = result["question_type"]
-                result["question_type"] = QuestionType.from_string(question_type_str)
-            except ValueError as e:
-                logger.error("Invalid question_type '{}': {}", result.get('question_type'), e)
+                if isinstance(result["question_type"], str):
+                    result["question_type"] = QuestionType.from_string(result["question_type"])
+            except:
                 result["question_type"] = QuestionType.SECURITY_RELATED
-                logger.warning(f"Defaulting to {QuestionType.SECURITY_RELATED.value}")
 
             return result
 
         except Exception as e:
-            logger.exception("LLM combined classification and tool selection failed: {}", e)
-            # Re-raise to be caught by the caller who can handle friendly error messages
-            raise e
+            logger.exception("LLM classification failed: {}", e)
+            return None
 
     def _ensure_question_type_enum(self, question_type: Any) -> QuestionType:
         """Convert question_type to QuestionType enum"""
@@ -389,6 +474,21 @@ You MUST respond with valid JSON containing exactly these fields:
 
         stats = scan_data.get("stats", {})
         tool = scan_data.get("tool", "unknown")
+
+        # Cleanup stats for list_tools to avoid huge prompts and technical noise
+        if tool == "list_tools" and isinstance(stats, dict) and "data" in stats:
+            tools = stats["data"]
+            if isinstance(tools, list):
+                # Only keep essential fields
+                stats = [
+                    {
+                        "name": t.get("name"), 
+                        "description": (t.get("description") or "")[:150],
+                        "installed": t.get("isInstalled", False),
+                        "type": t.get("type", "unknown")
+                    } 
+                    for t in tools
+                ]
 
         if question_type == QuestionType.GENERAL_KNOWLEDGE:
             return AnalysisAgentPrompts.get_general_knowledge_prompt(question, stats, chat_history)
@@ -432,12 +532,11 @@ You MUST respond with valid JSON containing exactly these fields:
         question_type: QuestionType = None,
         chat_history: List[Dict] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream LLM analysis with buffering"""
-        min_chunk_size = configs.llm.min_chunk_size
+        """Stream LLM analysis with buffering and fallback"""
         prompt = self._select_prompt(question, scan_data, question_type, chat_history)
 
         try:
-            async for buffered_text in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
+            async for buffered_text in self._buffer_llm_chunks(self.llm, prompt):
                 yield {"type": "delta", "text": buffered_text, "agent": self.name}
         except Exception as e:
             logger.exception("Failed to stream analysis: {}", e)

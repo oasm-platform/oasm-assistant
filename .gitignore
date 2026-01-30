@@ -217,3 +217,5 @@ logs/
 *.lognuclei-templates/
 
 */nuclei-templates/
+
+MESSAGE_FLOW_DOCUMENTATION.md

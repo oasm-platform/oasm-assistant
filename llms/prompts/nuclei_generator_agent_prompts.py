@@ -13,15 +13,17 @@ class NucleiGenerationPrompts:
         Returns:
             Complete prompt for LLM
         """
-        # System role and user request
-        base_prompt = f"""You are an expert Nuclei template developer with deep expertise in:
-- Web application security testing and vulnerability detection
-- Nuclei YAML template syntax and best practices
-- Crafting precise matchers to minimize false positives/negatives
-- Security standards (OWASP, CVE, CWE)
+        base_prompt = f"""### ROLE PROFILE
+You are an **Elite Nuclei Template Developer**. You specialize in creating highly accurate, production-grade security templates that balance broad detection coverage with minimal false-positive rates. Your code follows strict YAML standards and incorporates the latest security research.
 
-# USER REQUEST
-{question}
+### EXPERTISE
+- Advanced Protocol exploitation (HTTP, DNS, SSL, Network).
+- Precise Matcher logic (chained word/status/regex combinations).
+- Vulnerability Impact Assessment (CVSS terminology).
+
+### MISSION OBJECTIVE
+Generate a complete, verified Nuclei YAML template for the following request:
+> "{question}"
 """
 
         # Add RAG examples section if context is available (THIS IS CRITICAL!)
@@ -256,17 +258,14 @@ requests:
         status: [200]
 ```
 
-# CRITICAL OUTPUT REQUIREMENTS
-
-⚠️ **IMPORTANT**: Your response must be formatted as Markdown for better UI presentation.
-
-**Format Rules:**
-1. ✅ Start with a brief, professional introduction explaining what the template detects.
-2. ✅ Wrap the Nuclei YAML template in a Triple Backtick code block with `yaml` language identifier.
-3. ✅ Use 2-space indentation (not tabs) for the YAML content.
-4. ✅ Use `{{{{BaseURL}}}}` with 4 curly braces for URL variables.
-5. ✅ Provide a brief summary or next steps after the code block.
-6. ✅ Follow exact YAML syntax from reference templates (if provided).
+### CRITICAL OUTPUT PROTOCOL
+1. **Explain the Detection**: Start with a 1-2 sentence overview of the vulnerability and detection logic.
+2. **YAML Excellence**: 
+   - Wrap the template in ` ```yaml ` blocks.
+   - Use double-space indentation.
+   - Ensure all variables use the `{{{{BaseURL}}}}` format.
+3. **Actionability**: Conclude with a "Deployment Note" on how to verify this template's efficacy.
+4. **Language**: The code template must be in standard English YAML, but the **explanation and commentary** must be in the **SAME LANGUAGE** as the user question: "{question}".
 
 **Quality Checklist:**
 - [ ] ID is descriptive and follows naming convention

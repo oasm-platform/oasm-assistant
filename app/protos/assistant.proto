@@ -227,9 +227,6 @@ message CreateMessageRequest {
   string conversation_id = 2;
   bool is_create_conversation = 3;
   AgentType agent_type = 4;
-  string model = 5;
-  string provider = 6;
-  string api_key = 7;
 }
 
 enum AgentType {

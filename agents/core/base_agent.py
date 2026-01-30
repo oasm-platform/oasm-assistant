@@ -199,19 +199,66 @@ class BaseAgent(ABC):
 
     async def _buffer_llm_chunks(
         self,
-        llm_stream: AsyncGenerator,
-        min_chunk_size: int = 50
+        llm: Any,
+        prompt: Any,
+        min_chunk_size: Optional[int] = None,
+        **kwargs
     ) -> AsyncGenerator[str, None]:
-        """Buffer small chunks into larger ones for smoother UI delivery"""
+        """
+        Stream LLM response with automatic fallback to ainvoke if astream fails or is empty,
+        and buffer small chunks into larger ones for smoother UI delivery.
+        
+        Args:
+            llm: LLM instance
+            prompt: Prompt to send
+            min_chunk_size: Min characters to buffer (defaults to LlmConfigs.min_chunk_size)
+            **kwargs: Additional parameters for LLM calls
+            
+        Yields:
+            Text chunks
+        """
+        from common.config import configs
+        if min_chunk_size is None:
+            min_chunk_size = configs.llm.min_chunk_size
+
         buffer = ""
-        async for chunk in llm_stream:
-            text = chunk.content if isinstance(chunk, BaseMessage) else str(chunk)
-            buffer += text
-            if len(buffer) >= min_chunk_size:
+        yielded_any = False
+        
+        try:
+            # 1. Try streaming first
+            async for chunk in llm.astream(prompt, **kwargs):
+                text = chunk.content if isinstance(chunk, BaseMessage) else str(chunk)
+                buffer += text
+                
+                if len(buffer) >= min_chunk_size:
+                    yield buffer
+                    buffer = ""
+                    yielded_any = True
+            
+            # Flush final buffer
+            if buffer:
                 yield buffer
-                buffer = ""
-        if buffer:
-            yield buffer
+                yielded_any = True
+                
+        except (Exception, ValueError) as streaming_error:
+            if yielded_any:
+                logger.error(f"Streaming failed partial-way for {self.name}: {streaming_error}")
+                if buffer:
+                    yield buffer
+                raise streaming_error
+            
+            logger.warning(f"Streaming failed or was empty for {self.name}: {streaming_error}. Falling back to ainvoke.")
+
+        # 2. Fallback to standard invocation if stream provided no content
+        if not yielded_any:
+            try:
+                response = await llm.ainvoke(prompt, **kwargs)
+                content = response.content if hasattr(response, 'content') else str(response)
+                if content:
+                    yield content.strip()
+            except Exception as e:
+                logger.error(f"Fallback ainvoke also failed for {self.name}: {e}")
+                raise e
 
     def _run_async(self, coro):
         """

@@ -143,9 +143,8 @@ class NucleiGeneratorAgent(BaseAgent):
 
         prompt = NucleiGenerationPrompts.get_nuclei_template_generation_prompt(question, rag_context)
         
-        min_chunk_size = configs.llm.min_chunk_size
         try:
-            async for chunk in self._buffer_llm_chunks(self.llm.astream(prompt), min_chunk_size):
+            async for chunk in self._buffer_llm_chunks(self.llm, prompt):
                 yield {"type": "delta", "text": chunk, "agent": self.name}
                 
         except Exception as e:

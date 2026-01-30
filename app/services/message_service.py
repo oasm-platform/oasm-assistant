@@ -8,14 +8,13 @@ from sqlalchemy import select
 
 from data.database import postgres_db as database_instance
 from common.logger import logger
-from data.database.models import Message, Conversation, LLMConfig
+from data.database.models import Message, Conversation
 from agents.workflows.security_coordinator import SecurityCoordinator
 from app.protos import assistant_pb2
 from app.services.conversation_service import ConversationService
 from llms import LLMManager
 from data.embeddings import embeddings_manager
 from app.services.streaming_handler_service import StreamingResponseBuilder, StreamingMessageHandler
-from common.config import configs
 
 class MessageService:
     """Message service with OASM security agent integration"""
@@ -32,7 +31,7 @@ class MessageService:
                     Message.conversation_id == conversation_id,
                     Conversation.workspace_id == workspace_id,
                     Conversation.user_id == user_id
-                ).order_by(Message.created_at.asc())  # Sort oldest first
+                ).order_by(Message.created_at.asc())
                 result = await session.execute(query)
                 messages = result.scalars().all()
                 return list(messages)
@@ -40,92 +39,78 @@ class MessageService:
             logger.error(f"Error getting messages: {e}")
             raise
 
-    async def create_message_stream(
-        self, 
-        workspace_id: UUID, 
-        user_id: UUID, 
-        question: str, 
-        conversation_id: Optional[str] = None, 
-        is_create_conversation: bool = False,
-        agent_type: int = 0,
-        model: str = "",
-        provider: str = "",
-        api_key: str = ""
-    ):
-        """Yields tuple (stream_message, conversation_obj)"""
-        # Generate message_id
-        message_id = str(uuid.uuid4())
-        accumulated_answer = []
-
-        if not conversation_id or is_create_conversation:
-            is_create_conversation = True
-
-        async with self.db.get_session() as session:
-            # Handle conversation creation
-            if is_create_conversation:
-                conversation = Conversation(
-                    workspace_id=workspace_id,
-                    user_id=user_id,
-                    title="New conversation"
-                )
-                session.add(conversation)
-                await session.commit()
-                await session.refresh(conversation)
-                conversation_id = str(conversation.conversation_id)
-
-                asyncio.create_task(
-                    self.conversation_service.update_conversation_title_async(
-                        conversation_id, question, workspace_id=workspace_id, user_id=user_id
-                    )
-                )
-            else:
-                result = await session.execute(select(Conversation).filter(
-                    Conversation.conversation_id == conversation_id,
-                    Conversation.workspace_id == workspace_id,
-                    Conversation.user_id == user_id
-                ))
-                conversation = result.scalars().first()
-                if not conversation:
-                    raise ValueError("Conversation not found")
-
-            conversation_data = {
-                "conversation_id": str(conversation.conversation_id),
-                "title": conversation.title or "",
-                "description": conversation.description or "",
-                "created_at": conversation.created_at,
-                "updated_at": conversation.updated_at
-            }
-            
-            # Determine LLM configuration
-            llm_config = await LLMManager.resolve_llm_config_async(
-                provider=provider,
-                model=model,
-                api_key=api_key,
-                workspace_id=workspace_id,
-                user_id=user_id
-            )
-
-            coordinator = SecurityCoordinator(
-                db_session=session,
+    async def _get_or_create_conversation(self, session, workspace_id: UUID, user_id: UUID, conversation_id: Optional[str], is_create: bool, question: str):
+        if not conversation_id or is_create:
+            conversation = Conversation(
                 workspace_id=workspace_id,
                 user_id=user_id,
-                llm_config=llm_config
+                title="New conversation"
+            )
+            session.add(conversation)
+            await session.commit()
+            await session.refresh(conversation)
+            conversation_id = str(conversation.conversation_id)
+            
+            # Update title asynchronously
+            asyncio.create_task(
+                self.conversation_service.update_conversation_title_async(
+                    conversation_id, question, workspace_id=workspace_id, user_id=user_id
+                )
+            )
+        else:
+            result = await session.execute(select(Conversation).filter(
+                Conversation.conversation_id == conversation_id,
+                Conversation.workspace_id == workspace_id,
+                Conversation.user_id == user_id
+            ))
+            conversation = result.scalars().first()
+            if not conversation:
+                raise ValueError("Conversation not found")
+
+        return conversation, conversation_id
+
+    async def _create_coordinator(self, session, workspace_id: UUID, user_id: UUID) -> SecurityCoordinator:
+        llm_config = await LLMManager.resolve_llm_config_async(
+            workspace_id=workspace_id,
+            user_id=user_id
+        )
+        return SecurityCoordinator(
+            db_session=session,
+            workspace_id=workspace_id,
+            user_id=user_id,
+            llm_config=llm_config
+        )
+
+    async def _stream_response(
+        self, 
+        coordinator: SecurityCoordinator, 
+        question: str, 
+        conversation_id: str, 
+        message_id: str, 
+        agent_type: int,
+        session,
+        conversation_data: Optional[Dict] = None,
+        update_message_obj: Optional[Message] = None
+    ):
+        """Shared logic for streaming response from agent and saving to DB"""
+        agent_key = "orchestration"
+        if agent_type == 1:
+            agent_key = "nuclei"
+        elif agent_type == 2:
+            agent_key = "analysis"
+
+        accumulated_answer = []
+        
+        try:
+            streaming_events = coordinator.process_message_question_streaming(
+                question, 
+                conversation_id=conversation_id,
+                agent_type=agent_key
             )
 
-            try:
-                agent_key = "orchestration"
-                if agent_type == 1:
-                    agent_key = "nuclei"
-                elif agent_type == 2:
-                    agent_key = "analysis"
-
-                streaming_events = coordinator.process_message_question_streaming(
-                    question, 
-                    conversation_id=conversation_id,
-                    agent_type=agent_key
-                )
-
-                # Convert conversation_data to proto
+            # Build proto conversation object if this is a new conversation/message
+            pb_conversation = None
+            if conversation_data:
                 pb_conversation = assistant_pb2.Conversation(
                     conversation_id=conversation_data.get("conversation_id"),
                     title=conversation_data.get("title", ""),
@@ -134,80 +119,108 @@ class MessageService:
                     updated_at=conversation_data.get("updated_at").isoformat() if conversation_data.get("updated_at") else ""
                 )
 
-                async_stream = StreamingResponseBuilder.build_response_stream(
-                    message_id=message_id,
-                    conversation_id=conversation_id,
-                    question=question,
-                    response_generator=streaming_events
-                )
+            async_stream = StreamingResponseBuilder.build_response_stream(
+                message_id=message_id,
+                conversation_id=conversation_id,
+                question=question,
+                response_generator=streaming_events
+            )
 
-                async for stream_message in async_stream:
-                    if stream_message.type == "text":
-                        accumulated_answer.append(stream_message.content)
+            async for stream_message in async_stream:
+                if stream_message.type == "text":
+                    accumulated_answer.append(stream_message.content)
 
-                    # Update conversation if it's the first response
-                    if pb_conversation:
-                        stream_message.conversation.CopyFrom(pb_conversation)
-                        pb_conversation = None # Only send once
+                # Attach conversation info to the first message chunk if needed
+                if pb_conversation:
+                    stream_message.conversation.CopyFrom(pb_conversation)
+                    pb_conversation = None
 
-                    # IMPORTANT: Save complete message BEFORE the stream officially 'ends' for the client
-                    # This prevents the race condition where frontend refetches BEFORE the DB commit is done.
-                    if stream_message.type == "message_end":
-                        try:
-                            answer = "".join(accumulated_answer)
-                            embedding = await self.embeddings_manager.generate_message_embedding_async(question, answer)
+                # Handle completion event
+                if stream_message.type == "message_end":
+                    try:
+                        final_answer = "".join(accumulated_answer)
+                        embedding = await self.embeddings_manager.generate_message_embedding_async(question, final_answer)
 
-                            message = Message(
+                        if update_message_obj:
+                            # Update existing message
+                            update_message_obj.question = question
+                            update_message_obj.answer = final_answer
+                            update_message_obj.embedding = embedding
+                            logger.debug(f"Message {message_id} updated")
+                        else:
+                            # Create new message
+                            new_message = Message(
+                                message_id=message_id, # Ensure we use the same ID sent to client
                                 conversation_id=conversation_id,
                                 question=question,
-                                answer=answer,
+                                answer=final_answer,
                                 embedding=embedding
                             )
-                            session.add(message)
-                            await session.commit()
-                            logger.debug(f"Message {message.message_id} created and saved to database (pre-done yield)")
-                            
-                            # Update LangGraph memory
-                            await coordinator.update_memory(conversation_id, question, answer)
-                        except Exception as save_err:
-                            logger.error(f"Failed to auto-save message during stream: {save_err}")
+                            session.add(new_message)
+                            logger.debug(f"Message {message_id} created")
 
-                    yield stream_message
-
-            except Exception as agent_error:
-                logger.error(f"Security agent processing failed: {agent_error}", exc_info=True)
-                # Stream error response
-                handler = StreamingMessageHandler(message_id, conversation_id, question)
+                        await session.commit()
+                        
+                        # Sync with LangGraph memory
+                        await coordinator.update_memory(conversation_id, question, final_answer)
+                        
+                    except Exception as save_err:
+                        logger.error(f"Failed to save message: {save_err}")
                 
-                error_msg = handler.error(
-                    error_type="AgentProcessingError",
-                    error_message=LLMManager.get_friendly_error_message(agent_error),
-                    agent="MessageService",
-                    recoverable=True,
-                    retry_suggested=True
-                )
-                
-                yield assistant_pb2.CreateMessageResponse(
-                    message_id=message_id,
-                    conversation_id=conversation_id,
-                    content=error_msg.content,
-                    type="error",
-                    created_at=datetime.utcnow().isoformat()
-                )
+                yield stream_message
 
+        except Exception as agent_error:
+            logger.error(f"Agent processing failed: {agent_error}", exc_info=True)
+            handler = StreamingMessageHandler(message_id, conversation_id, question)
+            error_msg = handler.error(
+                error_type="AgentProcessingError",
+                error_message=LLMManager.get_friendly_error_message(agent_error),
+                agent="MessageService",
+                recoverable=True
+            )
+            yield assistant_pb2.CreateMessageResponse(
+                message_id=message_id,
+                conversation_id=conversation_id,
+                content=error_msg.content,
+                type="error",
+                created_at=datetime.utcnow().isoformat()
+            )
 
-    async def update_message_stream(
-        self,
-        workspace_id: UUID,
-        user_id: UUID,
-        conversation_id: str,
-        message_id: str,
-        new_question: str,
+    async def create_message_stream(
+        self, workspace_id: UUID, 
+        user_id: UUID, 
+        question: str, 
+        conversation_id: Optional[str] = None, 
+        is_create_conversation: bool = False,
         agent_type: int = 0
     ):
-        """Yields UpdateMessageResponse"""
-        accumulated_answer = []
+        message_id = str(uuid.uuid4())
+        
+        async with self.db.get_session() as session:
+            conversation, conversation_id = await self._get_or_create_conversation(
+                session, workspace_id, user_id, conversation_id, is_create_conversation, question
+            )
+            
+            conversation_data = {
+                "conversation_id": str(conversation.conversation_id),
+                "title": conversation.title or "",
+                "description": conversation.description or "",
+                "created_at": conversation.created_at,
+                "updated_at": conversation.updated_at
+            }
 
+            coordinator = await self._create_coordinator(session, workspace_id, user_id)
+            
+            async for response in self._stream_response(
+                coordinator, question, conversation_id, message_id, agent_type, 
+                session, conversation_data=conversation_data
+            ):
+                yield response
+
+    async def update_message_stream(
+        self, workspace_id: UUID, user_id: UUID, conversation_id: str, 
+        message_id: str, new_question: str, agent_type: int = 0
+    ):
         async with self.db.get_session() as session:
             result = await session.execute(select(Message).join(Conversation).filter(
                 Message.message_id == message_id,
@@ -216,92 +229,37 @@ class MessageService:
                 Conversation.user_id == user_id
             ))
             message = result.scalars().first()
-
             if not message:
                 raise ValueError("Message not found")
 
-            old_question = message.question
-
-            if old_question.strip() != new_question.strip():
-                # Regenerate
-                llm_config = await LLMManager.resolve_llm_config_async(
-                    workspace_id=workspace_id,
-                    user_id=user_id
-                )
-
-                coordinator = SecurityCoordinator(
-                    db_session=session,
-                    workspace_id=workspace_id,
-                    user_id=user_id,
-                    llm_config=llm_config
-                )
-
-                # Handled by LangGraph checkpointer in SecurityCoordinator using conversation_id
-                try:
-                    agent_key = "orchestration"
-                    if agent_type == 1:
-                        agent_key = "nuclei"
-                    elif agent_type == 2:
-                        agent_key = "analysis"
-
-                    streaming_events = coordinator.process_message_question_streaming(
-                        new_question, 
-                        conversation_id=conversation_id,
-                        agent_type=agent_key
-                    )
-                    async_stream = StreamingResponseBuilder.build_response_stream(
-                        message_id=message_id,
-                        conversation_id=conversation_id,
-                        question=new_question,
-                        response_generator=streaming_events
-                    )
-
-                    async for stream_message in async_stream:
-                        if stream_message.type == "text":
-                            accumulated_answer.append(stream_message.content)
-                        
-                        if stream_message.type == "message_end":
-                            try:
-                                new_answer = "".join(accumulated_answer)
-                                message.question = new_question
-                                message.answer = new_answer
-                                message.embedding = await self.embeddings_manager.generate_message_embedding_async(new_question, new_answer)
-                                await session.commit()
-                                logger.debug(f"Message {message.message_id} updated and saved (pre-done yield)")
-                                
-                                # Update LangGraph memory
-                                await coordinator.update_memory(conversation_id, new_question, new_answer)
-                            except Exception as save_err:
-                                logger.error(f"Failed to auto-save update during stream: {save_err}")
-
-                        yield assistant_pb2.UpdateMessageResponse(
-                            message_id=stream_message.message_id,
-                            conversation_id=stream_message.conversation_id,
-                            content=stream_message.content,
-                            type=stream_message.type
-                        )
-
-                except Exception as agent_error:
-                    logger.error(f"Error during update: {agent_error}")
+            if message.question.strip() != new_question.strip():
+                # Regenerate answer
+                coordinator = await self._create_coordinator(session, workspace_id, user_id)
+                
+                async for response in self._stream_response(
+                    coordinator, new_question, conversation_id, message_id, agent_type, 
+                    session, update_message_obj=message
+                ):
+                    # Map to UpdateMessageResponse if needed, but protobuf definition usually allows duck typing 
+                    # if fields match. Let's be explicit to be safe.
                     yield assistant_pb2.UpdateMessageResponse(
-                        message_id=message_id,
-                        conversation_id=conversation_id,
-                        content=str(agent_error),
-                        type="error"
+                        message_id=response.message_id,
+                        conversation_id=response.conversation_id,
+                        content=response.content,
+                        type=response.type
                     )
-
             else:
-                # Return existing
+                # Return existing answer in chunks
                 chunk_size = 50
-                for i in range(0, len(message.answer), chunk_size):
-                    chunk = message.answer[i:i + chunk_size]
+                answer = message.answer or ""
+                for i in range(0, len(answer), chunk_size):
+                    chunk = answer[i:i + chunk_size]
                     yield assistant_pb2.UpdateMessageResponse(
                         message_id=message_id,
                         conversation_id=conversation_id,
                         content=chunk,
                         type="text"
                     )
-
 
     async def delete_message(self, conversation_id: str, message_id: str, workspace_id: UUID, user_id: UUID) -> bool:
         try:

@@ -61,10 +61,7 @@ class MessageServiceServicer(assistant_pb2_grpc.MessageServiceServicer):
                 question, 
                 request.conversation_id, 
                 request.is_create_conversation,
-                agent_type=request.agent_type,
-                model=request.model,
-                provider=request.provider,
-                api_key=request.api_key
+                agent_type=request.agent_type
             )
 
             async for response in stream:
