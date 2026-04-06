@@ -1,3 +1,10 @@
+> ⚠️ **Important Notice**
+> Starting from 2026-04-04, **OASM Assistant** will be renamed to **OASM AI Agent** and will be developed directly at:
+> [https://github.com/oasm-platform/open-asm/tree/main/core-api/src/modules/agents](https://github.com/oasm-platform/open-asm/tree/main/core-api/src/modules/agents)
+
+
+
+
 # 🤖 OASM ASSISTANT
 
 **AI-Powered External Attack Surface Management**
@@ -14,16 +21,17 @@ OASM Assistant is an AI-powered security platform that automates external attack
 
 ### Key Features
 
-- 🤖 **Multi-Agent AI System** - Specialized agents for security tasks
-  - **Threat Intelligence Agent** - IOC correlation, attack prediction, threat monitoring
-  - **Analysis Agent** - Vulnerability assessment, compliance checking (OWASP, CWE, PCI-DSS, ISO 27001, etc)
-  - **Incident Responder Agent** - Attack detection, automated response, forensic analysis
-  - **Orchestrator Agent** - Workflow coordination, natural language interface
-- 🔍 **Threat Intelligence** - Real-time monitoring and analysis
-- 🛡️ **Vulnerability Management** - Automated scanning and prioritization
-- 📊 **Compliance Checking** - OWASP, CWE, PCI-DSS, ISO 27001, etc
-- ⚡ **Incident Response** - Automated detection and response
-- 🔧 **Utility Tools** - Domain Classifier, Nuclei Template Generator, Issue Resolver
+* 🤖 **Multi-Agent AI System** - Specialized agents for security tasks
+
+  * **Threat Intelligence Agent** - IOC correlation, attack prediction, threat monitoring
+  * **Analysis Agent** - Vulnerability assessment, compliance checking (OWASP, CWE, PCI-DSS, ISO 27001, etc)
+  * **Incident Responder Agent** - Attack detection, automated response, forensic analysis
+  * **Orchestrator Agent** - Workflow coordination, natural language interface
+* 🔍 **Threat Intelligence** - Real-time monitoring and analysis
+* 🛡️ **Vulnerability Management** - Automated scanning and prioritization
+* 📊 **Compliance Checking** - OWASP, CWE, PCI-DSS, ISO 27001, etc
+* ⚡ **Incident Response** - Automated detection and response
+* 🔧 **Utility Tools** - Domain Classifier, Nuclei Template Generator, Issue Resolver
 
 ---
 
@@ -59,15 +67,15 @@ docker exec -it oasm-assistant-ollama ollama pull llama3
 
 **Components:**
 
-- **Multi-Agent System** - Threat Intel • Analysis • Incident Response • Orchestrator
-- **LLM Providers** - Local (Ollama, vLLM, SGLang) • Cloud (OpenAI, Claude, Gemini)
-- **AI Tools** - RAG System (pgvector) • SearXNG • Domain Classifier • Nuclei Generator • Issue Resolver
+* **Multi-Agent System** - Threat Intel • Analysis • Incident Response • Orchestrator
+* **LLM Providers** - Local (Ollama, vLLM, SGLang) • Cloud (OpenAI, Claude, Gemini)
+* **AI Tools** - RAG System (pgvector) • SearXNG • Domain Classifier • Nuclei Generator • Issue Resolver
 
 **Integration:**
 
-- **gRPC** - High-performance communication with Core API
-- **MCP Protocol** - Real-time asset context and knowledge retrieval
-- **PostgreSQL** - Vector search for RAG (Retrieval Augmented Generation)
+* **gRPC** - High-performance communication with Core API
+* **MCP Protocol** - Real-time asset context and knowledge retrieval
+* **PostgreSQL** - Vector search for RAG (Retrieval Augmented Generation)
 
 ### ⚙️ OASM CORE (Management Platform)
 
@@ -75,15 +83,15 @@ docker exec -it oasm-assistant-ollama ollama pull llama3
 
 **Components:**
 
-- **Web Console** - Management dashboard
-- **Core API & MCP Server** - REST, gRPC, MCP protocols
-- **Database** - PostgreSQL, Redis, Kafka
-- **Distributed Workers** - Security scanning execution
+* **Web Console** - Management dashboard
+* **Core API & MCP Server** - REST, gRPC, MCP protocols
+* **Database** - PostgreSQL, Redis, Kafka
+* **Distributed Workers** - Security scanning execution
 
 **External Resources:**
 
-- **Internet/Attack Surface** - Target systems
-- **Knowledge Base** - Nuclei Templates, OWASP, MITRE ATT&CK, etc
+* **Internet/Attack Surface** - Target systems
+* **Knowledge Base** - Nuclei Templates, OWASP, MITRE ATT&CK, etc
 
 ---
 
@@ -91,25 +99,25 @@ docker exec -it oasm-assistant-ollama ollama pull llama3
 
 ### 📚 Getting Started
 
-- **[Installation Guide](docs/INSTALLATION.md)** - Docker setup, GPU configuration
-- **[Configuration Guide](docs/CONFIGURATION.md)** - Environment variables, provider setup
-- **[LLM Deployment](docs/LLM_DEPLOYMENT.md)** - Complete LLM & embedding setup
+* **[Installation Guide](docs/INSTALLATION.md)** - Docker setup, GPU configuration
+* **[Configuration Guide](docs/CONFIGURATION.md)** - Environment variables, provider setup
+* **[LLM Deployment](docs/LLM_DEPLOYMENT.md)** - Complete LLM & embedding setup
 
 ### 🔧 Advanced
 
-- Architecture (coming soon)
-- API Reference (coming soon)
-- Development Guide (coming soon)
+* Architecture (coming soon)
+* API Reference (coming soon)
+* Development Guide (coming soon)
 
 ---
 
 ## Technology Stack
 
-- **AI Framework**: LangGraph, LangChain
-- **LLM Providers**: Ollama, vLLM, SGLang, OpenAI, Anthropic, Google
-- **RAG**: pgvector (vector search), BM25 (keyword search)
-- **Communication**: gRPC, MCP (Model Context Protocol)
-- **Storage**: PostgreSQL with pgvector extension
+* **AI Framework**: LangGraph, LangChain
+* **LLM Providers**: Ollama, vLLM, SGLang, OpenAI, Anthropic, Google
+* **RAG**: pgvector (vector search), BM25 (keyword search)
+* **Communication**: gRPC, MCP (Model Context Protocol)
+* **Storage**: PostgreSQL with pgvector extension
 
 ---
 
